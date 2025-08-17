@@ -9,9 +9,23 @@ import SwiftUI
 
 @main
 struct Kantine_KoningApp: App {
-    var body: some Scene {
-        WindowGroup {
-            ContentView()
-        }
-    }
+	@UIApplicationDelegateAdaptor(AppDelegate.self) var appDelegate
+	@StateObject private var model = AppModel()
+
+	var body: some Scene {
+		WindowGroup {
+			AppRouterView()
+				.environmentObject(model)
+				.onReceive(NotificationCenter.default.publisher(for: .pushTokenUpdated)) { notification in
+					if let token = notification.object as? String {
+						model.setPushToken(token)
+					}
+				}
+				.onReceive(NotificationCenter.default.publisher(for: .incomingURL)) { notification in
+					if let url = notification.object as? URL {
+						model.handleIncomingURL(url)
+					}
+				}
+		}
+	}
 }
