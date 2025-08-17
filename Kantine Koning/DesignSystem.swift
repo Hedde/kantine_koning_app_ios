@@ -65,8 +65,10 @@ struct KKPrimaryButton: ButtonStyle {
 			.foregroundColor(.white)
 			.padding(.vertical, 14)
 			.frame(maxWidth: .infinity)
-			.background(KKTheme.accent.opacity(configuration.isPressed ? 0.85 : 1))
-			.clipShape(Capsule())
+			.background(
+				RoundedRectangle(cornerRadius: 14, style: .continuous)
+					.fill(KKTheme.accent.opacity(configuration.isPressed ? 0.85 : 1))
+			)
 			.contentShape(Rectangle())
 	}
 }

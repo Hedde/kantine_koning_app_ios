@@ -157,8 +157,8 @@ final class AppModel: ObservableObject {
         context.email = email
         tenantContext = context
 
-        let teamIds = context.selectedTeams.map { $0.id }
-        backend.enrollDevice(email: email, tenantId: context.tenantId, teamIds: teamIds) { [weak self] result in
+        let teamCodes = context.selectedTeams.compactMap { $0.code ?? $0.naam }
+        backend.enrollDevice(email: email, tenantSlug: context.tenantId, teamCodes: teamCodes) { [weak self] result in
             DispatchQueue.main.async {
                 switch result {
                 case .success:
@@ -335,7 +335,21 @@ final class AppModel: ObservableObject {
             }
         }
         group.notify(queue: .main) {
-            self.upcomingDiensten = collected.sorted(by: { $0.start_tijd < $1.start_tijd })
+            // Sort: future first (soonest→latest), then past (most recent past→older)
+            let now = Date()
+            let future = collected.filter { $0.start_tijd >= now }.sorted { $0.start_tijd < $1.start_tijd }
+            let past = collected.filter { $0.start_tijd < now }.sorted { $0.start_tijd > $1.start_tijd }
+            self.upcomingDiensten = future + past
+            #if DEBUG
+            let total = self.upcomingDiensten.count
+            print("📦 Loaded diensten: total=\(total)")
+            let byTenant = Dictionary(grouping: self.upcomingDiensten, by: { $0.tenant_id })
+            for (tenant, items) in byTenant {
+                let teams = items.compactMap { $0.team }
+                let uniqueTeams = Set(teams.map { ($0.id, $0.code ?? "", $0.pk ?? "", $0.naam) }.map { "id=\($0.0) code=\($0.1) pk=\($0.2) naam=\($0.3)" })
+                print("  • tenant=\(tenant) count=\(items.count) teams=[\(uniqueTeams.joined(separator: ", "))]")
+            }
+            #endif
         }
     }
 
@@ -500,11 +514,13 @@ struct Dienst: Identifiable, Equatable, Codable {
     let locatie_naam: String?
     let aanmeldingen_count: Int?
     let aanmeldingen: [String]? // Volunteer names
+    let updated_at: Date?
 
     struct TeamRef: Codable, Equatable {
         let id: String
         let code: String?
         let naam: String
+        let pk: String?
     }
 }
 

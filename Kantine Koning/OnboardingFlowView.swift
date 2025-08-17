@@ -101,6 +101,21 @@ struct OnboardingFlowView: View {
 							.buttonStyle(KKPrimaryButton())
 							.padding(.horizontal, 24)
 
+#if DEBUG
+							Button(action: {
+								if let pasted = UIPasteboard.general.string, !pasted.isEmpty {
+									scannedOnce = true
+									scanning = false
+									parseInvite(from: pasted)
+								}
+							}) {
+								Label("Plak invite link", systemImage: "doc.on.clipboard")
+							}
+							.buttonStyle(.bordered)
+							.tint(.gray)
+							.padding(.horizontal, 24)
+#endif
+
 							// Show cancel only if there are existing enrollments
 							if !model.enrollments.isEmpty {
 								Button {
@@ -194,7 +209,12 @@ struct OnboardingFlowView: View {
 				}
 				
 				let tenantId = inviteComps.queryItems?.first(where: { $0.name == "tenant" })?.value
-				let tenantName = inviteComps.queryItems?.first(where: { $0.name == "tenant_name" })?.value?.removingPercentEncoding
+				var tenantName = inviteComps.queryItems?.first(where: { $0.name == "tenant_name" })?.value
+				// Convert '+' (form encoding for space) to real spaces, then apply percent-decoding
+				if let tn = tenantName {
+					let withSpaces = tn.replacingOccurrences(of: "+", with: " ")
+					tenantName = withSpaces.removingPercentEncoding ?? withSpaces
+				}
 				
 				print("🏢 Extracted - Tenant ID: '\(tenantId ?? "nil")'")
 				print("🏢 Extracted - Tenant Name: '\(tenantName ?? "nil")'")
@@ -400,19 +420,20 @@ private struct ManagerVerifySection: View {
 		}
 		verifying = true
 		errorMessage = nil
-		DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
-			verifying = false
-			if email == "a@b.nl" {
-				let teams = [
-					AppModel.Team(id: "team_jo11_3", code: "JO11-3", naam: "JO11-3"),
-					AppModel.Team(id: "team_jo8_2jm", code: "JO8-2JM", naam: "JO8-2JM")
-				]
-				let updatedInvite = AppModel.TenantInvite(tenantId: invite.tenantId, tenantName: invite.tenantName, allowedTeams: teams)
-				model.handleScannedInvite(updatedInvite)
-				model.verifiedEmail = email
-				onVerified()
-			} else {
-				errorMessage = "Dit e-mailadres is niet bekend als teammanager bij \(invite.tenantName)"
+		model.backend.enrollDevice(email: email.trimmingCharacters(in: .whitespaces), tenantSlug: invite.tenantId, teamCodes: []) { result in
+			DispatchQueue.main.async {
+				verifying = false
+				switch result {
+				case .success(let teams):
+					// Update invite with teams from backend so user can pick directly
+					let updatedInvite = AppModel.TenantInvite(tenantId: invite.tenantId, tenantName: invite.tenantName, allowedTeams: teams)
+					model.handleScannedInvite(updatedInvite)
+					model.verifiedEmail = email
+					onVerified()
+				case .failure(let error):
+					let msg = (error as NSError).userInfo[NSLocalizedDescriptionKey] as? String
+					errorMessage = msg ?? "Dit e-mailadres is niet bekend als teammanager bij \(invite.tenantName)"
+				}
 			}
 		}
 	}
@@ -615,7 +636,7 @@ struct ClubFoundView: View {
 									Text("Controleren...")
 								}
 							} else {
-								Text("Teams ophalen")
+								Text("E-mailadres verifiëren")
 							}
 						}
 						.disabled(verifying)
@@ -698,48 +719,30 @@ struct ClubFoundView: View {
 	
 	private func verifyTeams() {
 		// Validate email input first
-		guard !email.trimmingCharacters(in: .whitespaces).isEmpty else {
-			errorMessage = "Voer je e-mailadres in om teams op te halen"
+		let trimmed = email.trimmingCharacters(in: .whitespacesAndNewlines)
+		guard !trimmed.isEmpty else {
+			errorMessage = "Voer je e-mailadres in om te verifiëren"
 			return
 		}
 		
 		verifying = true
 		errorMessage = nil
 		
-		// Mock API call to <tenant>.kantinekoning.com/api/?email=x
-		let apiURL = "https://\(invite.tenantId).kantinekoning.com/api/?email=\(email)"
-		print("🌐 Fetching teams from: \(apiURL)")
-		
-		// Simulate network delay
-		DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
-			verifying = false
-			
-			// Mock response based on email
-			if email == "a@b.nl" {
-				let teams = [
-					AppModel.Team(id: "team_jo11_3", code: "JO11-3", naam: "JO11-3"),
-					AppModel.Team(id: "team_jo8_2jm", code: "JO8-2JM", naam: "JO8-2JM")
-				]
-				
-				print("✅ Teams verified for \(email): \(teams.map { $0.naam })")
-				
-				// Update the invite with verified teams
-				let updatedInvite = AppModel.TenantInvite(
-					tenantId: invite.tenantId,
-					tenantName: invite.tenantName,
-					allowedTeams: teams
-				)
-				model.handleScannedInvite(updatedInvite)
-				model.verifiedEmail = email // Store for magic link validation
-				teamsVerified = true
-				
-				// Directly navigate to team selection instead of showing "Kies teams" button
-				DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+		// Trigger backend email check (and magic link) with empty teamCodes; we select teams in volgende stap
+		model.backend.enrollDevice(email: trimmed, tenantSlug: invite.tenantId, teamCodes: []) { result in
+			DispatchQueue.main.async {
+				verifying = false
+				switch result {
+				case .success(let teams):
+					// Update invite with teams from backend so user can pick directly
+					let updatedInvite = AppModel.TenantInvite(tenantId: invite.tenantId, tenantName: invite.tenantName, allowedTeams: teams)
+					model.handleScannedInvite(updatedInvite)
+					model.verifiedEmail = trimmed
+					teamsVerified = true
 					onTeamsVerified()
+				case .failure(let err):
+					errorMessage = (err as NSError).localizedDescription
 				}
-			} else {
-				errorMessage = "Dit e-mailadres is niet bekend als teammanager bij \(invite.tenantName)"
-				print("❌ Email \(email) not authorized for tenant \(invite.tenantId)")
 			}
 		}
 	}
@@ -1192,7 +1195,7 @@ struct EnrollmentPendingView: View {
 					Text("Instructies")
 						.font(KKFont.body(12))
 						.foregroundStyle(KKTheme.textSecondary)
-					Text("We hebben een magic link naar je e-mailadres gestuurd. Open de link op dit toestel om je aanmelding te voltooien.")
+					Text("We hebben een bevestigingslink naar je e-mailadres gestuurd. Open de link op dit toestel om je aanmelding te voltooien.")
 						.font(KKFont.body(14))
 						.foregroundStyle(KKTheme.textSecondary)
 				}
@@ -1210,13 +1213,26 @@ struct EnrollmentPendingView: View {
 							Text("Bezig...")
 						}
 					} else {
-						Text("Simuleer magic link")
+						Text("Simuleer bevestigingslink")
 					}
 				}
 				.disabled(simulating)
 				.buttonStyle(KKPrimaryButton())
 				.padding(.horizontal, 24)
 				.padding(.top, 16)
+
+#if DEBUG
+Button(action: {
+    if let pasted = UIPasteboard.general.string, !pasted.isEmpty {
+        model.handleEnrollmentDeepLink(token: pasted) { _ in }
+    }
+}) {
+    Label("Plak bevestigingslink token", systemImage: "doc.on.clipboard")
+}
+.buttonStyle(.bordered)
+.tint(.gray)
+.padding(.horizontal, 24)
+#endif
 
 				Spacer(minLength: 60)
 			}

@@ -165,7 +165,7 @@ struct TenantSelectionView: View {
 						.kerning(-1.0)
 						.foregroundStyle(KKTheme.textPrimary)
 					
-					Text("Kies een vereniging om je teams te bekijken")
+					Text("Kies een vereniging om je team(s) te bekijken")
 						.font(KKFont.title(16))
 						.foregroundStyle(KKTheme.textSecondary)
 				}
@@ -227,8 +227,18 @@ struct TenantTeamsView: View {
 	var teams: [(String, String)] {
 		let teamIds = Set(model.enrollments.filter { $0.tenantId == tenantId }.flatMap { $0.teamIds })
 		return teamIds.compactMap { teamId in
-			// Find team name from diensten or use smart fallback
-			let teamName = model.upcomingDiensten.first { $0.team?.id == teamId }?.team?.naam ?? teamIdToName(teamId)
+			// Match by code, id, or pk
+			let match = model.upcomingDiensten.first { d in
+				guard let t = d.team else { return false }
+				return t.id == teamId || t.code == teamId || t.pk == teamId
+			}
+			let teamName = match?.team?.naam ?? teamIdToName(teamId)
+			if match == nil {
+				print("🔎 No diensten match enrollment teamId=\(teamId); sample of first team objects:")
+				for d in model.upcomingDiensten.prefix(5) {
+					if let t = d.team { print("   → dienst.team id=\(t.id) code=\(t.code ?? "-") pk=\(t.pk ?? "-") naam=\(t.naam)") }
+				}
+			}
 			return (teamId, teamName)
 		}.sorted { $0.1 < $1.1 }
 	}
@@ -305,9 +315,15 @@ struct TeamDienstenView: View {
 	}
 	
 	var diensten: [Dienst] {
-		model.upcomingDiensten
-			.filter { $0.tenant_id == tenantId && $0.team?.id == teamId }
-			.sorted { $0.start_tijd < $1.start_tijd }
+		let filtered = model.upcomingDiensten.filter {
+			guard $0.tenant_id == tenantId else { return false }
+			guard let team = $0.team else { return false }
+			return team.id == teamId || team.code == teamId || team.pk == teamId
+		}
+		let now = Date()
+		let future = filtered.filter { $0.start_tijd >= now }.sorted { $0.start_tijd < $1.start_tijd }
+		let past = filtered.filter { $0.start_tijd < now }.sorted { $0.start_tijd > $1.start_tijd }
+		return future + past
 	}
 	
 	var body: some View {
@@ -349,6 +365,7 @@ struct TeamDienstenView: View {
 					VStack(spacing: 12) {
 						ForEach(diensten) { dienst in
 							DienstCard(dienst: dienst, model: model)
+								.opacity(dienst.start_tijd < Date() ? 0.5 : 1.0)
 						}
 					}
 					.padding(.horizontal, 16)
@@ -356,6 +373,9 @@ struct TeamDienstenView: View {
 				
 				Spacer(minLength: 24)
 			}
+		}
+		.refreshable {
+			model.loadUpcomingDiensten()
 		}
 	}
 }
@@ -619,27 +639,48 @@ struct DienstCard: View {
 	private func addVolunteer() {
 		let name = newVolunteerName.trimmingCharacters(in: .whitespaces)
 		guard isManager, !name.isEmpty, name.count <= 15, !volunteers.contains(name) else { return }
+		guard dienst.start_tijd >= Date() else { return }
 		
-		let wasFullyStaffed = isFullyStaffed
-		volunteers.append(name)
+		let tenantId = dienst.tenant_id
+		let dienstId = dienst.id
 		newVolunteerName = ""
 		showAddVolunteer = false
-		
-		// Check if we just became fully staffed
-		if !wasFullyStaffed && isFullyStaffed {
-			triggerCelebration()
+		model.backend.addVolunteer(tenantId: tenantId, dienstId: dienstId, name: name) { result in
+			DispatchQueue.main.async {
+				switch result {
+				case .success(let updated):
+					self.volunteers = updated.aanmeldingen ?? []
+					if self.isFullyStaffed { self.triggerCelebration() }
+					// Merge into model list
+					if let idx = model.upcomingDiensten.firstIndex(where: { $0.id == updated.id }) {
+						model.upcomingDiensten[idx] = updated
+					}
+				case .failure:
+					// Optionally show error
+					break
+				}
+			}
 		}
-		
-		// TODO: Call backend API to add volunteer
-		print("🏃‍♀️ Added volunteer \(name) to dienst \(dienst.id)")
 	}
 	
 	private func removeVolunteer(_ name: String) {
 		guard isManager else { return }
-		volunteers.removeAll { $0 == name }
-		
-		// TODO: Call backend API to remove volunteer
-		print("❌ Removed volunteer \(name) from dienst \(dienst.id)")
+		guard dienst.start_tijd >= Date() else { return }
+		let tenantId = dienst.tenant_id
+		let dienstId = dienst.id
+		model.backend.removeVolunteer(tenantId: tenantId, dienstId: dienstId, name: name) { result in
+			DispatchQueue.main.async {
+				switch result {
+				case .success(let updated):
+					self.volunteers = updated.aanmeldingen ?? []
+					if let idx = model.upcomingDiensten.firstIndex(where: { $0.id == updated.id }) {
+						model.upcomingDiensten[idx] = updated
+					}
+				case .failure:
+					break
+				}
+			}
+		}
 	}
 	
 	private func triggerCelebration() {

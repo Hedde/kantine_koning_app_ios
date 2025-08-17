@@ -8,7 +8,7 @@
 import Foundation
 
 final class BackendClient {
-	private let baseURL = URL(string: "https://kantinekoning.com")!
+	private let baseURL = URL(string: "http://localhost:4000")!
 	private let iso8601: ISO8601DateFormatter = {
 		let f = ISO8601DateFormatter()
 		f.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
@@ -17,11 +17,43 @@ final class BackendClient {
 
 	// MARK: - Enrollment
 
-	func enrollDevice(email: String, tenantId: String, teamIds: [String], completion: @escaping (Result<Void, Error>) -> Void) {
-		// Stub: simulate sending magic link email
-		DispatchQueue.global().asyncAfter(deadline: .now() + 0.4) {
-			completion(.success(()))
+	func enrollDevice(email: String, tenantSlug: String, teamCodes: [String], completion: @escaping (Result<[AppModel.Team], Error>) -> Void) {
+		let url = baseURL.appendingPathComponent("/api/mobile/v1/enrollments/request")
+		var request = URLRequest(url: url)
+		request.httpMethod = "POST"
+		request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+		let body: [String: Any] = [
+			"email": email,
+			"tenant_slug": tenantSlug,
+			"team_codes": teamCodes
+		]
+		do {
+			request.httpBody = try JSONSerialization.data(withJSONObject: body)
+		} catch {
+			completion(.failure(error)); return
 		}
+		URLSession.shared.dataTask(with: request) { data, response, error in
+			if let error = error { completion(.failure(error)); return }
+			guard let http = response as? HTTPURLResponse, let data = data else {
+				completion(.failure(NSError(domain: "BackendClient", code: -1, userInfo: [NSLocalizedDescriptionKey: "No response"]))); return
+			}
+			guard (200..<300).contains(http.statusCode) else {
+				let message = String(data: data, encoding: .utf8) ?? "HTTP \(http.statusCode)"
+				completion(.failure(NSError(domain: "BackendClient", code: http.statusCode, userInfo: [NSLocalizedDescriptionKey: message]))); return
+			}
+			var parsed: [AppModel.Team] = []
+			if let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+			   let teams = obj["teams"] as? [[String: Any]] {
+				parsed = teams.compactMap { t in
+					let code = t["code"] as? String
+					let naam = t["naam"] as? String ?? (code ?? "")
+					let id = (code ?? naam)
+					if id.isEmpty { return nil }
+					return AppModel.Team(id: id, code: code, naam: naam)
+				}
+			}
+			completion(.success(parsed))
+		}.resume()
 	}
 
 	func createSimulatedEnrollmentToken(email: String, tenantId: String, tenantName: String, teamIds: [String], completion: @escaping (String) -> Void) {
@@ -41,28 +73,44 @@ final class BackendClient {
 	}
 
 	func registerDevice(enrollmentToken: String, pushToken: String?, platform: String, completion: @escaping (Result<AppModel.Enrollment, Error>) -> Void) {
-		DispatchQueue.global().asyncAfter(deadline: .now() + 0.5) {
-			let deviceId = UUID().uuidString
-			let decoded = Data(base64Encoded: enrollmentToken) ?? Data()
-			let claims = (try? JSONSerialization.jsonObject(with: decoded)) as? [String: Any]
-			let email = (claims?["email"] as? String)
-			let tenantId = (claims?["tenant_id"] as? String) ?? "tenant_demo"
-			let tenantName = (claims?["tenant_name"] as? String) ?? "Demo Club"
-			let teamIds = (claims?["team_ids"] as? [String]) ?? ["team_1"]
-			let roleRaw = (claims?["role"] as? String) ?? "manager"
-			let role: AppModel.EnrollmentRole = roleRaw == "member" ? .member : .manager
-			let enrollment = AppModel.Enrollment(
-				deviceId: deviceId,
-				deviceToken: pushToken ?? "PUSH_STUB",
-				tenantId: tenantId,
-				tenantName: tenantName,
-				teamIds: teamIds,
-				email: email,
-				role: role,
-				signedDeviceToken: nil
-			)
-			completion(.success(enrollment))
-		}
+		let url = baseURL.appendingPathComponent("/api/mobile/v1/enrollments/register")
+		var request = URLRequest(url: url)
+		request.httpMethod = "POST"
+		request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+		let body: [String: Any] = [
+			"enrollment_token": enrollmentToken,
+			"apns_device_token": pushToken ?? "",
+			"platform": platform
+		]
+		do { request.httpBody = try JSONSerialization.data(withJSONObject: body) } catch { completion(.failure(error)); return }
+		URLSession.shared.dataTask(with: request) { data, response, error in
+			if let error = error { completion(.failure(error)); return }
+			guard let http = response as? HTTPURLResponse, let data = data, (200..<300).contains(http.statusCode) else {
+				completion(.failure(NSError(domain: "BackendClient", code: -1, userInfo: [NSLocalizedDescriptionKey: "Invalid response"]))); return
+			}
+			do {
+				let obj = try JSONSerialization.jsonObject(with: data) as? [String: Any]
+				let deviceId = obj?["device_id"] as? String ?? UUID().uuidString
+				let tenantId = obj?["tenant_slug"] as? String ?? "tenant_demo"
+				let tenantName = obj?["tenant_name"] as? String ?? "Demo Club"
+				let teamCodes = obj?["team_codes"] as? [String] ?? []
+				let roleRaw = obj?["role"] as? String ?? "manager"
+				let role: AppModel.EnrollmentRole = roleRaw == "member" ? .member : .manager
+				let enrollment = AppModel.Enrollment(
+					deviceId: deviceId,
+					deviceToken: pushToken ?? "PUSH_STUB",
+					tenantId: tenantId,
+					tenantName: tenantName,
+					teamIds: teamCodes,
+					email: nil,
+					role: role,
+					signedDeviceToken: obj?["api_token"] as? String
+				)
+				completion(.success(enrollment))
+			} catch {
+				completion(.failure(error))
+			}
+		}.resume()
 	}
 
 	// MARK: - Member enrollment (no email)
@@ -85,65 +133,112 @@ final class BackendClient {
 	// MARK: - Data
 
 	func fetchUpcomingDiensten(tenantId: String, teamIds: [String], completion: @escaping (Result<[Dienst], Error>) -> Void) {
-		DispatchQueue.global().asyncAfter(deadline: .now() + 0.3) {
-			let now = Date()
-			
-			// Mock team data mapping based on actual enrolled teams
-			let teamMapping: [String: (code: String, naam: String)] = [
-				"team_jo11_3": (code: "JO11-3", naam: "JO11-3"),
-				"team_jo8_2jm": (code: "JO8-2JM", naam: "JO8-2JM")
-			]
-			
-			// Mock location names
-			let locations = ["Kantine", "Sportcafé", "Hoofdveld", "Veld 2"]
-			
-			let items: [Dienst] = teamIds.enumerated().flatMap { idx, teamId in
-				// Get real team info or fallback to teamId
-				let teamInfo = teamMapping[teamId] ?? (code: teamId, naam: teamId)
-				let location = locations[idx % locations.count]
-				
-				// Create more realistic times
-				let baseDate = Calendar.current.date(byAdding: .day, value: idx + 1, to: now)!
-				let startTime = Calendar.current.date(bySettingHour: 8 + (idx * 2), minute: 0, second: 0, of: baseDate)!
-				let endTime = Calendar.current.date(byAdding: .hour, value: 2, to: startTime)!
-				
-				let nextWeekDate = Calendar.current.date(byAdding: .weekOfYear, value: 1, to: baseDate)!
-				let startTime2 = Calendar.current.date(bySettingHour: 10, minute: 30, second: 0, of: nextWeekDate)!
-				let endTime2 = Calendar.current.date(byAdding: .hour, value: 2, to: startTime2)!
-				
-				// Mock volunteer data based on team
-				let volunteers1: [String] = teamId == "team_jo11_3" ? ["Jan", "Anne"] : ["Piet"]
-				let volunteers2: [String] = teamId == "team_jo11_3" ? ["Marie"] : []
-				
-				return [
-					Dienst(
-						id: "dienst_\(teamId)_1",
-						tenant_id: tenantId,
-						team: .init(id: teamId, code: teamInfo.code, naam: teamInfo.naam),
-						start_tijd: startTime,
-						eind_tijd: endTime,
-						minimum_bemanning: 2,
-						status: "ingepland",
-						locatie_naam: location,
-						aanmeldingen_count: volunteers1.count,
-						aanmeldingen: volunteers1
-					),
-					Dienst(
-						id: "dienst_\(teamId)_2",
-						tenant_id: tenantId,
-						team: .init(id: teamId, code: teamInfo.code, naam: teamInfo.naam),
-						start_tijd: startTime2,
-						eind_tijd: endTime2,
-						minimum_bemanning: 3,
-						status: "ingepland",
-						locatie_naam: location,
-						aanmeldingen_count: volunteers2.count,
-						aanmeldingen: volunteers2
-					)
-				]
-			}
-			completion(.success(items))
+		var comps = URLComponents(url: baseURL.appendingPathComponent("/api/mobile/v1/diensten"), resolvingAgainstBaseURL: false)!
+		comps.queryItems = [
+			URLQueryItem(name: "tenant", value: tenantId),
+			URLQueryItem(name: "past_days", value: "14"),
+			URLQueryItem(name: "future_days", value: "60")
+		]
+		guard let url = comps.url else {
+			completion(.failure(NSError(domain: "BackendClient", code: -2, userInfo: [NSLocalizedDescriptionKey: "Invalid URL"]))); return
 		}
+		var request = URLRequest(url: url)
+		request.httpMethod = "GET"
+		URLSession.shared.dataTask(with: request) { data, response, error in
+			if let error = error { completion(.failure(error)); return }
+			guard let http = response as? HTTPURLResponse, let data = data else {
+				completion(.failure(NSError(domain: "BackendClient", code: -1, userInfo: [NSLocalizedDescriptionKey: "No response"]))); return
+			}
+			guard (200..<300).contains(http.statusCode) else {
+				let message = String(data: data, encoding: .utf8) ?? "HTTP \(http.statusCode)"
+				completion(.failure(NSError(domain: "BackendClient", code: http.statusCode, userInfo: [NSLocalizedDescriptionKey: message]))); return
+			}
+			do {
+				struct Response: Decodable { let diensten: [Dienst] }
+				let decoder = JSONDecoder()
+				let isoNoFrac = ISO8601DateFormatter()
+				isoNoFrac.formatOptions = [.withInternetDateTime]
+				let isoFrac = ISO8601DateFormatter()
+				isoFrac.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+				decoder.dateDecodingStrategy = .custom { dec in
+					let c = try dec.singleValueContainer()
+					let s = try c.decode(String.self)
+					if let d = isoFrac.date(from: s) { return d }
+					if let d = isoNoFrac.date(from: s) { return d }
+					throw DecodingError.dataCorruptedError(in: c, debugDescription: "Invalid ISO8601 date: \(s)")
+				}
+				let resp = try decoder.decode(Response.self, from: data)
+				#if DEBUG
+				print("🌐 GET /diensten response count=\(resp.diensten.count)")
+				#endif
+				completion(.success(resp.diensten))
+			} catch {
+				#if DEBUG
+				print("❌ decode error /diensten: \(error)")
+				#endif
+				completion(.failure(error))
+			}
+		}.resume()
+	}
+
+	func addVolunteer(tenantId: String, dienstId: String, name: String, completion: @escaping (Result<Dienst, Error>) -> Void) {
+		var comps = URLComponents(url: baseURL.appendingPathComponent("/api/mobile/v1/diensten/\(dienstId)/volunteer"), resolvingAgainstBaseURL: false)!
+		comps.queryItems = [URLQueryItem(name: "tenant", value: tenantId)]
+		var request = URLRequest(url: comps.url!)
+		request.httpMethod = "POST"
+		request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+		let body = ["naam": name]
+		request.httpBody = try? JSONSerialization.data(withJSONObject: body)
+		URLSession.shared.dataTask(with: request) { data, response, error in
+			if let error = error { completion(.failure(error)); return }
+			guard let http = response as? HTTPURLResponse, let data = data, (200..<300).contains(http.statusCode) else {
+				completion(.failure(NSError(domain: "BackendClient", code: -1, userInfo: [NSLocalizedDescriptionKey: "Invalid response"]))); return
+			}
+			do {
+				struct Resp: Decodable { let dienst: Dienst }
+				let decoder = JSONDecoder()
+				let isoNoFrac = ISO8601DateFormatter(); isoNoFrac.formatOptions = [.withInternetDateTime]
+				let isoFrac = ISO8601DateFormatter(); isoFrac.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+				decoder.dateDecodingStrategy = .custom { dec in
+					let c = try dec.singleValueContainer(); let s = try c.decode(String.self)
+					if let d = isoFrac.date(from: s) { return d }
+					if let d = isoNoFrac.date(from: s) { return d }
+					throw DecodingError.dataCorruptedError(in: c, debugDescription: "Invalid ISO8601 date: \(s)")
+				}
+				let resp = try decoder.decode(Resp.self, from: data)
+				completion(.success(resp.dienst))
+			} catch { completion(.failure(error)) }
+		}.resume()
+	}
+
+	func removeVolunteer(tenantId: String, dienstId: String, name: String, completion: @escaping (Result<Dienst, Error>) -> Void) {
+		var comps = URLComponents(url: baseURL.appendingPathComponent("/api/mobile/v1/diensten/\(dienstId)/volunteer"), resolvingAgainstBaseURL: false)!
+		comps.queryItems = [
+			URLQueryItem(name: "tenant", value: tenantId),
+			URLQueryItem(name: "naam", value: name)
+		]
+		var request = URLRequest(url: comps.url!)
+		request.httpMethod = "DELETE"
+		URLSession.shared.dataTask(with: request) { data, response, error in
+			if let error = error { completion(.failure(error)); return }
+			guard let http = response as? HTTPURLResponse, let data = data, (200..<300).contains(http.statusCode) else {
+				completion(.failure(NSError(domain: "BackendClient", code: -1, userInfo: [NSLocalizedDescriptionKey: "Invalid response"]))); return
+			}
+			do {
+				struct Resp: Decodable { let dienst: Dienst }
+				let decoder = JSONDecoder()
+				let isoNoFrac = ISO8601DateFormatter(); isoNoFrac.formatOptions = [.withInternetDateTime]
+				let isoFrac = ISO8601DateFormatter(); isoFrac.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+				decoder.dateDecodingStrategy = .custom { dec in
+					let c = try dec.singleValueContainer(); let s = try c.decode(String.self)
+					if let d = isoFrac.date(from: s) { return d }
+					if let d = isoNoFrac.date(from: s) { return d }
+					throw DecodingError.dataCorruptedError(in: c, debugDescription: "Invalid ISO8601 date: \(s)")
+				}
+				let resp = try decoder.decode(Resp.self, from: data)
+				completion(.success(resp.dienst))
+			} catch { completion(.failure(error)) }
+		}.resume()
 	}
 
 	func unregister(tenantId: String, teamId: String?, dienstId: String, completion: @escaping (Result<Void, Error>) -> Void) {
