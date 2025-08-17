@@ -30,6 +30,7 @@ final class BackendClient {
 			"tenant_id": tenantId,
 			"tenant_name": tenantName,
 			"team_ids": teamIds,
+			"role": "manager",
 			"purpose": "device-enroll",
 			"exp": Int(Date().addingTimeInterval(10 * 60).timeIntervalSince1970),
 			"jti": UUID().uuidString,
@@ -44,19 +45,39 @@ final class BackendClient {
 			let deviceId = UUID().uuidString
 			let decoded = Data(base64Encoded: enrollmentToken) ?? Data()
 			let claims = (try? JSONSerialization.jsonObject(with: decoded)) as? [String: Any]
-					let email = (claims?["email"] as? String) ?? "user@example.com"
-		let tenantId = (claims?["tenant_id"] as? String) ?? "tenant_demo"
-		let tenantName = (claims?["tenant_name"] as? String) ?? "Demo Club"
-		let teamIds = (claims?["team_ids"] as? [String]) ?? ["team_1"]
-		let enrollment = AppModel.Enrollment(
-			deviceId: deviceId,
-			deviceToken: pushToken ?? "PUSH_STUB",
-			tenantId: tenantId,
-			tenantName: tenantName,
-			teamIds: teamIds,
-			email: email,
-			signedDeviceToken: nil
-		)
+			let email = (claims?["email"] as? String)
+			let tenantId = (claims?["tenant_id"] as? String) ?? "tenant_demo"
+			let tenantName = (claims?["tenant_name"] as? String) ?? "Demo Club"
+			let teamIds = (claims?["team_ids"] as? [String]) ?? ["team_1"]
+			let roleRaw = (claims?["role"] as? String) ?? "manager"
+			let role: AppModel.EnrollmentRole = roleRaw == "member" ? .member : .manager
+			let enrollment = AppModel.Enrollment(
+				deviceId: deviceId,
+				deviceToken: pushToken ?? "PUSH_STUB",
+				tenantId: tenantId,
+				tenantName: tenantName,
+				teamIds: teamIds,
+				email: email,
+				role: role,
+				signedDeviceToken: nil
+			)
+			completion(.success(enrollment))
+		}
+	}
+
+	// MARK: - Member enrollment (no email)
+	func registerMemberDevice(tenantId: String, tenantName: String, teamIds: [String], pushToken: String?, platform: String, completion: @escaping (Result<AppModel.Enrollment, Error>) -> Void) {
+		DispatchQueue.global().asyncAfter(deadline: .now() + 0.4) {
+			let enrollment = AppModel.Enrollment(
+				deviceId: UUID().uuidString,
+				deviceToken: pushToken ?? "PUSH_STUB",
+				tenantId: tenantId,
+				tenantName: tenantName,
+				teamIds: teamIds,
+				email: nil,
+				role: .member,
+				signedDeviceToken: nil
+			)
 			completion(.success(enrollment))
 		}
 	}
@@ -136,6 +157,30 @@ final class BackendClient {
 	func submitVolunteers(actionToken: String, names: [String], completion: @escaping (Result<Void, Error>) -> Void) {
 		DispatchQueue.global().asyncAfter(deadline: .now() + 0.3) {
 			completion(.success(()))
+		}
+	}
+}
+
+// MARK: - Public search (member autocomplete)
+extension BackendClient {
+	func searchTeams(tenantId: String, query: String, completion: @escaping (Result<[AppModel.Team], Error>) -> Void) {
+		DispatchQueue.global().asyncAfter(deadline: .now() + 0.2) {
+			let all = [
+				AppModel.Team(id: "team_jo11_3", code: "JO11-3", naam: "JO11-3"),
+				AppModel.Team(id: "team_jo8_2jm", code: "JO8-2JM", naam: "JO8-2JM"),
+				AppModel.Team(id: "team_mo15_2", code: "MO15-2", naam: "MO15-2"),
+				AppModel.Team(id: "team_jo10_3", code: "JO10-3", naam: "JO10-3")
+			]
+			let q = query.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+			guard !q.isEmpty else {
+				completion(.success([]))
+				return
+			}
+			let filtered = all.filter { team in
+				team.naam.lowercased().hasPrefix(q) || (team.code ?? "").lowercased().hasPrefix(q)
+			}
+			let top = Array(filtered.prefix(3))
+			completion(.success(top))
 		}
 	}
 }

@@ -23,15 +23,18 @@ struct HomeView: View {
 			VStack(spacing: 0) {
 				// Top Navigation Bar
 				TopNavigationBar(
-					onHomeAction: { 
+					onHomeAction: {
 						selectedTenant = nil
 						selectedTeam = nil
+						showSettings = false
 					},
-					onSettingsAction: { showSettings = true }
+					onSettingsAction: { showSettings.toggle() }
 				)
 				
 				// Main Content
-				if let selectedTenant = selectedTenant, let selectedTeam = selectedTeam {
+				if showSettings {
+					SettingsView(onClose: { showSettings = false })
+				} else if let selectedTenant = selectedTenant, let selectedTeam = selectedTeam {
 					// Show diensten for selected team
 					TeamDienstenView(tenantId: selectedTenant, teamId: selectedTeam)
 				} else if let selectedTenant = selectedTenant {
@@ -51,6 +54,28 @@ struct HomeView: View {
 						}
 					}
 				}
+
+				// Footer back control (subtle), shown only when not at root
+				if (selectedTenant != nil) && (selectedTeam == nil) {
+					Button {
+						if selectedTeam != nil {
+							selectedTeam = nil
+						} else if selectedTenant != nil {
+							selectedTenant = nil
+						}
+					} label: {
+						HStack(spacing: 6) {
+							Image(systemName: "chevron.left")
+								.font(.body)
+							Text("Terug")
+								.font(KKFont.body(12))
+						}
+					}
+					.buttonStyle(.plain)
+					.foregroundStyle(KKTheme.textSecondary)
+					.padding(.vertical, 12)
+					.padding(.horizontal, 24)
+				}
 			}
 			.background(KKTheme.surface.ignoresSafeArea())
 			.onChange(of: model.pendingAction) { _, newValue in
@@ -60,9 +85,6 @@ struct HomeView: View {
 				if case .shiftVolunteer(let action) = model.pendingAction {
 					VolunteerSubmissionView(action: action)
 				}
-			}
-			.sheet(isPresented: $showSettings) {
-				SettingsView()
 			}
 			.onReceive(model.$deepLinkNavigation) { navigation in
 				if let nav = navigation {
@@ -82,12 +104,12 @@ struct TopNavigationBar: View {
 	let onSettingsAction: () -> Void
 	
 	var body: some View {
-		HStack {
-					Button(action: onHomeAction) {
-			Image(systemName: "house.fill")
-				.font(.title2)
-				.foregroundColor(KKTheme.textSecondary)
-		}
+		HStack(spacing: 12) {
+			Button(action: onHomeAction) {
+				Image(systemName: "house.fill")
+					.font(.title2)
+					.foregroundColor(KKTheme.textSecondary)
+			}
 			
 			Spacer()
 			
@@ -98,11 +120,11 @@ struct TopNavigationBar: View {
 			
 			Spacer()
 			
-					Button(action: onSettingsAction) {
-			Image(systemName: "gearshape.fill")
-				.font(.title2)
-				.foregroundColor(KKTheme.textSecondary)
-		}
+			Button(action: onSettingsAction) {
+				Image(systemName: "gearshape.fill")
+					.font(.title2)
+					.foregroundColor(KKTheme.textSecondary)
+			}
 		}
 		.padding(.horizontal, 24)
 		.padding(.vertical, 16)
@@ -137,13 +159,13 @@ struct TenantSelectionView: View {
 				Spacer(minLength: 24)
 				
 				VStack(spacing: 8) {
-					Text("SELECTEER CLUB")
+					Text("SELECTEER VERENIGING")
 						.font(KKFont.heading(24))
 						.fontWeight(.regular)
 						.kerning(-1.0)
 						.foregroundStyle(KKTheme.textPrimary)
 					
-					Text("Kies een club om je teams te bekijken")
+					Text("Kies een vereniging om je teams te bekijken")
 						.font(KKFont.title(16))
 						.foregroundStyle(KKTheme.textSecondary)
 				}
@@ -348,6 +370,11 @@ struct DienstCard: View {
 	@State private var showCelebration = false
 	@State private var confettiTrigger = 0
 	
+	private var isManager: Bool {
+		guard let teamId = dienst.team?.id else { return false }
+		return model.roleFor(tenantId: dienst.tenant_id, teamId: teamId) == .manager
+	}
+	
 	var body: some View {
 		VStack(alignment: .leading, spacing: 16) {
 			// Header with date and time
@@ -433,10 +460,12 @@ struct DienstCard: View {
 								
 								Spacer()
 								
-								Button(action: { removeVolunteer(volunteer) }) {
-									Image(systemName: "minus.circle.fill")
-										.foregroundStyle(Color.red)
-										.font(.title3)
+								if isManager {
+									Button(action: { removeVolunteer(volunteer) }) {
+										Image(systemName: "minus.circle.fill")
+											.foregroundStyle(Color.red)
+											.font(.title3)
+									}
 								}
 							}
 							.padding(.horizontal, 12)
@@ -476,7 +505,7 @@ struct DienstCard: View {
 					RoundedRectangle(cornerRadius: 12)
 						.stroke(Color.green.opacity(0.3), lineWidth: 1)
 				)
-			} else if showAddVolunteer {
+			} else if showAddVolunteer && isManager {
 				VStack(spacing: 8) {
 					ZStack(alignment: .leading) {
 						if newVolunteerName.isEmpty {
@@ -515,13 +544,25 @@ struct DienstCard: View {
 					}
 				}
 			} else {
-				Button(action: { showAddVolunteer = true }) {
-					HStack {
-						Image(systemName: "plus.circle")
-						Text("Vrijwilliger toevoegen")
+				if isManager {
+					Button(action: { showAddVolunteer = true }) {
+						HStack {
+							Image(systemName: "plus.circle")
+							Text("Vrijwilliger toevoegen")
+						}
+					}
+					.buttonStyle(KKSecondaryButton())
+				} else {
+					// Read-only note for members
+					HStack(spacing: 8) {
+						Image(systemName: "lock.fill")
+							.font(.caption)
+							.foregroundStyle(KKTheme.textSecondary)
+						Text("Alleen lezen (verenigingslid)")
+							.font(KKFont.body(12))
+							.foregroundStyle(KKTheme.textSecondary)
 					}
 				}
-				.buttonStyle(KKSecondaryButton())
 			}
 		}
 		.padding(16)
@@ -577,7 +618,7 @@ struct DienstCard: View {
 	
 	private func addVolunteer() {
 		let name = newVolunteerName.trimmingCharacters(in: .whitespaces)
-		guard !name.isEmpty, name.count <= 15, !volunteers.contains(name) else { return }
+		guard isManager, !name.isEmpty, name.count <= 15, !volunteers.contains(name) else { return }
 		
 		let wasFullyStaffed = isFullyStaffed
 		volunteers.append(name)
@@ -594,6 +635,7 @@ struct DienstCard: View {
 	}
 	
 	private func removeVolunteer(_ name: String) {
+		guard isManager else { return }
 		volunteers.removeAll { $0 == name }
 		
 		// TODO: Call backend API to remove volunteer
@@ -645,63 +687,119 @@ struct DienstCard: View {
 struct SettingsView: View {
 	@EnvironmentObject var model: AppModel
 	@Environment(\.dismiss) private var dismiss
+	@State private var showCapAlert = false
+	@State private var showResetConfirm = false
+	let onClose: () -> Void
 	
+	// App info from Info.plist (not hardcoded)
+	private var appName: String {
+		if let displayName = Bundle.main.object(forInfoDictionaryKey: "CFBundleDisplayName") as? String, !displayName.isEmpty {
+			return displayName
+		}
+		if let name = Bundle.main.object(forInfoDictionaryKey: "CFBundleName") as? String {
+			return name
+		}
+		return "Kantine Koning"
+	}
+	private var appVersion: String {
+		(Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String) ?? "—"
+	}
+	private var appBuild: String {
+		(Bundle.main.object(forInfoDictionaryKey: "CFBundleVersion") as? String) ?? "—"
+	}
+
 	var body: some View {
-		NavigationStack {
-			ScrollView {
-				VStack(spacing: 24) {
-					Spacer(minLength: 24)
-					
-					BrandAssets.logoImage()
-						.resizable()
-						.scaledToFit()
-						.frame(width: 72, height: 72)
-					
-					VStack(spacing: 8) {
-						Text("INSTELLINGEN")
-							.font(KKFont.heading(24))
-							.fontWeight(.regular)
-							.kerning(-1.0)
-							.foregroundStyle(KKTheme.textPrimary)
+		ScrollView {
+			VStack(spacing: 24) {
+				Spacer(minLength: 24)
+				
+				VStack(spacing: 8) {
+					Text("INSTELLINGEN")
+						.font(KKFont.heading(24))
+						.fontWeight(.regular)
+						.kerning(-1.0)
+						.foregroundStyle(KKTheme.textPrimary)
+					Text("Beheer je aanmeldingen en voorkeuren")
+						.font(KKFont.title(16))
+						.foregroundStyle(KKTheme.textSecondary)
+				}
+				.multilineTextAlignment(.center)
+				
+				// Enrollment actions card
+				VStack(alignment: .leading, spacing: 12) {
+					Text("Aanmeldingen")
+						.font(KKFont.body(12))
+						.foregroundStyle(KKTheme.textSecondary)
+					Button {
+						let totalTeams = model.enrollments.reduce(0) { $0 + $1.teamIds.count }
+						guard totalTeams < 5 else { showCapAlert = true; return }
+						onClose()
+						DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+							model.startNewEnrollment()
+						}
+					} label: {
+						Label("Vereniging toevoegen", systemImage: "plus.circle.fill")
 					}
+					.buttonStyle(KKSecondaryButton())
+					
+					Button {
+						let totalTeams = model.enrollments.reduce(0) { $0 + $1.teamIds.count }
+						guard totalTeams < 5 else { showCapAlert = true; return }
+						onClose()
+						DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+							model.startNewEnrollment()
+						}
+					} label: {
+						Label("Team toevoegen", systemImage: "person.2.fill")
+					}
+					.buttonStyle(KKSecondaryButton())
+				}
+				.kkCard()
+				.padding(.horizontal, 24)
+				
+				// Destructive reset card
+				VStack(alignment: .leading, spacing: 12) {
+					Text("Geavanceerd")
+						.font(KKFont.body(12))
+						.foregroundStyle(KKTheme.textSecondary)
+					Text("Reset alle gegevens zet de app terug naar de beginstatus.")
+						.font(KKFont.body(12))
+						.foregroundStyle(KKTheme.textSecondary)
+					Button {
+						showResetConfirm = true
+					} label: {
+						Label("Alles resetten", systemImage: "trash.fill")
+							.foregroundStyle(Color.red)
+					}
+					.buttonStyle(KKSecondaryButton())
+				}
+				.kkCard()
+				.padding(.horizontal, 24)
+				
+				// About: small centered text
+				Text("\(appName) – versie \(appVersion) (\(appBuild))")
+					.font(KKFont.body(12))
+					.foregroundStyle(KKTheme.textSecondary)
 					.multilineTextAlignment(.center)
-					
-					VStack(spacing: 16) {
-						Button("Nieuwe club toevoegen") {
-							dismiss()
-							DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
-								model.startNewEnrollment()
-							}
-						}
-						.buttonStyle(KKPrimaryButton())
-						
-						Button("Extra team toevoegen") {
-							dismiss()
-							DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
-								model.startNewEnrollment()
-							}
-						}
-						.buttonStyle(KKSecondaryButton())
-						
-						Button("Reset alle gegevens") {
-							model.resetAll()
-							dismiss()
-						}
-						.buttonStyle(KKSecondaryButton())
-					}
 					.padding(.horizontal, 24)
-					
-					Spacer(minLength: 24)
-				}
+				
+				Spacer(minLength: 24)
 			}
-			.background(KKTheme.surface.ignoresSafeArea())
-			.navigationTitle("")
-			.navigationBarHidden(true)
-			.toolbar {
-				ToolbarItem(placement: .navigationBarTrailing) {
-					Button("Sluiten") { dismiss() }
-				}
+		}
+		.background(KKTheme.surface.ignoresSafeArea())
+		.alert("Limiet bereikt", isPresented: $showCapAlert) {
+			Button("OK", role: .cancel) { }
+		} message: {
+			Text("Je kunt maximaal 5 teams volgen. Verwijder eerst een team om verder te gaan.")
+		}
+		.alert("Weet je het zeker?", isPresented: $showResetConfirm) {
+			Button("Annuleren", role: .cancel) { }
+			Button("Reset", role: .destructive) {
+				model.resetAll()
+				onClose()
 			}
+		} message: {
+			Text("Dit verwijdert alle lokale enrollments en gegevens van dit apparaat.")
 		}
 	}
 }

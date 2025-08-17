@@ -16,6 +16,11 @@ final class AppModel: ObservableObject {
         case registered
     }
 
+    enum EnrollmentRole: String, Codable, Equatable {
+        case manager
+        case member
+    }
+
     struct TenantInvite: Equatable {
         let tenantId: String
         let tenantName: String
@@ -47,8 +52,48 @@ final class AppModel: ObservableObject {
         let tenantId: String
         let tenantName: String
         let teamIds: [String]
-        let email: String
+        let email: String?
+        let role: EnrollmentRole
         let signedDeviceToken: String?
+
+        private enum CodingKeys: String, CodingKey {
+            case deviceId, deviceToken, tenantId, tenantName, teamIds, email, role, signedDeviceToken
+        }
+
+        init(deviceId: String, deviceToken: String, tenantId: String, tenantName: String, teamIds: [String], email: String?, role: EnrollmentRole, signedDeviceToken: String?) {
+            self.deviceId = deviceId
+            self.deviceToken = deviceToken
+            self.tenantId = tenantId
+            self.tenantName = tenantName
+            self.teamIds = teamIds
+            self.email = email
+            self.role = role
+            self.signedDeviceToken = signedDeviceToken
+        }
+
+        init(from decoder: Decoder) throws {
+            let container = try decoder.container(keyedBy: CodingKeys.self)
+            deviceId = try container.decode(String.self, forKey: .deviceId)
+            deviceToken = try container.decode(String.self, forKey: .deviceToken)
+            tenantId = try container.decode(String.self, forKey: .tenantId)
+            tenantName = try container.decode(String.self, forKey: .tenantName)
+            teamIds = try container.decode([String].self, forKey: .teamIds)
+            email = try container.decodeIfPresent(String.self, forKey: .email)
+            role = (try container.decodeIfPresent(EnrollmentRole.self, forKey: .role)) ?? .manager
+            signedDeviceToken = try container.decodeIfPresent(String.self, forKey: .signedDeviceToken)
+        }
+
+        func encode(to encoder: Encoder) throws {
+            var container = encoder.container(keyedBy: CodingKeys.self)
+            try container.encode(deviceId, forKey: .deviceId)
+            try container.encode(deviceToken, forKey: .deviceToken)
+            try container.encode(tenantId, forKey: .tenantId)
+            try container.encode(tenantName, forKey: .tenantName)
+            try container.encode(teamIds, forKey: .teamIds)
+            try container.encodeIfPresent(email, forKey: .email)
+            try container.encode(role, forKey: .role)
+            try container.encodeIfPresent(signedDeviceToken, forKey: .signedDeviceToken)
+        }
     }
 
     @Published var appPhase: AppPhase = .launching
@@ -179,13 +224,89 @@ final class AppModel: ObservableObject {
             DispatchQueue.main.async {
                 switch result {
                 case .success(let enrollment):
-                    if let index = self?.enrollments.firstIndex(where: { $0.tenantId == enrollment.tenantId && $0.email == enrollment.email }) {
-                        self?.enrollments[index] = enrollment
-                    } else {
-                        self?.enrollments.append(enrollment)
+                    guard let self = self else { return }
+                    var newEnrollment = enrollment
+
+                    // De-duplicate overlapping teams across enrollments for the same tenant
+                    // Rule: Manager has precedence over Member; do not allow the same team in multiple enrollments
+                    // 1) If new is manager: remove overlapping teams from existing member enrollments (and also from other enrollments regardless of role to avoid duplicates)
+                    // 2) If new is member: remove overlapping teams that are already managed; if nothing remains, skip adding
+                    // Also ensure a team appears only once across all enrollments for a tenant
+
+                    // Compute overlaps and adjust existing enrollments
+                    var updatedExisting: [Enrollment] = []
+                    for existing in self.enrollments {
+                        if existing.tenantId == newEnrollment.tenantId {
+                            let overlap = Set(existing.teamIds).intersection(newEnrollment.teamIds)
+                            if overlap.isEmpty {
+                                updatedExisting.append(existing)
+                            } else {
+                                if newEnrollment.role == .manager {
+                                    // Remove overlap from existing to keep it only in the new manager enrollment
+                                    let remaining = existing.teamIds.filter { !overlap.contains($0) }
+                                    if !remaining.isEmpty {
+                                        let downgraded = Enrollment(
+                                            deviceId: existing.deviceId,
+                                            deviceToken: existing.deviceToken,
+                                            tenantId: existing.tenantId,
+                                            tenantName: existing.tenantName,
+                                            teamIds: remaining,
+                                            email: existing.email,
+                                            role: existing.role,
+                                            signedDeviceToken: existing.signedDeviceToken
+                                        )
+                                        updatedExisting.append(downgraded)
+                                    }
+                                    // else: drop this existing enrollment if no teams remain
+                                } else {
+                                    // New is member: do not duplicate teams already present; remove overlap from the new enrollment
+                                    newEnrollment = Enrollment(
+                                        deviceId: newEnrollment.deviceId,
+                                        deviceToken: newEnrollment.deviceToken,
+                                        tenantId: newEnrollment.tenantId,
+                                        tenantName: newEnrollment.tenantName,
+                                        teamIds: newEnrollment.teamIds.filter { !overlap.contains($0) },
+                                        email: newEnrollment.email,
+                                        role: newEnrollment.role,
+                                        signedDeviceToken: newEnrollment.signedDeviceToken
+                                    )
+                                    updatedExisting.append(existing)
+                                }
+                            }
+                        } else {
+                            updatedExisting.append(existing)
+                        }
                     }
-                    self?.appPhase = .registered
-                    self?.loadUpcomingDiensten()
+
+                    self.enrollments = updatedExisting
+
+                    // If after de-dup nothing remains to add, just refresh data and finish
+                    if newEnrollment.teamIds.isEmpty {
+                        self.appPhase = .registered
+                        self.loadUpcomingDiensten()
+                        completion(.success(()))
+                        return
+                    }
+
+                    // Enforce max 5 total followed (tenant, team) pairs
+                    let existingPairsCount: Int = self.enrollments.reduce(0) { acc, e in acc + e.teamIds.count }
+                    let newCount = newEnrollment.teamIds.count
+                    if existingPairsCount + newCount > 5 {
+                        completion(.failure(NSError(
+                            domain: "AppModel",
+                            code: -4,
+                            userInfo: [NSLocalizedDescriptionKey: "Je kunt maximaal 5 teams volgen. Verwijder eerst een team om verder te gaan."]
+                        )))
+                        return
+                    }
+
+                    if let index = self.enrollments.firstIndex(where: { $0.tenantId == newEnrollment.tenantId && $0.email == newEnrollment.email && $0.role == newEnrollment.role }) {
+                        self.enrollments[index] = newEnrollment
+                    } else {
+                        self.enrollments.append(newEnrollment)
+                    }
+                    self.appPhase = .registered
+                    self.loadUpcomingDiensten()
                     completion(.success(()))
                 case .failure(let error):
                     completion(.failure(error))
@@ -250,7 +371,7 @@ final class AppModel: ObservableObject {
         
         for enrollment in currentEnrollments {
             // Mock validation - in real app would call backend
-            print("🔍 Validating manager status for \(enrollment.email) at \(enrollment.tenantName)")
+            print("🔍 Validating manager status for \(enrollment.email ?? "-") at \(enrollment.tenantName)")
             // TODO: Implement real backend validation
             // If validation fails, remove enrollment:
             // self.enrollments.removeAll { $0.deviceId == enrollment.deviceId }
@@ -284,6 +405,7 @@ final class AppModel: ObservableObject {
                     tenantName: enrollment.tenantName,
                     teamIds: updatedTeamIds,
                     email: enrollment.email,
+                    role: enrollment.role,
                     signedDeviceToken: enrollment.signedDeviceToken
                 )
             }
@@ -301,6 +423,67 @@ final class AppModel: ObservableObject {
     func navigateToTeam(tenantId: String, teamId: String) {
         // Set deep link navigation for HomeView to handle
         deepLinkNavigation = DeepLinkNavigation(tenantId: tenantId, teamId: teamId)
+    }
+
+    // MARK: - Roles & Permissions
+
+    func roleFor(tenantId: String, teamId: String) -> EnrollmentRole? {
+        // Prefer manager if there are multiple enrollments for the same team
+        let matches = enrollments.filter { $0.tenantId == tenantId && $0.teamIds.contains(teamId) }
+        if let manager = matches.first(where: { $0.role == .manager }) { return manager.role }
+        return matches.first?.role
+    }
+
+    // MARK: - Member Enrollment (read-only)
+
+    func registerMember(tenantId: String, tenantName: String, teamIds: [String], completion: @escaping (Result<Void, Error>) -> Void) {
+        let currentPush = pushToken
+        backend.registerMemberDevice(tenantId: tenantId, tenantName: tenantName, teamIds: teamIds, pushToken: currentPush, platform: "ios") { [weak self] result in
+            DispatchQueue.main.async {
+                switch result {
+                case .success(let enrollment):
+                    guard let self = self else { return }
+                    var newEnrollment = enrollment
+                    // Avoid duplicating teams already present (manager precedence)
+                    for existing in self.enrollments where existing.tenantId == tenantId {
+                        let overlap = Set(existing.teamIds).intersection(newEnrollment.teamIds)
+                        if !overlap.isEmpty {
+                            // Remove overlap from the new member enrollment
+                            newEnrollment = Enrollment(
+                                deviceId: newEnrollment.deviceId,
+                                deviceToken: newEnrollment.deviceToken,
+                                tenantId: newEnrollment.tenantId,
+                                tenantName: newEnrollment.tenantName,
+                                teamIds: newEnrollment.teamIds.filter { !overlap.contains($0) },
+                                email: newEnrollment.email,
+                                role: newEnrollment.role,
+                                signedDeviceToken: newEnrollment.signedDeviceToken
+                            )
+                        }
+                    }
+                    // Enforce max 5 total followed teams across all enrollments
+                    if !newEnrollment.teamIds.isEmpty {
+                        let existingPairsCount: Int = self.enrollments.reduce(0) { acc, e in acc + e.teamIds.count }
+                        if existingPairsCount + newEnrollment.teamIds.count > 5 {
+                            completion(.failure(NSError(
+                                domain: "AppModel",
+                                code: -4,
+                                userInfo: [NSLocalizedDescriptionKey: "Je kunt maximaal 5 teams volgen. Verwijder eerst een team om verder te gaan."]
+                            )))
+                            return
+                        }
+                    }
+                    if !newEnrollment.teamIds.isEmpty {
+                        self.enrollments.append(newEnrollment)
+                    }
+                    self.appPhase = .registered
+                    self.loadUpcomingDiensten()
+                    completion(.success(()))
+                case .failure(let error):
+                    completion(.failure(error))
+                }
+            }
+        }
     }
 }
 

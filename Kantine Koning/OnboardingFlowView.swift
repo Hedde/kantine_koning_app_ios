@@ -15,6 +15,12 @@ struct OnboardingFlowView: View {
 	@State private var navigateTeam = false
 	@State private var navigateEmail = false
 	@State private var scannedOnce = false
+	@State private var navigateManager = false
+	@State private var navigateMember = false
+	@State private var keyboardHeight: CGFloat = 0
+	private var safeAreaBottom: CGFloat {
+		(UIApplication.shared.connectedScenes.first as? UIWindowScene)?.keyWindow?.safeAreaInsets.bottom ?? 0
+	}
 
 	var body: some View {
 		NavigationStack {
@@ -51,12 +57,12 @@ struct OnboardingFlowView: View {
 
 					// Scanner or results display
 					if let invite = model.invite {
-						// Show scan results with email verification
-						ClubFoundView(invite: invite) {
+						// Unified container: only the inner form section changes
+						ClubEnrollContainerView(invite: invite) {
 							navigateTeam = true
 						} onRescan: {
-							model.invite = nil // Reset invite to show scanner again
-							scanning = true 
+							model.invite = nil
+							scanning = true
 						}
 					} else {
 						// Show scanner interface
@@ -94,6 +100,21 @@ struct OnboardingFlowView: View {
 							}
 							.buttonStyle(KKPrimaryButton())
 							.padding(.horizontal, 24)
+
+							// Show cancel only if there are existing enrollments
+							if !model.enrollments.isEmpty {
+								Button {
+									// Exit onboarding back to home
+									model.appPhase = .registered
+								} label: {
+									HStack(spacing: 6) {
+										Image(systemName: "xmark.circle.fill")
+										Text("Annuleren")
+									}
+								}
+								.buttonStyle(.plain)
+								.foregroundStyle(KKTheme.textSecondary)
+							}
 						}
 					}
 
@@ -103,6 +124,11 @@ struct OnboardingFlowView: View {
 			.navigationTitle("")
 			.navigationBarHidden(true)
 			.background(KKTheme.surface.ignoresSafeArea())
+			// Push content above the keyboard without stretching cards
+			.safeAreaInset(edge: .bottom) {
+				Color.clear.frame(height: keyboardHeight)
+			}
+			.dismissKeyboardOnTap()
 			// New iOS 16+ navigation destinations
 			.navigationDestination(isPresented: $navigateTeam) {
 				if let invite = model.invite {
@@ -115,6 +141,28 @@ struct OnboardingFlowView: View {
 			.navigationDestination(isPresented: $navigateEmail) {
 				EmailEntryView()
 			}
+			.navigationDestination(isPresented: $navigateManager) {
+				if let invite = model.invite {
+					ManagerVerifyView(invite: invite) {
+						navigateTeam = true
+					}
+				}
+			}
+			.navigationDestination(isPresented: $navigateMember) {
+				if let invite = model.invite {
+					MemberEnrollView(invite: invite)
+				}
+			}
+		}
+		// Keyboard listeners
+		.onReceive(NotificationCenter.default.publisher(for: UIResponder.keyboardWillShowNotification)) { notification in
+			if let frame = notification.userInfo?[UIResponder.keyboardFrameEndUserInfoKey] as? CGRect {
+				let adjusted = max(0, frame.height - safeAreaBottom - 80)
+				withAnimation(.easeOut(duration: 0.2)) { keyboardHeight = adjusted }
+			}
+		}
+		.onReceive(NotificationCenter.default.publisher(for: UIResponder.keyboardWillHideNotification)) { _ in
+			withAnimation(.easeOut(duration: 0.2)) { keyboardHeight = 0 }
 		}
 	}
 
@@ -180,16 +228,19 @@ struct OnboardingFlowView: View {
 	}
 }
 
-struct ClubFoundView: View {
+struct ClubEnrollContainerView: View {
 	let invite: AppModel.TenantInvite
-	let onTeamsVerified: () -> Void
+	let onManagerVerified: () -> Void
 	let onRescan: () -> Void
 	
-	@EnvironmentObject var model: AppModel
-	@State private var email: String = ""
-	@State private var verifying = false
-	@State private var errorMessage: String?
-	@State private var teamsVerified = false
+	@State private var step: Step = .chooseRole
+	@State private var selectedRole: AppModel.EnrollmentRole? = nil
+	
+	enum Step {
+		case chooseRole
+		case managerVerify
+		case memberEnroll
+	}
 	
 	var body: some View {
 		VStack(spacing: 16) {
@@ -201,59 +252,436 @@ struct ClubFoundView: View {
 					.font(KKFont.title(20))
 					.foregroundStyle(KKTheme.textPrimary)
 				
-				if !teamsVerified {
+				// Swappable inner content
+				Group {
+					switch step {
+					case .chooseRole:
+						VStack(spacing: 12) {
+							// Selection rows (consistent with team selection)
+							Button(action: { selectedRole = .manager }) {
+								HStack {
+									VStack(alignment: .leading, spacing: 2) {
+										Text("Teammanager")
+											.font(KKFont.title(16))
+											.foregroundStyle(KKTheme.textPrimary)
+										Text("E‑mail vereist, beheer vrijwilligers")
+											.font(KKFont.body(12))
+											.foregroundStyle(KKTheme.textSecondary)
+									}
+									Spacer()
+									Image(systemName: selectedRole == .manager ? "checkmark.circle.fill" : "circle")
+										.foregroundStyle(selectedRole == .manager ? KKTheme.accent : KKTheme.textSecondary)
+								}
+							}
+							.padding(12)
+							.background((selectedRole == .manager) ? KKTheme.accent.opacity(0.1) : KKTheme.surfaceAlt)
+							.cornerRadius(8)
+							Button(action: { selectedRole = .member }) {
+								HStack {
+									VStack(alignment: .leading, spacing: 2) {
+										Text("Verenigingslid")
+											.font(KKFont.title(16))
+											.foregroundStyle(KKTheme.textPrimary)
+										Text("Alleen lezen, meldingen ontvangen")
+											.font(KKFont.body(12))
+											.foregroundStyle(KKTheme.textSecondary)
+									}
+									Spacer()
+									Image(systemName: selectedRole == .member ? "checkmark.circle.fill" : "circle")
+										.foregroundStyle(selectedRole == .member ? KKTheme.accent : KKTheme.textSecondary)
+								}
+							}
+							.padding(12)
+							.background((selectedRole == .member) ? KKTheme.accent.opacity(0.1) : KKTheme.surfaceAlt)
+							.cornerRadius(8)
+							// Primary confirm
+							Button(action: {
+								if selectedRole == .manager { step = .managerVerify }
+								else if selectedRole == .member { step = .memberEnroll }
+							}) {
+								Text("Verder")
+							}
+							.disabled(selectedRole == nil)
+							.buttonStyle(KKPrimaryButton())
+						}
+					case .managerVerify:
+						ManagerVerifySection(invite: invite, onVerified: onManagerVerified, onBack: { step = .chooseRole })
+					case .memberEnroll:
+						MemberEnrollSection(invite: invite, onBack: { step = .chooseRole })
+					}
+				}
+			}
+			.kkCard()
+			.padding(.horizontal, 24)
+			
+			// Subtle rescan below
+			Button(action: onRescan) {
+				HStack(spacing: 6) {
+					Image(systemName: "qrcode.viewfinder")
+					Text("Opnieuw scannen")
+				}
+			}
+			.buttonStyle(.plain)
+			.foregroundStyle(KKTheme.textSecondary)
+			.padding(.horizontal, 24)
+		}
+	}
+}
+
+// Compact sections for reuse inside the container, consistent styling with outer card
+private struct ManagerVerifySection: View {
+	let invite: AppModel.TenantInvite
+	let onVerified: () -> Void
+	let onBack: () -> Void
+	@EnvironmentObject var model: AppModel
+	@State private var email: String = ""
+	@State private var verifying = false
+	@State private var errorMessage: String?
+	
+	var body: some View {
+		VStack(alignment: .leading, spacing: 8) {
+			Button(action: onBack) {
+				HStack(spacing: 6) {
+					Image(systemName: "chevron.left")
+						.font(.body)
+					Text("Terug")
+						.font(KKFont.body(12))
+				}
+			}
+			.buttonStyle(.plain)
+			.foregroundStyle(KKTheme.textSecondary)
+
+			Text("E-mailadres")
+				.font(KKFont.body(12))
+				.foregroundStyle(KKTheme.textSecondary)
+			Text("We gebruiken je e-mailadres om te bevestigen dat jij de teammanager bent en om de juiste teams op te halen.")
+				.font(KKFont.body(12))
+				.foregroundStyle(KKTheme.textSecondary)
+				.italic()
+			ZStack(alignment: .leading) {
+				if email.isEmpty {
+					Text("manager@club.nl")
+						.foregroundColor(.secondary)
+						.padding(.leading, 12)
+						.font(KKFont.body(16))
+				}
+				TextField("", text: $email)
+					.padding(12)
+					.background(KKTheme.surfaceAlt)
+					.cornerRadius(8)
+					.textContentType(.emailAddress)
+					.keyboardType(.emailAddress)
+					.autocapitalization(.none)
+					.textInputAutocapitalization(.never)
+					.autocorrectionDisabled(true)
+					.submitLabel(.done)
+					.font(KKFont.body(16))
+					.foregroundColor(KKTheme.textPrimary)
+			}
+			if let errorMessage = errorMessage {
+				Text(errorMessage)
+					.font(KKFont.body(12))
+					.foregroundStyle(.red)
+			}
+			Button(action: verifyTeams) {
+				if verifying { HStack { ProgressView().tint(.white); Text("Controleren...") } }
+				else { Text("Teams ophalen") }
+			}
+			.disabled(verifying)
+			.buttonStyle(KKPrimaryButton())
+		}
+		.dismissKeyboardOnTap()
+	}
+	
+	private func verifyTeams() {
+		guard !email.trimmingCharacters(in: .whitespaces).isEmpty else {
+			errorMessage = "Voer je e-mailadres in om teams op te halen"
+			return
+		}
+		verifying = true
+		errorMessage = nil
+		DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
+			verifying = false
+			if email == "a@b.nl" {
+				let teams = [
+					AppModel.Team(id: "team_jo11_3", code: "JO11-3", naam: "JO11-3"),
+					AppModel.Team(id: "team_jo8_2jm", code: "JO8-2JM", naam: "JO8-2JM")
+				]
+				let updatedInvite = AppModel.TenantInvite(tenantId: invite.tenantId, tenantName: invite.tenantName, allowedTeams: teams)
+				model.handleScannedInvite(updatedInvite)
+				model.verifiedEmail = email
+				onVerified()
+			} else {
+				errorMessage = "Dit e-mailadres is niet bekend als teammanager bij \(invite.tenantName)"
+			}
+		}
+	}
+}
+
+private struct MemberEnrollSection: View {
+	let invite: AppModel.TenantInvite
+	let onBack: () -> Void
+	@EnvironmentObject var model: AppModel
+	@State private var searchQuery: String = ""
+	@State private var searchResults: [AppModel.Team] = []
+	@State private var selectedMemberTeamIds: Set<String> = []
+	@State private var searchWorkItem: DispatchWorkItem?
+	
+	var body: some View {
+		VStack(alignment: .leading, spacing: 8) {
+			Button(action: onBack) {
+				HStack(spacing: 6) {
+					Image(systemName: "chevron.left")
+						.font(.body)
+					Text("Terug")
+						.font(KKFont.body(12))
+				}
+			}
+			.buttonStyle(.plain)
+			.foregroundStyle(KKTheme.textSecondary)
+			Text("Zoek je team(s)")
+				.font(KKFont.body(12))
+				.foregroundStyle(KKTheme.textSecondary)
+			ZStack(alignment: .leading) {
+				if searchQuery.isEmpty {
+					Text("Bijv. JO11-3")
+						.foregroundColor(.secondary)
+						.padding(.leading, 12)
+						.font(KKFont.body(16))
+				}
+				TextField("", text: $searchQuery)
+					.padding(12)
+					.background(KKTheme.surfaceAlt)
+					.cornerRadius(8)
+					.textInputAutocapitalization(.never)
+					.autocorrectionDisabled(true)
+					.submitLabel(.search)
+					.font(KKFont.body(16))
+					.foregroundColor(KKTheme.textPrimary)
+			}
+			.onChange(of: searchQuery) { _, _ in debounceSearch() }
+			VStack(spacing: 8) {
+				ForEach(searchResults, id: \.id) { team in
+					Button(action: { toggleMemberSelection(team.id) }) {
+						HStack {
+							VStack(alignment: .leading, spacing: 2) {
+								Text(team.naam)
+									.font(KKFont.title(16))
+									.foregroundStyle(KKTheme.textPrimary)
+								if let code = team.code {
+									Text(code)
+										.font(KKFont.body(12))
+										.foregroundStyle(KKTheme.textSecondary)
+								}
+							}
+							Spacer()
+							Image(systemName: selectedMemberTeamIds.contains(team.id) ? "checkmark.circle.fill" : "circle")
+								.foregroundStyle(selectedMemberTeamIds.contains(team.id) ? KKTheme.accent : KKTheme.textSecondary)
+						}
+					}
+					.padding(12)
+					.background(KKTheme.surfaceAlt)
+					.cornerRadius(8)
+				}
+			}
+			Button(action: registerMember) { Text("Aanmelden") }
+				.disabled(selectedMemberTeamIds.isEmpty)
+				.buttonStyle(KKPrimaryButton())
+		}
+	}
+	
+	private func debounceSearch() {
+		searchWorkItem?.cancel()
+		let work = DispatchWorkItem { performSearch() }
+		searchWorkItem = work
+		DispatchQueue.main.asyncAfter(deadline: .now() + 0.3, execute: work)
+	}
+	private func performSearch() {
+		let q = searchQuery.trimmingCharacters(in: .whitespacesAndNewlines)
+		guard !q.isEmpty else { searchResults = []; return }
+		model.backend.searchTeams(tenantId: invite.tenantId, query: q) { result in
+			DispatchQueue.main.async {
+				switch result {
+				case .success(let teams): searchResults = teams
+				case .failure: searchResults = []
+				}
+			}
+		}
+	}
+	private func toggleMemberSelection(_ teamId: String) {
+		if selectedMemberTeamIds.contains(teamId) { selectedMemberTeamIds.remove(teamId) } else { selectedMemberTeamIds.insert(teamId) }
+	}
+	private func registerMember() {
+		let teamIds = Array(selectedMemberTeamIds)
+		model.registerMember(tenantId: invite.tenantId, tenantName: invite.tenantName, teamIds: teamIds) { _ in }
+	}
+}
+
+struct ClubFoundView: View {
+	let invite: AppModel.TenantInvite
+	let onTeamsVerified: () -> Void
+	let onRescan: () -> Void
+	
+	@EnvironmentObject var model: AppModel
+	@State private var email: String = ""
+	@State private var verifying = false
+	@State private var errorMessage: String?
+	@State private var teamsVerified = false
+	@State private var roleSelection: AppModel.EnrollmentRole = .manager
+	// Member search states
+	@State private var searchQuery: String = ""
+	@State private var searchResults: [AppModel.Team] = []
+	@State private var selectedMemberTeamIds: Set<String> = []
+	@State private var searchWorkItem: DispatchWorkItem?
+	
+	var body: some View {
+		VStack(spacing: 16) {
+			VStack(alignment: .leading, spacing: 12) {
+				Text("Gevonden club")
+					.font(KKFont.body(12))
+					.foregroundStyle(KKTheme.textSecondary)
+				Text(invite.tenantName)
+					.font(KKFont.title(20))
+					.foregroundStyle(KKTheme.textPrimary)
+
+				// Role selection
+				VStack(alignment: .leading, spacing: 8) {
+					Text("Mijn rol")
+						.font(KKFont.body(12))
+						.foregroundStyle(KKTheme.textSecondary)
+					HStack(spacing: 12) {
+						roleButton(title: "Teammanager", isSelected: roleSelection == .manager) {
+							roleSelection = .manager
+						}
+						roleButton(title: "Verenigingslid", isSelected: roleSelection == .member) {
+							roleSelection = .member
+						}
+					}
+					Text(roleSelection == .manager
+						 ? "Verifieer e‑mail, kies teams en beheer vrijwilligers."
+						 : "Zoek team(s) en ontvang meldingen (alleen lezen).")
+						.font(KKFont.body(12))
+						.foregroundStyle(KKTheme.textSecondary)
+					Text("Meerdere teams/verenigingen mogelijk (max. 5).")
+						.font(KKFont.body(11))
+						.foregroundStyle(KKTheme.textSecondary)
+						.italic()
+				}
+				.padding(.top, 4)
+				
+				if roleSelection == .manager {
+					if !teamsVerified {
+						VStack(alignment: .leading, spacing: 8) {
+							Text("E-mailadres teammanager")
+								.font(KKFont.body(12))
+								.foregroundStyle(KKTheme.textSecondary)
+							Text("Voer het e-mailadres in waarmee je als teammanager bekend bent bij deze club.")
+								.font(KKFont.body(11))
+								.foregroundStyle(KKTheme.textSecondary)
+								.italic()
+							
+							ZStack(alignment: .leading) {
+								if email.isEmpty {
+									Text("manager@club.nl")
+										.foregroundColor(.secondary)
+										.padding(.leading, 12)
+										.font(KKFont.body(16))
+								}
+								TextField("", text: $email)
+									.padding(12)
+									.background(KKTheme.surfaceAlt)
+									.cornerRadius(8)
+									.textContentType(.emailAddress)
+									.keyboardType(.emailAddress)
+									.autocapitalization(.none)
+									.font(KKFont.body(16))
+									.foregroundColor(KKTheme.textPrimary)
+							}
+						}
+						
+						if let errorMessage = errorMessage {
+							Text(errorMessage)
+								.font(KKFont.body(12))
+								.foregroundStyle(.red)
+						}
+						
+						Button {
+							verifyTeams()
+						} label: {
+							if verifying {
+								HStack {
+									ProgressView()
+										.tint(.white)
+									Text("Controleren...")
+								}
+							} else {
+								Text("Teams ophalen")
+							}
+						}
+						.disabled(verifying)
+						.buttonStyle(KKSecondaryButton())
+					} else {
+						Button("Kies teams") { onTeamsVerified() }
+							.buttonStyle(KKSecondaryButton())
+					}
+				} else {
+					// Member flow: search teams with debounce, allow multi-select, then register
 					VStack(alignment: .leading, spacing: 8) {
-						Text("E-mailadres teammanager")
+						Text("Zoek je team(s)")
 							.font(KKFont.body(12))
 							.foregroundStyle(KKTheme.textSecondary)
-						Text("Voer het e-mailadres in waarmee je als teammanager bekend bent bij deze club.")
-							.font(KKFont.body(11))
-							.foregroundStyle(KKTheme.textSecondary)
-							.italic()
-						
 						ZStack(alignment: .leading) {
-							if email.isEmpty {
-								Text("manager@club.nl")
+							if searchQuery.isEmpty {
+								Text("Bijv. JO11-3")
 									.foregroundColor(.secondary)
 									.padding(.leading, 12)
 									.font(KKFont.body(16))
 							}
-							TextField("", text: $email)
+							TextField("", text: $searchQuery)
 								.padding(12)
 								.background(KKTheme.surfaceAlt)
 								.cornerRadius(8)
-								.textContentType(.emailAddress)
-								.keyboardType(.emailAddress)
-								.autocapitalization(.none)
+								.textInputAutocapitalization(.never)
+								.autocorrectionDisabled(true)
+								.submitLabel(.search)
 								.font(KKFont.body(16))
 								.foregroundColor(KKTheme.textPrimary)
 						}
-					}
-					
-					if let errorMessage = errorMessage {
-						Text(errorMessage)
-							.font(KKFont.body(12))
-							.foregroundStyle(.red)
-					}
-					
-					Button {
-						verifyTeams()
-					} label: {
-						if verifying {
-							HStack {
-								ProgressView()
-									.tint(.white)
-								Text("Controleren...")
+						.onChange(of: searchQuery) { _, _ in debounceSearch() }
+						
+						VStack(spacing: 8) {
+							ForEach(searchResults, id: \.id) { team in
+								Button(action: { toggleMemberSelection(team.id) }) {
+									HStack {
+										VStack(alignment: .leading, spacing: 2) {
+											Text(team.naam)
+												.font(KKFont.title(16))
+												.foregroundStyle(KKTheme.textPrimary)
+											if let code = team.code {
+												Text(code)
+													.font(KKFont.body(12))
+													.foregroundStyle(KKTheme.textSecondary)
+											}
+										}
+										Spacer()
+										Image(systemName: selectedMemberTeamIds.contains(team.id) ? "checkmark.circle.fill" : "circle")
+											.foregroundStyle(selectedMemberTeamIds.contains(team.id) ? KKTheme.accent : KKTheme.textSecondary)
+									}
+								}
+								.padding(12)
+								.background(KKTheme.surfaceAlt)
+								.cornerRadius(8)
 							}
-						} else {
-							Text("Teams ophalen")
 						}
 					}
-					.disabled(verifying)
+
+					Button {
+						registerMember()
+					} label: {
+						Text("Aanmelden")
+					}
+					.disabled(selectedMemberTeamIds.isEmpty)
 					.buttonStyle(KKSecondaryButton())
-				} else {
-					Button("Kies teams") { onTeamsVerified() }
-						.buttonStyle(KKSecondaryButton())
 				}
 			}
 			.kkCard()
@@ -314,6 +742,61 @@ struct ClubFoundView: View {
 				print("❌ Email \(email) not authorized for tenant \(invite.tenantId)")
 			}
 		}
+	}
+
+	// MARK: - Member helpers
+	private func debounceSearch() {
+		searchWorkItem?.cancel()
+		let work = DispatchWorkItem { performSearch() }
+		searchWorkItem = work
+		DispatchQueue.main.asyncAfter(deadline: .now() + 0.3, execute: work)
+	}
+
+	private func performSearch() {
+		let q = searchQuery.trimmingCharacters(in: .whitespacesAndNewlines)
+		guard !q.isEmpty else { searchResults = []; return }
+		model.backend.searchTeams(tenantId: invite.tenantId, query: q) { result in
+			DispatchQueue.main.async {
+				switch result {
+				case .success(let teams):
+					self.searchResults = teams
+				case .failure:
+					self.searchResults = []
+				}
+			}
+		}
+	}
+
+	private func toggleMemberSelection(_ teamId: String) {
+		if selectedMemberTeamIds.contains(teamId) {
+			selectedMemberTeamIds.remove(teamId)
+		} else {
+			selectedMemberTeamIds.insert(teamId)
+		}
+	}
+
+	private func registerMember() {
+		let teamIds = Array(selectedMemberTeamIds)
+		model.registerMember(tenantId: invite.tenantId, tenantName: invite.tenantName, teamIds: teamIds) { result in
+			// No-op; App phase will switch to registered
+		}
+	}
+
+	@ViewBuilder
+	private func roleButton(title: String, isSelected: Bool, action: @escaping () -> Void) -> some View {
+		Button(action: action) {
+			Text(title)
+				.font(KKFont.title(16))
+				.frame(maxWidth: .infinity)
+				.padding(.vertical, 14)
+		}
+		.background(isSelected ? KKTheme.accent.opacity(0.18) : KKTheme.surfaceAlt)
+		.foregroundStyle(isSelected ? KKTheme.accent : KKTheme.textPrimary)
+		.cornerRadius(12)
+		.overlay(
+			RoundedRectangle(cornerRadius: 12)
+				.stroke(isSelected ? KKTheme.accent.opacity(0.6) : Color.clear, lineWidth: 1)
+		)
 	}
 }
 
@@ -741,5 +1224,249 @@ struct EnrollmentPendingView: View {
 		.navigationTitle("")
 		.navigationBarHidden(true)
 		.background(KKTheme.surface.ignoresSafeArea())
+	}
+}
+
+struct RoleSelectionView: View {
+	let invite: AppModel.TenantInvite
+	let onSelectManager: () -> Void
+	let onSelectMember: () -> Void
+	let onRescan: () -> Void
+	
+	var body: some View {
+		VStack(spacing: 16) {
+			VStack(alignment: .leading, spacing: 12) {
+				Text("Gevonden club")
+					.font(KKFont.body(12))
+					.foregroundStyle(KKTheme.textSecondary)
+				Text(invite.tenantName)
+					.font(KKFont.title(20))
+					.foregroundStyle(KKTheme.textPrimary)
+				
+				Text("Ik meld me aan als…")
+					.font(KKFont.body(12))
+					.foregroundStyle(KKTheme.textSecondary)
+				
+				VStack(spacing: 12) {
+					Button(action: onSelectManager) {
+						Text("Teammanager")
+							.font(KKFont.title(16))
+							.frame(maxWidth: .infinity)
+							.padding(.vertical, 14)
+					}
+					.background(KKTheme.surfaceAlt)
+					.foregroundStyle(KKTheme.textPrimary)
+					.cornerRadius(12)
+					.overlay(RoundedRectangle(cornerRadius: 12).stroke(KKTheme.surfaceAlt, lineWidth: 1))
+					
+					Button(action: onSelectMember) {
+						Text("Verenigingslid")
+							.font(KKFont.title(16))
+							.frame(maxWidth: .infinity)
+							.padding(.vertical, 14)
+					}
+					.background(KKTheme.surfaceAlt)
+					.foregroundStyle(KKTheme.textPrimary)
+					.cornerRadius(12)
+					.overlay(RoundedRectangle(cornerRadius: 12).stroke(KKTheme.surfaceAlt, lineWidth: 1))
+				}
+			}
+			.kkCard()
+			.padding(.horizontal, 24)
+			
+			Button(action: onRescan) {
+				Label("Opnieuw scannen", systemImage: "qrcode.viewfinder")
+			}
+			.buttonStyle(KKPrimaryButton())
+			.padding(.horizontal, 24)
+		}
+	}
+}
+
+struct ManagerVerifyView: View {
+	let invite: AppModel.TenantInvite
+	let onVerified: () -> Void
+	@EnvironmentObject var model: AppModel
+	@State private var email: String = ""
+	@State private var verifying = false
+	@State private var errorMessage: String?
+	
+	var body: some View {
+		VStack(spacing: 16) {
+			VStack(alignment: .leading, spacing: 12) {
+				Text("Teammanager")
+					.font(KKFont.body(12))
+					.foregroundStyle(KKTheme.textSecondary)
+				Text(invite.tenantName)
+					.font(KKFont.title(20))
+					.foregroundStyle(KKTheme.textPrimary)
+				VStack(alignment: .leading, spacing: 8) {
+					Text("E-mailadres")
+						.font(KKFont.body(12))
+						.foregroundStyle(KKTheme.textSecondary)
+					ZStack(alignment: .leading) {
+						if email.isEmpty {
+							Text("manager@club.nl")
+								.foregroundColor(.secondary)
+								.padding(.leading, 12)
+								.font(KKFont.body(16))
+						}
+						TextField("", text: $email)
+							.padding(12)
+							.background(KKTheme.surfaceAlt)
+							.cornerRadius(8)
+							.textContentType(.emailAddress)
+							.keyboardType(.emailAddress)
+							.autocapitalization(.none)
+							.font(KKFont.body(16))
+							.foregroundColor(KKTheme.textPrimary)
+					}
+				}
+				if let errorMessage = errorMessage {
+					Text(errorMessage)
+						.font(KKFont.body(12))
+						.foregroundStyle(.red)
+				}
+				Button(action: verifyTeams) {
+					if verifying {
+						HStack { ProgressView().tint(.white); Text("Controleren...") }
+					} else {
+						Text("Teams ophalen")
+					}
+				}
+				.disabled(verifying)
+				.buttonStyle(KKSecondaryButton())
+			}
+			.kkCard()
+			.padding(.horizontal, 24)
+		}
+		.dismissKeyboardOnTap()
+	}
+	
+	private func verifyTeams() {
+		guard !email.trimmingCharacters(in: .whitespaces).isEmpty else {
+			errorMessage = "Voer je e-mailadres in om teams op te halen"
+			return
+		}
+		verifying = true
+		errorMessage = nil
+		DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
+			verifying = false
+			if email == "a@b.nl" {
+				let teams = [
+					AppModel.Team(id: "team_jo11_3", code: "JO11-3", naam: "JO11-3"),
+					AppModel.Team(id: "team_jo8_2jm", code: "JO8-2JM", naam: "JO8-2JM")
+				]
+				let updatedInvite = AppModel.TenantInvite(tenantId: invite.tenantId, tenantName: invite.tenantName, allowedTeams: teams)
+				model.handleScannedInvite(updatedInvite)
+				model.verifiedEmail = email
+				onVerified()
+			} else {
+				errorMessage = "Dit e-mailadres is niet bekend als teammanager bij \(invite.tenantName)"
+			}
+		}
+	}
+}
+
+struct MemberEnrollView: View {
+	let invite: AppModel.TenantInvite
+	@EnvironmentObject var model: AppModel
+	@State private var searchQuery: String = ""
+	@State private var searchResults: [AppModel.Team] = []
+	@State private var selectedMemberTeamIds: Set<String> = []
+	@State private var searchWorkItem: DispatchWorkItem?
+	
+	var body: some View {
+		VStack(spacing: 16) {
+			VStack(alignment: .leading, spacing: 12) {
+				Text("Verenigingslid")
+					.font(KKFont.body(12))
+					.foregroundStyle(KKTheme.textSecondary)
+				Text(invite.tenantName)
+					.font(KKFont.title(20))
+					.foregroundStyle(KKTheme.textPrimary)
+				VStack(alignment: .leading, spacing: 8) {
+					Text("Zoek je team(s)")
+						.font(KKFont.body(12))
+						.foregroundStyle(KKTheme.textSecondary)
+					ZStack(alignment: .leading) {
+						if searchQuery.isEmpty {
+							Text("Bijv. JO11-3")
+								.foregroundColor(.secondary)
+								.padding(.leading, 12)
+								.font(KKFont.body(16))
+						}
+						TextField("", text: $searchQuery)
+							.padding(12)
+							.background(KKTheme.surfaceAlt)
+							.cornerRadius(8)
+							.textInputAutocapitalization(.never)
+							.autocorrectionDisabled(true)
+							.submitLabel(.search)
+							.font(KKFont.body(16))
+							.foregroundColor(KKTheme.textPrimary)
+					}
+				}
+				.onChange(of: searchQuery) { _, _ in debounceSearch() }
+				VStack(spacing: 8) {
+					ForEach(searchResults, id: \.id) { team in
+						Button(action: { toggleMemberSelection(team.id) }) {
+							HStack {
+								VStack(alignment: .leading, spacing: 2) {
+									Text(team.naam)
+										.font(KKFont.title(16))
+										.foregroundStyle(KKTheme.textPrimary)
+									if let code = team.code {
+										Text(code)
+											.font(KKFont.body(12))
+											.foregroundStyle(KKTheme.textSecondary)
+									}
+								}
+								Spacer()
+								Image(systemName: selectedMemberTeamIds.contains(team.id) ? "checkmark.circle.fill" : "circle")
+									.foregroundStyle(selectedMemberTeamIds.contains(team.id) ? KKTheme.accent : KKTheme.textSecondary)
+							}
+						}
+						.padding(12)
+						.background(KKTheme.surfaceAlt)
+						.cornerRadius(8)
+					}
+				}
+			}
+			.kkCard()
+			.padding(.horizontal, 24)
+			Button(action: registerMember) {
+				Text("Aanmelden")
+			}
+			.disabled(selectedMemberTeamIds.isEmpty)
+			.buttonStyle(KKSecondaryButton())
+			.padding(.horizontal, 24)
+		}
+	}
+	
+	private func debounceSearch() {
+		searchWorkItem?.cancel()
+		let work = DispatchWorkItem { performSearch() }
+		searchWorkItem = work
+		DispatchQueue.main.asyncAfter(deadline: .now() + 0.3, execute: work)
+	}
+	private func performSearch() {
+		let q = searchQuery.trimmingCharacters(in: .whitespacesAndNewlines)
+		guard !q.isEmpty else { searchResults = []; return }
+		model.backend.searchTeams(tenantId: invite.tenantId, query: q) { result in
+			DispatchQueue.main.async {
+				switch result {
+				case .success(let teams): searchResults = teams
+				case .failure: searchResults = []
+				}
+			}
+		}
+	}
+	private func toggleMemberSelection(_ teamId: String) {
+		if selectedMemberTeamIds.contains(teamId) { selectedMemberTeamIds.remove(teamId) } else { selectedMemberTeamIds.insert(teamId) }
+	}
+	private func registerMember() {
+		let teamIds = Array(selectedMemberTeamIds)
+		model.registerMember(tenantId: invite.tenantId, tenantName: invite.tenantName, teamIds: teamIds) { _ in }
 	}
 }
