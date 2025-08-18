@@ -240,15 +240,15 @@ final class AppModel: ObservableObject {
                     var updatedExisting: [Enrollment] = []
                     for existing in self.enrollments {
                         if existing.tenantId == newEnrollment.tenantId {
-                            let overlap = Set(existing.teamIds).intersection(newEnrollment.teamIds)
-                            if overlap.isEmpty {
-                                updatedExisting.append(existing)
-                            } else {
-                                if newEnrollment.role == .manager {
-                                    // Remove overlap from existing to keep it only in the new manager enrollment
-                                    let remaining = existing.teamIds.filter { !overlap.contains($0) }
+                            if newEnrollment.role == .manager {
+                                // Replace any existing enrollments for same tenant/email with the new explicit selection
+                                if let newEmail = newEnrollment.email, let existingEmail = existing.email, newEmail == existingEmail {
+                                    continue // drop existing for same email
+                                } else {
+                                    // Remove overlapping teams from other enrollments for the same tenant
+                                    let remaining = existing.teamIds.filter { !newEnrollment.teamIds.contains($0) }
                                     if !remaining.isEmpty {
-                                        let downgraded = Enrollment(
+                                        let adjusted = Enrollment(
                                             deviceId: existing.deviceId,
                                             deviceToken: existing.deviceToken,
                                             tenantId: existing.tenantId,
@@ -258,23 +258,23 @@ final class AppModel: ObservableObject {
                                             role: existing.role,
                                             signedDeviceToken: existing.signedDeviceToken
                                         )
-                                        updatedExisting.append(downgraded)
+                                        updatedExisting.append(adjusted)
                                     }
-                                    // else: drop this existing enrollment if no teams remain
-                                } else {
-                                    // New is member: do not duplicate teams already present; remove overlap from the new enrollment
-                                    newEnrollment = Enrollment(
-                                        deviceId: newEnrollment.deviceId,
-                                        deviceToken: newEnrollment.deviceToken,
-                                        tenantId: newEnrollment.tenantId,
-                                        tenantName: newEnrollment.tenantName,
-                                        teamIds: newEnrollment.teamIds.filter { !overlap.contains($0) },
-                                        email: newEnrollment.email,
-                                        role: newEnrollment.role,
-                                        signedDeviceToken: newEnrollment.signedDeviceToken
-                                    )
-                                    updatedExisting.append(existing)
                                 }
+                            } else {
+                                // Member: avoid duplicating teams
+                                let nonOverlapping = existing
+                                updatedExisting.append(nonOverlapping)
+                                newEnrollment = Enrollment(
+                                    deviceId: newEnrollment.deviceId,
+                                    deviceToken: newEnrollment.deviceToken,
+                                    tenantId: newEnrollment.tenantId,
+                                    tenantName: newEnrollment.tenantName,
+                                    teamIds: newEnrollment.teamIds.filter { !existing.teamIds.contains($0) },
+                                    email: newEnrollment.email,
+                                    role: newEnrollment.role,
+                                    signedDeviceToken: newEnrollment.signedDeviceToken
+                                )
                             }
                         } else {
                             updatedExisting.append(existing)

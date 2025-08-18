@@ -105,6 +105,7 @@ final class BackendClient {
 				let tenantId = obj?["tenant_slug"] as? String ?? "tenant_demo"
 				let tenantName = obj?["tenant_name"] as? String ?? "Demo Club"
 				let teamCodes = obj?["team_codes"] as? [String] ?? []
+				let email = obj?["email"] as? String
 				let roleRaw = obj?["role"] as? String ?? "manager"
 				let role: AppModel.EnrollmentRole = roleRaw == "member" ? .member : .manager
 				let enrollment = AppModel.Enrollment(
@@ -113,7 +114,7 @@ final class BackendClient {
 					tenantId: tenantId,
 					tenantName: tenantName,
 					teamIds: teamCodes,
-					email: nil,
+					email: email,
 					role: role,
 					signedDeviceToken: obj?["api_token"] as? String
 				)
