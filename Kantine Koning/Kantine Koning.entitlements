@@ -6,7 +6,6 @@
     <array>
         <string>applinks:kantinekoning.com</string>
         <string>applinks:*.kantinekoning.com</string>
-        <string>applinks:*.localhost</string>
     </array>
 </dict>
 </plist>
