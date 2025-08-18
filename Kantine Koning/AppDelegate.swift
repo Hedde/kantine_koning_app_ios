@@ -11,6 +11,9 @@ import UserNotifications
 extension Notification.Name {
 	static let pushTokenUpdated = Notification.Name("kk_pushTokenUpdated")
 	static let incomingURL = Notification.Name("kk_incomingURL")
+	static let pushPermissionGranted = Notification.Name("kk_pushPermissionGranted")
+	static let pushPermissionDenied = Notification.Name("kk_pushPermissionDenied")
+	static let pushPermissionStatusChecked = Notification.Name("kk_pushPermissionStatusChecked")
 }
 
 final class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCenterDelegate {
@@ -23,8 +26,21 @@ final class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCent
 
 	func requestPushAuthorization() {
 		UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .badge, .sound]) { granted, _ in
-			if granted {
-				DispatchQueue.main.async { UIApplication.shared.registerForRemoteNotifications() }
+			DispatchQueue.main.async {
+				if granted {
+					UIApplication.shared.registerForRemoteNotifications()
+					NotificationCenter.default.post(name: .pushPermissionGranted, object: nil)
+				} else {
+					NotificationCenter.default.post(name: .pushPermissionDenied, object: nil)
+				}
+			}
+		}
+	}
+	
+	func checkNotificationPermissionStatus() {
+		UNUserNotificationCenter.current().getNotificationSettings { settings in
+			DispatchQueue.main.async {
+				NotificationCenter.default.post(name: .pushPermissionStatusChecked, object: settings.authorizationStatus)
 			}
 		}
 	}
@@ -37,6 +53,12 @@ final class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCent
 	func application(_ application: UIApplication, didFailToRegisterForRemoteNotificationsWithError error: Error) {
 		// noop for stub
 	}
+
+    // Handle custom URL scheme: kantinekoning://...
+    func application(_ app: UIApplication, open url: URL, options: [UIApplication.OpenURLOptionsKey : Any] = [:]) -> Bool {
+        NotificationCenter.default.post(name: .incomingURL, object: url)
+        return true
+    }
 
 	func application(_ application: UIApplication, continue userActivity: NSUserActivity, restorationHandler: @escaping ([UIUserActivityRestoring]?) -> Void) -> Bool {
 		if userActivity.activityType == NSUserActivityTypeBrowsingWeb, let url = userActivity.webpageURL {
