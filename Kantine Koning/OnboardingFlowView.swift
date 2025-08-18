@@ -1202,6 +1202,24 @@ struct EnrollmentPendingView: View {
 				.kkCard()
 				.padding(.horizontal, 24)
 
+				// Push uitleg en CTA – notifications zijn kernfunctionaliteit
+				VStack(alignment: .leading, spacing: 12) {
+					Text("Meldingen inschakelen")
+						.font(KKFont.body(12))
+						.foregroundStyle(KKTheme.textSecondary)
+					Text("Sta meldingen toe zodat je direct een bericht ontvangt wanneer je staat ingepland voor een kantinedienst.")
+						.font(KKFont.body(14))
+						.foregroundStyle(KKTheme.textSecondary)
+					Button {
+						(UIApplication.shared.delegate as? AppDelegate)?.requestPushAuthorization()
+					} label: {
+						Label("Sta meldingen toe", systemImage: "bell.badge.fill")
+					}
+					.buttonStyle(KKPrimaryButton())
+				}
+				.kkCard()
+				.padding(.horizontal, 24)
+
 				// Simulatieknop verwijderd; bevestiging loopt via backend e-mail
 
 #if DEBUG
