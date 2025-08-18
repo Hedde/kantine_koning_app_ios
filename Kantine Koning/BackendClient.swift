@@ -119,7 +119,7 @@ final class BackendClient {
 					signedDeviceToken: obj?["api_token"] as? String
 				)
 				if let signed = obj?["api_token"] as? String { self.authToken = signed }
-				if let push = pushToken, !push.isEmpty { self.updateAPNSToken(apnsToken: push) { _ in } }
+				// APNs token upload is now handled by AppModel after auth is set
 				completion(.success(enrollment))
 			} catch {
 				completion(.failure(error))
@@ -272,23 +272,41 @@ final class BackendClient {
 	}
 
 	// MARK: - Device helpers
-	func updateAPNSToken(apnsToken: String, completion: @escaping (Result<Void, Error>) -> Void) {
-		guard !apnsToken.isEmpty else { completion(.success(())); return }
-		let url = baseURL.appendingPathComponent("/api/mobile/v1/device/apns-token")
-		var request = URLRequest(url: url)
-		request.httpMethod = "POST"
-		request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-		if let token = authToken { request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization") }
-		let body: [String: Any] = ["apns_device_token": apnsToken]
-		request.httpBody = try? JSONSerialization.data(withJSONObject: body)
-		URLSession.shared.dataTask(with: request) { data, response, error in
-			if let error = error { completion(.failure(error)); return }
-			guard let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode) else {
-				completion(.failure(NSError(domain: "BackendClient", code: -1, userInfo: [NSLocalizedDescriptionKey: "Invalid response"]))); return
-			}
-			completion(.success(()))
-		}.resume()
-	}
+	    func updateAPNSToken(apnsToken: String, completion: @escaping (Result<Void, Error>) -> Void) {
+        guard !apnsToken.isEmpty else { completion(.success(())); return }
+                guard let authToken = authToken, !authToken.isEmpty else {
+            print("⚠️ No auth token available for APNs upload, skipping...")
+            completion(.failure(NSError(domain: "BackendClient", code: -2, userInfo: [NSLocalizedDescriptionKey: "No auth token available"])))
+            return
+        }
+
+        print("🔄 Uploading APNs token to backend with auth...")
+        print("🔍 Using auth token: \(authToken.prefix(50))...")
+        let url = baseURL.appendingPathComponent("/api/mobile/v1/device/apns-token")
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.setValue("Bearer \(authToken)", forHTTPHeaderField: "Authorization")
+        let body: [String: Any] = ["apns_device_token": apnsToken]
+        request.httpBody = try? JSONSerialization.data(withJSONObject: body)
+        URLSession.shared.dataTask(with: request) { data, response, error in
+            if let error = error { 
+                print("❌ APNs upload network error: \(error)")
+                completion(.failure(error)); return 
+            }
+            guard let http = response as? HTTPURLResponse else {
+                print("❌ APNs upload: no HTTP response")
+                completion(.failure(NSError(domain: "BackendClient", code: -1, userInfo: [NSLocalizedDescriptionKey: "No HTTP response"]))); return
+            }
+            guard (200..<300).contains(http.statusCode) else {
+                let body = data.flatMap { String(data: $0, encoding: .utf8) } ?? "No body"
+                print("❌ APNs upload HTTP \(http.statusCode): \(body)")
+                completion(.failure(NSError(domain: "BackendClient", code: http.statusCode, userInfo: [NSLocalizedDescriptionKey: "HTTP \(http.statusCode): \(body)"]))); return
+            }
+            print("✅ APNs token uploaded successfully")
+            completion(.success(()))
+        }.resume()
+    }
 }
 
 // MARK: - Public search (member autocomplete)

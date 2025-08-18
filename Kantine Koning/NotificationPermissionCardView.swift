@@ -44,15 +44,6 @@ struct NotificationPermissionCardView: View {
 					.foregroundStyle(KKTheme.textSecondary)
 					.fixedSize(horizontal: false, vertical: true)
 			}
-			
-			Button(action: handleButtonTap) {
-				HStack {
-					Image(systemName: buttonIcon)
-					Text(buttonText)
-				}
-			}
-			.buttonStyle(KKPrimaryButton())
-			.disabled(permissionStatus == .authorized)
 		}
 		.kkCard()
 		.onAppear {

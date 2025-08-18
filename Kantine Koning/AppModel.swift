@@ -137,8 +137,23 @@ final class AppModel: ObservableObject {
 
     func setPushToken(_ token: String) {
         pushToken = token
+        print("🔄 Setting push token: \(token)")
+        print("🔍 Debug: backend.authToken is \(backend.authToken?.prefix(20) ?? "nil")")
+        // Only upload if we have auth; otherwise wait for enrollment completion
+        guard let authToken = backend.authToken, !authToken.isEmpty else {
+            print("⚠️ No auth token yet, will upload APNs token after enrollment")
+            return
+        }
+        print("🔄 Uploading APNs token immediately (have auth)")
         // Propagate APNs token to backend when available
-        backend.updateAPNSToken(apnsToken: token) { _ in }
+        backend.updateAPNSToken(apnsToken: token) { result in
+            switch result {
+            case .success:
+                print("✅ APNs token uploaded to backend")
+            case .failure(let error):
+                print("❌ Failed to upload APNs token: \(error)")
+            }
+        }
     }
 
     func resetAll() {
@@ -148,6 +163,7 @@ final class AppModel: ObservableObject {
         tenantContext = nil
         appPhase = .onboarding
         upcomingDiensten = []
+        pushToken = nil // Force re-registration of push token
     }
 
     func handleScannedInvite(_ invite: TenantInvite) {
@@ -234,7 +250,15 @@ final class AppModel: ObservableObject {
                     print("JWT: \(enrollment.signedDeviceToken ?? "-")")
                     // If APNs token was received earlier (before auth), push it now
                     if let existingPush = self.pushToken, !existingPush.isEmpty {
-                        self.backend.updateAPNSToken(apnsToken: existingPush) { _ in }
+                        print("🔄 Uploading existing APNs token after auth: \(existingPush)")
+                        self.backend.updateAPNSToken(apnsToken: existingPush) { result in
+                            switch result {
+                            case .success:
+                                print("✅ Existing APNs token uploaded after auth")
+                            case .failure(let error):
+                                print("❌ Failed to upload existing APNs token: \(error)")
+                            }
+                        }
                     }
                     var newEnrollment = enrollment
 
