@@ -90,16 +90,12 @@ final class BackendClient {
 		request.httpMethod = "POST"
 		request.setValue("application/json", forHTTPHeaderField: "Content-Type")
 		
-		// Detect build environment based on compilation flags and entitlements
+		// Detect build environment based on debug flags
+		// Test users will be marked via admin panel to use sandbox regardless
 		let buildEnvironment: String = {
 			#if DEBUG
 			return "development"
 			#else
-			// Check if we have development entitlements even in release builds
-			if let apsEnvironment = Bundle.main.object(forInfoDictionaryKey: "com.apple.developer.aps-environment") as? String,
-			   apsEnvironment == "development" {
-				return "development"
-			}
 			return "production"
 			#endif
 		}()
@@ -328,11 +324,6 @@ final class BackendClient {
             #if DEBUG
             return "development"
             #else
-            // Check if we have development entitlements even in release builds
-            if let apsEnvironment = Bundle.main.object(forInfoDictionaryKey: "com.apple.developer.aps-environment") as? String,
-               apsEnvironment == "development" {
-                return "development"
-            }
             return "production"
             #endif
         }()
