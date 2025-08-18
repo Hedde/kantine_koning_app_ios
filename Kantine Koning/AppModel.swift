@@ -137,6 +137,8 @@ final class AppModel: ObservableObject {
 
     func setPushToken(_ token: String) {
         pushToken = token
+        // Propagate APNs token to backend when available
+        backend.updateAPNSToken(apnsToken: token) { _ in }
     }
 
     func resetAll() {
@@ -228,6 +230,12 @@ final class AppModel: ObservableObject {
                     guard let self = self else { return }
                     // Store auth token for authenticated routes
                     self.backend.authToken = enrollment.signedDeviceToken
+                    // TODO REMOVE FOR PROD OR ADD DEBUG GUARD
+                    print("JWT: \(enrollment.signedDeviceToken ?? "-")")
+                    // If APNs token was received earlier (before auth), push it now
+                    if let existingPush = self.pushToken, !existingPush.isEmpty {
+                        self.backend.updateAPNSToken(apnsToken: existingPush) { _ in }
+                    }
                     var newEnrollment = enrollment
 
                     // De-duplicate overlapping teams across enrollments for the same tenant

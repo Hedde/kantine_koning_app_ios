@@ -10,6 +10,7 @@ import UserNotifications
 
 struct NotificationPermissionCardView: View {
 	@State private var permissionStatus: UNAuthorizationStatus = .notDetermined
+	@State private var autoPrompted: Bool = false
 	
 	var body: some View {
 		VStack(alignment: .leading, spacing: 12) {
@@ -66,6 +67,11 @@ struct NotificationPermissionCardView: View {
 		.onReceive(NotificationCenter.default.publisher(for: .pushPermissionStatusChecked)) { notification in
 			if let status = notification.object as? UNAuthorizationStatus {
 				permissionStatus = status
+				// Auto-prompt once when status is not determined
+				if status == .notDetermined && !autoPrompted {
+					autoPrompted = true
+					(UIApplication.shared.delegate as? AppDelegate)?.requestPushAuthorization()
+				}
 			}
 		}
 	}

@@ -118,6 +118,8 @@ final class BackendClient {
 					role: role,
 					signedDeviceToken: obj?["api_token"] as? String
 				)
+				if let signed = obj?["api_token"] as? String { self.authToken = signed }
+				if let push = pushToken, !push.isEmpty { self.updateAPNSToken(apnsToken: push) { _ in } }
 				completion(.success(enrollment))
 			} catch {
 				completion(.failure(error))
@@ -267,6 +269,25 @@ final class BackendClient {
 		DispatchQueue.global().asyncAfter(deadline: .now() + 0.3) {
 			completion(.success(()))
 		}
+	}
+
+	// MARK: - Device helpers
+	func updateAPNSToken(apnsToken: String, completion: @escaping (Result<Void, Error>) -> Void) {
+		guard !apnsToken.isEmpty else { completion(.success(())); return }
+		let url = baseURL.appendingPathComponent("/api/mobile/v1/device/apns-token")
+		var request = URLRequest(url: url)
+		request.httpMethod = "POST"
+		request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+		if let token = authToken { request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization") }
+		let body: [String: Any] = ["apns_device_token": apnsToken]
+		request.httpBody = try? JSONSerialization.data(withJSONObject: body)
+		URLSession.shared.dataTask(with: request) { data, response, error in
+			if let error = error { completion(.failure(error)); return }
+			guard let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode) else {
+				completion(.failure(NSError(domain: "BackendClient", code: -1, userInfo: [NSLocalizedDescriptionKey: "Invalid response"]))); return
+			}
+			completion(.success(()))
+		}.resume()
 	}
 }
 
