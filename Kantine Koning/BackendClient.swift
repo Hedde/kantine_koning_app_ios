@@ -6,6 +6,7 @@
 //
 
 import Foundation
+import UIKit
 
 final class BackendClient {
 	private let baseURL: URL = {
@@ -88,11 +89,45 @@ final class BackendClient {
 		var request = URLRequest(url: url)
 		request.httpMethod = "POST"
 		request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-		let body: [String: Any] = [
+		
+		// Detect build environment based on compilation flags and entitlements
+		let buildEnvironment: String = {
+			#if DEBUG
+			return "development"
+			#else
+			// Check if we have development entitlements even in release builds
+			if let apsEnvironment = Bundle.main.object(forInfoDictionaryKey: "com.apple.developer.aps-environment") as? String,
+			   apsEnvironment == "development" {
+				return "development"
+			}
+			return "production"
+			#endif
+		}()
+		
+		// Get app version info
+		let appVersion = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String
+		let buildNumber = Bundle.main.object(forInfoDictionaryKey: "CFBundleVersion") as? String
+		
+		// Generate hardware-based device identifier for deduplication
+		let vendorId = UIDevice.current.identifierForVendor?.uuidString ?? ""
+		let bundleId = Bundle.main.bundleIdentifier ?? ""
+		let hardwareId = "\(vendorId):\(bundleId)" // Stable across app reinstalls
+		
+		var body: [String: Any] = [
 			"enrollment_token": enrollmentToken,
 			"apns_device_token": pushToken ?? "",
-			"platform": platform
+			"platform": platform,
+			"build_environment": buildEnvironment,
+			"hardware_identifier": hardwareId
 		]
+		
+		// Add version info if available
+		if let appVersion = appVersion {
+			body["app_version"] = appVersion
+		}
+		if let buildNumber = buildNumber {
+			body["build_number"] = buildNumber
+		}
 		do { request.httpBody = try JSONSerialization.data(withJSONObject: body) } catch { completion(.failure(error)); return }
 		URLSession.shared.dataTask(with: request) { data, response, error in
 			if let error = error { completion(.failure(error)); return }
@@ -287,7 +322,36 @@ final class BackendClient {
         request.httpMethod = "POST"
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         request.setValue("Bearer \(authToken)", forHTTPHeaderField: "Authorization")
-        let body: [String: Any] = ["apns_device_token": apnsToken]
+        
+        // Include build environment info in APNs token updates too
+        let buildEnvironment: String = {
+            #if DEBUG
+            return "development"
+            #else
+            // Check if we have development entitlements even in release builds
+            if let apsEnvironment = Bundle.main.object(forInfoDictionaryKey: "com.apple.developer.aps-environment") as? String,
+               apsEnvironment == "development" {
+                return "development"
+            }
+            return "production"
+            #endif
+        }()
+        
+        let appVersion = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String
+        let buildNumber = Bundle.main.object(forInfoDictionaryKey: "CFBundleVersion") as? String
+        
+        var body: [String: Any] = [
+            "apns_device_token": apnsToken,
+            "build_environment": buildEnvironment
+        ]
+        
+        // Add version info if available
+        if let appVersion = appVersion {
+            body["app_version"] = appVersion
+        }
+        if let buildNumber = buildNumber {
+            body["build_number"] = buildNumber
+        }
         request.httpBody = try? JSONSerialization.data(withJSONObject: body)
         URLSession.shared.dataTask(with: request) { data, response, error in
             if let error = error { 
