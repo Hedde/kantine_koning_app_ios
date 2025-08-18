@@ -2,7 +2,7 @@
 //  AppModel.swift
 //  Kantine Koning
 //
-//  Created by AI Assistant on 16/08/2025.
+//  Created by Hedde van der Heide on 16/08/2025.
 //
 
 import Foundation
@@ -101,6 +101,11 @@ final class AppModel: ObservableObject {
     @Published var enrollments: [Enrollment] = [] {
         didSet {
             SecureStorage.shared.storeEnrollments(enrollments)
+            // Keep BackendClient auth token in sync (prefer manager token if available)
+            if let token = (enrollments.first(where: { $0.role == .manager && $0.signedDeviceToken != nil })?.signedDeviceToken
+                            ?? enrollments.first(where: { $0.signedDeviceToken != nil })?.signedDeviceToken) {
+                backend.authToken = token
+            }
         }
     }
     @Published var invite: TenantInvite?
@@ -118,6 +123,11 @@ final class AppModel: ObservableObject {
         self.backend = backend
         self.enrollments = SecureStorage.shared.loadEnrollments()
         if !enrollments.isEmpty {
+            // Bootstrap auth token from stored enrollments (prefer manager token)
+            if let token = (enrollments.first(where: { $0.role == .manager && $0.signedDeviceToken != nil })?.signedDeviceToken
+                            ?? enrollments.first(where: { $0.signedDeviceToken != nil })?.signedDeviceToken) {
+                self.backend.authToken = token
+            }
             appPhase = .registered
             loadUpcomingDiensten()
         } else {
@@ -171,16 +181,7 @@ final class AppModel: ObservableObject {
         }
     }
 
-    func simulateOpenMagicLink(completion: @escaping (Result<Void, Error>) -> Void) {
-        guard case let .enrollmentPending(ctx) = appPhase else {
-            completion(.failure(NSError(domain: "AppModel", code: -2, userInfo: [NSLocalizedDescriptionKey: "Not pending enrollment"])));
-            return
-        }
-        let teamIds = ctx.tenantContext.selectedTeams.map { $0.id }
-        backend.createSimulatedEnrollmentToken(email: ctx.tenantContext.email, tenantId: ctx.tenantContext.tenantId, tenantName: ctx.tenantContext.tenantName, teamIds: teamIds) { token in
-            self.handleEnrollmentDeepLink(token: token, completion: completion)
-        }
-    }
+    // Removed simulateOpenMagicLink; enrollment flows via backend email confirmation
 
     func handleIncomingURL(_ url: URL) {
         if url.scheme == "kantinekoning" {
@@ -225,6 +226,8 @@ final class AppModel: ObservableObject {
                 switch result {
                 case .success(let enrollment):
                     guard let self = self else { return }
+                    // Store auth token for authenticated routes
+                    self.backend.authToken = enrollment.signedDeviceToken
                     var newEnrollment = enrollment
 
                     // De-duplicate overlapping teams across enrollments for the same tenant
@@ -335,10 +338,32 @@ final class AppModel: ObservableObject {
             }
         }
         group.notify(queue: .main) {
+            // Deduplicate by dienst.id, keep the newest (by updated_at, then start_tijd)
+            var byId: [String: Dienst] = [:]
+            for d in collected {
+                if let existing = byId[d.id] {
+                    let lhs = d.updated_at
+                    let rhs = existing.updated_at
+                    let chooseLeft: Bool
+                    if let l = lhs, let r = rhs {
+                        chooseLeft = l > r
+                    } else if lhs != nil && rhs == nil {
+                        chooseLeft = true
+                    } else if lhs == nil && rhs != nil {
+                        chooseLeft = false
+                    } else {
+                        chooseLeft = d.start_tijd >= existing.start_tijd
+                    }
+                    if chooseLeft { byId[d.id] = d }
+                } else {
+                    byId[d.id] = d
+                }
+            }
+            let unique = Array(byId.values)
             // Sort: future first (soonest→latest), then past (most recent past→older)
             let now = Date()
-            let future = collected.filter { $0.start_tijd >= now }.sorted { $0.start_tijd < $1.start_tijd }
-            let past = collected.filter { $0.start_tijd < now }.sorted { $0.start_tijd > $1.start_tijd }
+            let future = unique.filter { $0.start_tijd >= now }.sorted { $0.start_tijd < $1.start_tijd }
+            let past = unique.filter { $0.start_tijd < now }.sorted { $0.start_tijd > $1.start_tijd }
             self.upcomingDiensten = future + past
             #if DEBUG
             let total = self.upcomingDiensten.count

@@ -2,7 +2,7 @@
 //  HomeView.swift
 //  Kantine Koning
 //
-//  Created by AI Assistant on 16/08/2025.
+//  Created by Hedde van der Heide on 16/08/2025.
 //
 
 import SwiftUI
@@ -232,7 +232,7 @@ struct TenantTeamsView: View {
 				guard let t = d.team else { return false }
 				return t.id == teamId || t.code == teamId || t.pk == teamId
 			}
-			let teamName = match?.team?.naam ?? teamIdToName(teamId)
+			let teamName = match?.team?.naam ?? teamId
 			if match == nil {
 				print("🔎 No diensten match enrollment teamId=\(teamId); sample of first team objects:")
 				for d in model.upcomingDiensten.prefix(5) {
@@ -271,9 +271,20 @@ struct TenantTeamsView: View {
 						) {
 							HStack {
 								VStack(alignment: .leading, spacing: 4) {
-									Text(teamName)
-										.font(KKFont.title(18))
-										.foregroundStyle(KKTheme.textPrimary)
+									HStack(spacing: 8) {
+										Text(teamName)
+											.font(KKFont.title(18))
+											.foregroundStyle(KKTheme.textPrimary)
+										if isManager(teamId) {
+											Text("Manager")
+												.font(KKFont.body(10))
+												.padding(.horizontal, 8)
+												.padding(.vertical, 3)
+												.background(KKTheme.accent.opacity(0.12))
+												.foregroundStyle(KKTheme.accent)
+												.cornerRadius(6)
+										}
+									}
 									Text(dienstCountText(for: teamId))
 										.font(KKFont.body(14))
 										.foregroundStyle(KKTheme.textSecondary)
@@ -302,6 +313,10 @@ struct TenantTeamsView: View {
 		let dienstCount = model.upcomingDiensten.filter { $0.team?.id == teamId }.count
 		return dienstCount == 0 ? "Geen diensten" : dienstCount == 1 ? "1 dienst" : "\(dienstCount) diensten"
 	}
+	
+	private func isManager(_ teamId: String) -> Bool {
+		return model.roleFor(tenantId: tenantId, teamId: teamId) == .manager
+	}
 }
 
 // MARK: - Team Diensten View
@@ -311,7 +326,7 @@ struct TeamDienstenView: View {
 	let teamId: String
 	
 	var teamName: String {
-		model.upcomingDiensten.first { $0.team?.id == teamId }?.team?.naam ?? teamIdToName(teamId)
+		model.upcomingDiensten.first { $0.team?.id == teamId }?.team?.naam ?? teamId
 	}
 	
 	var diensten: [Dienst] {
@@ -595,7 +610,8 @@ struct DienstCard: View {
 				.allowsHitTesting(false)
 		)
 		.onAppear {
-			loadMockVolunteers()
+			// Initialize from current dienst data only (no mocks)
+			volunteers = dienst.aanmeldingen ?? []
 		}
 	}
 	
@@ -631,10 +647,7 @@ struct DienstCard: View {
 		volunteers.count >= dienst.minimum_bemanning
 	}
 	
-	private func loadMockVolunteers() {
-		// Load volunteers from dienst.aanmeldingen or fallback to empty
-		volunteers = dienst.aanmeldingen ?? []
-	}
+	// Removed mock loader
 	
 	private func addVolunteer() {
 		let name = newVolunteerName.trimmingCharacters(in: .whitespaces)
@@ -794,6 +807,24 @@ struct SettingsView: View {
 						Label("Team toevoegen", systemImage: "person.2.fill")
 					}
 					.buttonStyle(KKSecondaryButton())
+				}
+				.kkCard()
+				.padding(.horizontal, 24)
+
+				// Notifications card
+				VStack(alignment: .leading, spacing: 12) {
+					Text("Notificaties")
+						.font(KKFont.body(12))
+						.foregroundStyle(KKTheme.textSecondary)
+					Text("Sta push meldingen toe om op de hoogte te blijven van je diensten.")
+						.font(KKFont.body(12))
+						.foregroundStyle(KKTheme.textSecondary)
+					Button {
+						(UIApplication.shared.delegate as? AppDelegate)?.requestPushAuthorization()
+					} label: {
+						Label("Sta meldingen toe", systemImage: "bell.badge.fill")
+					}
+					.buttonStyle(KKPrimaryButton())
 				}
 				.kkCard()
 				.padding(.horizontal, 24)

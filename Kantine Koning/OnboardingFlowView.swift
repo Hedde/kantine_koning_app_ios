@@ -2,7 +2,7 @@
 //  OnboardingFlowView.swift
 //  Kantine Koning
 //
-//  Created by AI Assistant on 16/08/2025.
+//  Created by Hedde van der Heide on 16/08/2025.
 //
 
 import SwiftUI
@@ -1202,24 +1202,7 @@ struct EnrollmentPendingView: View {
 				.kkCard()
 				.padding(.horizontal, 24)
 
-				Button {
-					simulating = true
-					model.simulateOpenMagicLink { _ in simulating = false }
-				} label: {
-					if simulating {
-						HStack {
-							ProgressView()
-								.tint(.white)
-							Text("Bezig...")
-						}
-					} else {
-						Text("Simuleer bevestigingslink")
-					}
-				}
-				.disabled(simulating)
-				.buttonStyle(KKPrimaryButton())
-				.padding(.horizontal, 24)
-				.padding(.top, 16)
+				// Simulatieknop verwijderd; bevestiging loopt via backend e-mail
 
 #if DEBUG
 Button(action: {

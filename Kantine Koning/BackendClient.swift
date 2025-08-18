@@ -2,18 +2,29 @@
 //  BackendClient.swift
 //  Kantine Koning
 //
-//  Created by AI Assistant on 16/08/2025.
+//  Created by Hedde van der Heide on 16/08/2025.
 //
 
 import Foundation
 
 final class BackendClient {
-	private let baseURL = URL(string: "http://localhost:4000")!
+	private let baseURL: URL = {
+		#if DEBUG
+		let defaultURL = "http://localhost:4000"
+		#else
+		let defaultURL = "https://kantinekoning.com"
+		#endif
+		let override = Bundle.main.object(forInfoDictionaryKey: "API_BASE_URL") as? String
+		return URL(string: override ?? defaultURL)!
+	}()
 	private let iso8601: ISO8601DateFormatter = {
 		let f = ISO8601DateFormatter()
 		f.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
 		return f
 	}()
+
+	// Bearer token for authenticated mobile API calls
+	var authToken: String?
 
 	// MARK: - Enrollment
 
@@ -187,6 +198,7 @@ final class BackendClient {
 		var request = URLRequest(url: comps.url!)
 		request.httpMethod = "POST"
 		request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+		if let token = authToken { request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization") }
 		let body = ["naam": name]
 		request.httpBody = try? JSONSerialization.data(withJSONObject: body)
 		URLSession.shared.dataTask(with: request) { data, response, error in
@@ -219,6 +231,7 @@ final class BackendClient {
 		]
 		var request = URLRequest(url: comps.url!)
 		request.httpMethod = "DELETE"
+		if let token = authToken { request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization") }
 		URLSession.shared.dataTask(with: request) { data, response, error in
 			if let error = error { completion(.failure(error)); return }
 			guard let http = response as? HTTPURLResponse, let data = data, (200..<300).contains(http.statusCode) else {
@@ -259,24 +272,33 @@ final class BackendClient {
 // MARK: - Public search (member autocomplete)
 extension BackendClient {
 	func searchTeams(tenantId: String, query: String, completion: @escaping (Result<[AppModel.Team], Error>) -> Void) {
-		DispatchQueue.global().asyncAfter(deadline: .now() + 0.2) {
-			let all = [
-				AppModel.Team(id: "team_jo11_3", code: "JO11-3", naam: "JO11-3"),
-				AppModel.Team(id: "team_jo8_2jm", code: "JO8-2JM", naam: "JO8-2JM"),
-				AppModel.Team(id: "team_mo15_2", code: "MO15-2", naam: "MO15-2"),
-				AppModel.Team(id: "team_jo10_3", code: "JO10-3", naam: "JO10-3")
-			]
-			let q = query.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
-			guard !q.isEmpty else {
-				completion(.success([]))
-				return
-			}
-			let filtered = all.filter { team in
-				team.naam.lowercased().hasPrefix(q) || (team.code ?? "").lowercased().hasPrefix(q)
-			}
-			let top = Array(filtered.prefix(3))
-			completion(.success(top))
+		let trimmed = query.trimmingCharacters(in: .whitespacesAndNewlines)
+		guard !trimmed.isEmpty else {
+			completion(.success([])); return
 		}
+		var comps = URLComponents(url: baseURL.appendingPathComponent("/api/mobile/v1/teams/search"), resolvingAgainstBaseURL: false)!
+		comps.queryItems = [
+			URLQueryItem(name: "tenant", value: tenantId),
+			URLQueryItem(name: "q", value: trimmed)
+		]
+		guard let url = comps.url else {
+			completion(.failure(NSError(domain: "BackendClient", code: -2, userInfo: [NSLocalizedDescriptionKey: "Invalid URL"]))); return
+		}
+		var request = URLRequest(url: url)
+		request.httpMethod = "GET"
+		URLSession.shared.dataTask(with: request) { data, response, error in
+			if let error = error { completion(.failure(error)); return }
+			guard let http = response as? HTTPURLResponse, let data = data, (200..<300).contains(http.statusCode) else {
+				completion(.failure(NSError(domain: "BackendClient", code: -1, userInfo: [NSLocalizedDescriptionKey: "Invalid response"]))); return
+			}
+			do {
+				struct Resp: Decodable { let teams: [TeamDTO] }
+				struct TeamDTO: Decodable { let id: String; let code: String?; let naam: String }
+				let resp = try JSONDecoder().decode(Resp.self, from: data)
+				let mapped = resp.teams.map { AppModel.Team(id: $0.code ?? $0.naam, code: $0.code, naam: $0.naam) }
+				completion(.success(mapped))
+			} catch { completion(.failure(error)) }
+		}.resume()
 	}
 }
 

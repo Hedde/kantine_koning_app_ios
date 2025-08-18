@@ -2,7 +2,7 @@
 //  AppDelegate.swift
 //  Kantine Koning
 //
-//  Created by AI Assistant on 16/08/2025.
+//  Created by Hedde van der Heide on 16/08/2025.
 //
 
 import UIKit
@@ -16,14 +16,17 @@ extension Notification.Name {
 final class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCenterDelegate {
 	func application(_ application: UIApplication, didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey : Any]? = nil) -> Bool {
 		UNUserNotificationCenter.current().delegate = self
+		// Let the app show an in-app explanation before requesting permission
+		// Call requestPushAuthorization() from a user action (e.g., CTA in onboarding/settings)
+		return true
+	}
+
+	func requestPushAuthorization() {
 		UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .badge, .sound]) { granted, _ in
 			if granted {
-				DispatchQueue.main.async {
-					UIApplication.shared.registerForRemoteNotifications()
-				}
+				DispatchQueue.main.async { UIApplication.shared.registerForRemoteNotifications() }
 			}
 		}
-		return true
 	}
 
 	func application(_ application: UIApplication, didRegisterForRemoteNotificationsWithDeviceToken deviceToken: Data) {

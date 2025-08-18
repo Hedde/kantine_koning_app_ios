@@ -2,7 +2,7 @@
 //  QRScannerView.swift
 //  Kantine Koning
 //
-//  Created by AI Assistant on 16/08/2025.
+//  Created by Hedde van der Heide on 16/08/2025.
 //
 
 import SwiftUI
