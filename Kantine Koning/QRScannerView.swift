@@ -1,96 +1,49 @@
-//
-//  QRScannerView.swift
-//  Kantine Koning
-//
-//  Created by Hedde van der Heide on 16/08/2025.
-//
-
 import SwiftUI
 import AVFoundation
 
-struct QRScannerView: UIViewControllerRepresentable {
-	final class Coordinator: NSObject, AVCaptureMetadataOutputObjectsDelegate {
-		let parent: QRScannerView
-		weak var controller: ScannerViewController?
-		private var didEmit = false
-		init(parent: QRScannerView) { self.parent = parent }
+struct QRScannerView: UIViewRepresentable {
+    final class ScannerView: UIView {
+        let captureSession = AVCaptureSession()
+        override class var layerClass: AnyClass { AVCaptureVideoPreviewLayer.self }
+        var previewLayer: AVCaptureVideoPreviewLayer { layer as! AVCaptureVideoPreviewLayer }
+    }
 
-		func metadataOutput(_ output: AVCaptureMetadataOutput, didOutput metadataObjects: [AVMetadataObject], from connection: AVCaptureConnection) {
-			guard !didEmit,
-					let object = metadataObjects.first as? AVMetadataMachineReadableCodeObject,
-					object.type == .qr,
-					let stringValue = object.stringValue else { return }
-			didEmit = true
-			parent.onScanned(stringValue)
-			controller?.setActive(false)
-		}
-	}
+    final class Coordinator: NSObject, AVCaptureMetadataOutputObjectsDelegate {
+        let parent: QRScannerView
+        init(parent: QRScannerView) { self.parent = parent }
+        func metadataOutput(_ output: AVCaptureMetadataOutput, didOutput metadataObjects: [AVMetadataObject], from connection: AVCaptureConnection) {
+            guard let object = metadataObjects.first as? AVMetadataMachineReadableCodeObject,
+                  object.type == .qr,
+                  let value = object.stringValue else { return }
+            parent.onScan(value)
+        }
+    }
 
-	let isActive: Bool
-	let onScanned: (String) -> Void
+    let onScan: (String) -> Void
 
-	func makeCoordinator() -> Coordinator { Coordinator(parent: self) }
+    func makeCoordinator() -> Coordinator { Coordinator(parent: self) }
 
-	func makeUIViewController(context: Context) -> ScannerViewController {
-		let vc = ScannerViewController()
-		vc.onScanned = onScanned
-		vc.delegate = context.coordinator
-		context.coordinator.controller = vc
-		return vc
-	}
+    func makeUIView(context: Context) -> ScannerView {
+        let view = ScannerView()
+        view.previewLayer.videoGravity = .resizeAspectFill
+        configureSession(on: view, coordinator: context.coordinator)
+        return view
+    }
 
-	func updateUIViewController(_ uiViewController: ScannerViewController, context: Context) {
-		uiViewController.setActive(isActive)
-	}
+    func updateUIView(_ uiView: ScannerView, context: Context) {}
+
+    private func configureSession(on view: ScannerView, coordinator: Coordinator) {
+        guard let device = AVCaptureDevice.default(for: .video),
+              let input = try? AVCaptureDeviceInput(device: device) else { return }
+        let session = view.captureSession
+        if session.canAddInput(input) { session.addInput(input) }
+        let output = AVCaptureMetadataOutput()
+        if session.canAddOutput(output) { session.addOutput(output) }
+        output.setMetadataObjectsDelegate(coordinator, queue: DispatchQueue.main)
+        output.metadataObjectTypes = [.qr]
+        view.previewLayer.session = session
+        session.startRunning()
+    }
 }
 
-final class ScannerViewController: UIViewController {
-	var onScanned: ((String) -> Void)?
-	var captureSession: AVCaptureSession?
-	var previewLayer: AVCaptureVideoPreviewLayer?
-	weak var delegate: (any AVCaptureMetadataOutputObjectsDelegate)?
 
-	override func viewDidLoad() {
-		super.viewDidLoad()
-		view.backgroundColor = .black
-		setupCamera()
-	}
-
-	private func setupCamera() {
-		let session = AVCaptureSession()
-		guard let videoDevice = AVCaptureDevice.default(for: .video),
-				let videoInput = try? AVCaptureDeviceInput(device: videoDevice),
-				session.canAddInput(videoInput) else {
-			return
-		}
-		session.addInput(videoInput)
-
-		let metadataOutput = AVCaptureMetadataOutput()
-		guard session.canAddOutput(metadataOutput) else { return }
-		session.addOutput(metadataOutput)
-		metadataOutput.setMetadataObjectsDelegate(delegate, queue: DispatchQueue.main)
-		metadataOutput.metadataObjectTypes = [.qr]
-
-		let preview = AVCaptureVideoPreviewLayer(session: session)
-		preview.videoGravity = .resizeAspectFill
-		preview.frame = view.layer.bounds
-		view.layer.addSublayer(preview)
-
-		self.captureSession = session
-		self.previewLayer = preview
-	}
-
-	override func viewDidLayoutSubviews() {
-		super.viewDidLayoutSubviews()
-		previewLayer?.frame = view.layer.bounds
-	}
-
-	func setActive(_ active: Bool) {
-		guard let session = captureSession else { return }
-		if active {
-			if !session.isRunning { session.startRunning() }
-		} else {
-			if session.isRunning { session.stopRunning() }
-		}
-	}
-}
