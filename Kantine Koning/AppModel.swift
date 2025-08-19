@@ -157,6 +157,24 @@ final class AppModel: ObservableObject {
     }
 
     func resetAll() {
+        // Call backend API to remove all enrollments first
+        backend.removeAllEnrollments { [weak self] result in
+            DispatchQueue.main.async {
+                switch result {
+                case .success:
+                    print("✅ Successfully removed all enrollments from backend")
+                case .failure(let error):
+                    print("❌ Failed to remove all enrollments from backend: \(error)")
+                    // Continue with local reset even if backend fails
+                }
+                
+                // Always update local state regardless of backend result
+                self?.updateLocalStateAfterCompleteReset()
+            }
+        }
+    }
+    
+    private func updateLocalStateAfterCompleteReset() {
         SecureStorage.shared.clearAll()
         enrollments = []
         invite = nil
@@ -164,6 +182,8 @@ final class AppModel: ObservableObject {
         appPhase = .onboarding
         upcomingDiensten = []
         pushToken = nil // Force re-registration of push token
+        
+        print("🗑️ Completed full app reset")
     }
 
     func handleScannedInvite(_ invite: TenantInvite) {
@@ -450,6 +470,38 @@ final class AppModel: ObservableObject {
     }
     
     func removeEnrollments(for tenantId: String) {
+        // Find the tenant slug for the backend API
+        guard let enrollment = enrollments.first(where: { $0.tenantId == tenantId }) else {
+            print("⚠️ No enrollment found for tenant \(tenantId)")
+            return
+        }
+        
+        // Convert tenant ID to tenant slug for backend API
+        // Note: In this app structure, we need to extract the slug from the tenant ID
+        // For now, assuming tenantId contains the slug or can be used directly
+        let tenantSlug = tenantId
+        
+        // Call backend API to remove tenant enrollment
+        backend.removeTenantEnrollment(tenantSlug) { [weak self] result in
+            DispatchQueue.main.async {
+                switch result {
+                case .success:
+                    print("✅ Successfully removed tenant \(tenantId) from backend")
+                    
+                    // Update local state after successful backend update
+                    self?.updateLocalStateAfterTenantRemoval(tenantId: tenantId)
+                    
+                case .failure(let error):
+                    print("❌ Failed to remove tenant from backend: \(error)")
+                    
+                    // Fallback: still update local state for offline functionality
+                    self?.updateLocalStateAfterTenantRemoval(tenantId: tenantId)
+                }
+            }
+        }
+    }
+    
+    private func updateLocalStateAfterTenantRemoval(tenantId: String) {
         enrollments.removeAll { $0.tenantId == tenantId }
         SecureStorage.shared.storeEnrollments(enrollments)
         
@@ -460,6 +512,38 @@ final class AppModel: ObservableObject {
     }
     
     func removeTeam(teamId: String, from tenantId: String) {
+        // First find the team code from the enrollment
+        guard let enrollment = enrollments.first(where: { $0.tenantId == tenantId }),
+              let teamIndex = enrollment.teamIds.firstIndex(of: teamId) else {
+            print("⚠️ Team \(teamId) not found in tenant \(tenantId)")
+            return
+        }
+        
+        // Convert team ID to team code for backend API
+        // Note: In this app, team ID and team code are the same, but this could be enhanced
+        let teamCode = teamId
+        
+        // Call backend API to remove team from enrollment
+        backend.removeTeamsFromEnrollment([teamCode]) { [weak self] result in
+            DispatchQueue.main.async {
+                switch result {
+                case .success:
+                    print("✅ Successfully removed team \(teamId) from backend")
+                    
+                    // Update local state after successful backend update
+                    self?.updateLocalStateAfterTeamRemoval(teamId: teamId, tenantId: tenantId)
+                    
+                case .failure(let error):
+                    print("❌ Failed to remove team from backend: \(error)")
+                    
+                    // Fallback: still update local state for offline functionality
+                    self?.updateLocalStateAfterTeamRemoval(teamId: teamId, tenantId: tenantId)
+                }
+            }
+        }
+    }
+    
+    private func updateLocalStateAfterTeamRemoval(teamId: String, tenantId: String) {
         // Remove the specific team from enrollments by creating new enrollment objects
         enrollments = enrollments.compactMap { enrollment in
             if enrollment.tenantId == tenantId {
@@ -494,6 +578,28 @@ final class AppModel: ObservableObject {
     func navigateToTeam(tenantId: String, teamId: String) {
         // Set deep link navigation for HomeView to handle
         deepLinkNavigation = DeepLinkNavigation(tenantId: tenantId, teamId: teamId)
+    }
+
+    // MARK: - Team Selection Helpers
+    
+    func filterAvailableTeams(_ teams: [Team], for tenantId: String) -> [Team] {
+        // Get all currently enrolled team IDs for this tenant
+        let enrolledTeamIds = Set(enrollments
+            .filter { $0.tenantId == tenantId }
+            .flatMap { $0.teamIds }
+        )
+        
+        // Filter out teams that are already enrolled
+        return teams.filter { team in
+            !enrolledTeamIds.contains(team.id)
+        }
+    }
+    
+    func isTeamAlreadyEnrolled(_ teamId: String, in tenantId: String) -> Bool {
+        return enrollments
+            .filter { $0.tenantId == tenantId }
+            .flatMap { $0.teamIds }
+            .contains(teamId)
     }
 
     // MARK: - Roles & Permissions

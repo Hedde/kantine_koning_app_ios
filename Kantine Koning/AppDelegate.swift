@@ -14,6 +14,7 @@ extension Notification.Name {
 	static let pushPermissionGranted = Notification.Name("kk_pushPermissionGranted")
 	static let pushPermissionDenied = Notification.Name("kk_pushPermissionDenied")
 	static let pushPermissionStatusChecked = Notification.Name("kk_pushPermissionStatusChecked")
+	static let forceRefreshData = Notification.Name("kk_forceRefreshData")
 }
 
 final class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCenterDelegate {
@@ -77,11 +78,38 @@ final class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCent
 
 
 
+	// Handle notification when user taps on it (app in background/closed)
 	func userNotificationCenter(_ center: UNUserNotificationCenter, didReceive response: UNNotificationResponse, withCompletionHandler completionHandler: @escaping () -> Void) {
 		let userInfo = response.notification.request.content.userInfo
+		handlePushNotification(userInfo: userInfo)
+		completionHandler()
+	}
+	
+	// Handle notification when app is in foreground
+	func userNotificationCenter(_ center: UNUserNotificationCenter, willPresent notification: UNNotification, withCompletionHandler completionHandler: @escaping (UNNotificationPresentationOptions) -> Void) {
+		let userInfo = notification.request.content.userInfo
+		handlePushNotification(userInfo: userInfo)
+		// Show notification even when app is active
+		completionHandler([.alert, .sound, .badge])
+	}
+	
+	private func handlePushNotification(userInfo: [AnyHashable: Any]) {
+		// Handle deep links
 		if let linkString = userInfo["deeplink"] as? String, let url = URL(string: linkString) {
 			NotificationCenter.default.post(name: .incomingURL, object: url)
 		}
-		completionHandler()
+		
+		// Handle force refresh for dienst updates
+		if let forceRefresh = userInfo["force_refresh"] as? Bool, forceRefresh == true {
+			print("🔄 Push notification triggered data refresh")
+			NotificationCenter.default.post(name: .forceRefreshData, object: userInfo)
+		}
+		
+		// Handle specific dienst notifications with notification tokens
+		if let notificationToken = userInfo["notification_token"] as? String,
+		   let type = userInfo["type"] as? String, type == "dienst_ingepland" {
+			print("🔔 Received dienst notification: \(notificationToken)")
+			// Could trigger specific dienst deep link here if needed
+		}
 	}
 }

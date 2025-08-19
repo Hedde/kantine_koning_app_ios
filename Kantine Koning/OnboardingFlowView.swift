@@ -523,7 +523,9 @@ private struct MemberEnrollSection: View {
 		model.backend.searchTeams(tenantId: invite.tenantId, query: q) { result in
 			DispatchQueue.main.async {
 				switch result {
-				case .success(let teams): searchResults = teams
+				case .success(let teams): 
+					// Filter out already enrolled teams
+					searchResults = model.filterAvailableTeams(teams, for: invite.tenantId)
 				case .failure: searchResults = []
 				}
 			}
@@ -762,7 +764,8 @@ struct ClubFoundView: View {
 			DispatchQueue.main.async {
 				switch result {
 				case .success(let teams):
-					self.searchResults = teams
+					// Filter out already enrolled teams
+					self.searchResults = model.filterAvailableTeams(teams, for: invite.tenantId)
 				case .failure:
 					self.searchResults = []
 				}
@@ -1459,7 +1462,9 @@ struct MemberEnrollView: View {
 		model.backend.searchTeams(tenantId: invite.tenantId, query: q) { result in
 			DispatchQueue.main.async {
 				switch result {
-				case .success(let teams): searchResults = teams
+				case .success(let teams): 
+					// Filter out already enrolled teams
+					searchResults = model.filterAvailableTeams(teams, for: invite.tenantId)
 				case .failure: searchResults = []
 				}
 			}

@@ -26,6 +26,12 @@ struct Kantine_KoningApp: App {
 						model.handleIncomingURL(url)
 					}
 				}
+				.onReceive(NotificationCenter.default.publisher(for: .forceRefreshData)) { notification in
+					print("🔄 Force refresh triggered by push notification")
+					if model.appPhase == .registered {
+						model.loadUpcomingDiensten()
+					}
+				}
 		}
 	}
 }

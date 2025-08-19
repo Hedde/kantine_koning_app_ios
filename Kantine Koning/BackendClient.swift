@@ -302,6 +302,104 @@ final class BackendClient {
 		}
 	}
 
+	// MARK: - Enrollment Management
+	
+	func removeTeamsFromEnrollment(_ teamCodes: [String], completion: @escaping (Result<Void, Error>) -> Void) {
+		guard let token = authToken else {
+			completion(.failure(NSError(domain: "BackendClient", code: 401, userInfo: [NSLocalizedDescriptionKey: "No auth token"])))
+			return
+		}
+		
+		let url = baseURL.appendingPathComponent("/api/mobile/v1/enrollments/remove-teams")
+		var request = URLRequest(url: url)
+		request.httpMethod = "POST"
+		request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+		request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+		
+		let body: [String: Any] = ["team_codes": teamCodes]
+		do {
+			request.httpBody = try JSONSerialization.data(withJSONObject: body)
+		} catch {
+			completion(.failure(error))
+			return
+		}
+		
+		URLSession.shared.dataTask(with: request) { data, response, error in
+			if let error = error { completion(.failure(error)); return }
+			guard let http = response as? HTTPURLResponse else {
+				completion(.failure(NSError(domain: "BackendClient", code: -1, userInfo: [NSLocalizedDescriptionKey: "No response"])))
+				return
+			}
+			guard (200..<300).contains(http.statusCode) else {
+				let message = String(data: data ?? Data(), encoding: .utf8) ?? "HTTP \(http.statusCode)"
+				completion(.failure(NSError(domain: "BackendClient", code: http.statusCode, userInfo: [NSLocalizedDescriptionKey: message])))
+				return
+			}
+			completion(.success(()))
+		}.resume()
+	}
+	
+	func removeTenantEnrollment(_ tenantSlug: String, completion: @escaping (Result<Void, Error>) -> Void) {
+		guard let token = authToken else {
+			completion(.failure(NSError(domain: "BackendClient", code: 401, userInfo: [NSLocalizedDescriptionKey: "No auth token"])))
+			return
+		}
+		
+		let url = baseURL.appendingPathComponent("/api/mobile/v1/enrollments/tenant")
+		var request = URLRequest(url: url)
+		request.httpMethod = "DELETE"
+		request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+		request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+		
+		let body: [String: Any] = ["tenant_slug": tenantSlug]
+		do {
+			request.httpBody = try JSONSerialization.data(withJSONObject: body)
+		} catch {
+			completion(.failure(error))
+			return
+		}
+		
+		URLSession.shared.dataTask(with: request) { data, response, error in
+			if let error = error { completion(.failure(error)); return }
+			guard let http = response as? HTTPURLResponse else {
+				completion(.failure(NSError(domain: "BackendClient", code: -1, userInfo: [NSLocalizedDescriptionKey: "No response"])))
+				return
+			}
+			guard (200..<300).contains(http.statusCode) else {
+				let message = String(data: data ?? Data(), encoding: .utf8) ?? "HTTP \(http.statusCode)"
+				completion(.failure(NSError(domain: "BackendClient", code: http.statusCode, userInfo: [NSLocalizedDescriptionKey: message])))
+				return
+			}
+			completion(.success(()))
+		}.resume()
+	}
+	
+	func removeAllEnrollments(completion: @escaping (Result<Void, Error>) -> Void) {
+		guard let token = authToken else {
+			completion(.failure(NSError(domain: "BackendClient", code: 401, userInfo: [NSLocalizedDescriptionKey: "No auth token"])))
+			return
+		}
+		
+		let url = baseURL.appendingPathComponent("/api/mobile/v1/enrollments/all")
+		var request = URLRequest(url: url)
+		request.httpMethod = "DELETE"
+		request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+		
+		URLSession.shared.dataTask(with: request) { data, response, error in
+			if let error = error { completion(.failure(error)); return }
+			guard let http = response as? HTTPURLResponse else {
+				completion(.failure(NSError(domain: "BackendClient", code: -1, userInfo: [NSLocalizedDescriptionKey: "No response"])))
+				return
+			}
+			guard (200..<300).contains(http.statusCode) else {
+				let message = String(data: data ?? Data(), encoding: .utf8) ?? "HTTP \(http.statusCode)"
+				completion(.failure(NSError(domain: "BackendClient", code: http.statusCode, userInfo: [NSLocalizedDescriptionKey: message])))
+				return
+			}
+			completion(.success(()))
+		}.resume()
+	}
+
 	// MARK: - Device helpers
 	    func updateAPNSToken(apnsToken: String, completion: @escaping (Result<Void, Error>) -> Void) {
         guard !apnsToken.isEmpty else { completion(.success(())); return }

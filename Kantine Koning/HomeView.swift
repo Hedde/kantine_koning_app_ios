@@ -792,19 +792,7 @@ struct SettingsView: View {
 							model.startNewEnrollment()
 						}
 					} label: {
-						Label("Vereniging toevoegen", systemImage: "plus.circle.fill")
-					}
-					.buttonStyle(KKSecondaryButton())
-					
-					Button {
-						let totalTeams = model.enrollments.reduce(0) { $0 + $1.teamIds.count }
-						guard totalTeams < 5 else { showCapAlert = true; return }
-						onClose()
-						DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
-							model.startNewEnrollment()
-						}
-					} label: {
-						Label("Team toevoegen", systemImage: "person.2.fill")
+						Label("Team toevoegen", systemImage: "plus.circle.fill")
 					}
 					.buttonStyle(KKSecondaryButton())
 				}
