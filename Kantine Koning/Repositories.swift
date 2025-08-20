@@ -122,7 +122,8 @@ final class DefaultDienstRepository: DienstRepository {
                             status: dto.status,
                             locationName: dto.locatie_naam,
                             volunteers: dto.aanmeldingen,
-                            updatedAt: dto.updated_at
+                            updatedAt: dto.updated_at,
+                            minimumBemanning: dto.minimum_bemanning
                         )
                         print("[Dienst]   → mapped teamId=\(dienst.teamId ?? "nil") for matching")
                         return dienst
@@ -176,7 +177,8 @@ final class DefaultDienstRepository: DienstRepository {
                     status: dto.status,
                     locationName: dto.locatie_naam,
                     volunteers: dto.aanmeldingen,
-                    updatedAt: dto.updated_at
+                    updatedAt: dto.updated_at,
+                    minimumBemanning: dto.minimum_bemanning
                 )
             })
         }
@@ -194,7 +196,8 @@ final class DefaultDienstRepository: DienstRepository {
                     status: dto.status,
                     locationName: dto.locatie_naam,
                     volunteers: dto.aanmeldingen,
-                    updatedAt: dto.updated_at
+                    updatedAt: dto.updated_at,
+                    minimumBemanning: dto.minimum_bemanning
                 )
             })
         }
@@ -216,6 +219,7 @@ struct Dienst: Codable, Identifiable, Equatable {
     let locationName: String?
     let volunteers: [String]?
     let updatedAt: Date?
+    let minimumBemanning: Int
 }
 
 // Team search DTO for UI

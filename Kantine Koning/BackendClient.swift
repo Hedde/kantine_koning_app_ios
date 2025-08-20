@@ -514,6 +514,33 @@ final class BackendClient {
         registerDevice(enrollmentToken: token, pushToken: pushToken, completion: completion)
     }
 
+    // MARK: - Tenant Information
+    func fetchTenantInfo(completion: @escaping (Result<TenantInfoResponse, Error>) -> Void) {
+        guard let token = authToken else { 
+            completion(.failure(NSError(domain: "Backend", code: 401))); return 
+        }
+        
+        var req = URLRequest(url: baseURL.appendingPathComponent("/api/mobile/v1/tenants"))
+        req.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        req.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+        
+        URLSession.shared.dataTask(with: req) { data, response, error in
+            if let error = error { completion(.failure(error)); return }
+            guard let data = data else { completion(.failure(NSError(domain: "Backend", code: -1))); return }
+            guard let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode) else {
+                completion(.failure(NSError(domain: "Backend", code: (response as? HTTPURLResponse)?.statusCode ?? -1))); return
+            }
+            
+            do {
+                let decoder = JSONDecoder()
+                let response = try decoder.decode(TenantInfoResponse.self, from: data)
+                completion(.success(response))
+            } catch {
+                completion(.failure(error))
+            }
+        }.resume()
+    }
+
     // MARK: - Leaderboard
     func fetchLeaderboard(tenant: TenantID, period: String = "season", teamId: String? = nil, completion: @escaping (Result<LeaderboardResponse, Error>) -> Void) {
         print("[Backend] 📊 Fetching leaderboard for tenant \(tenant) period=\(period) teamId=\(teamId ?? "nil")")
@@ -739,6 +766,29 @@ struct DienstDTO: Decodable {
     let aanmeldingen_count: Int?
     let aanmeldingen: [String]?
     let updated_at: Date?
+}
+
+struct TenantInfoResponse: Decodable {
+    struct TenantData: Decodable {
+        struct TeamData: Decodable {
+            let id: String
+            let code: String
+            let name: String
+            let role: String
+        }
+        
+        let slug: String
+        let name: String
+        let clubLogoUrl: String?
+        let teams: [TeamData]
+        
+        enum CodingKeys: String, CodingKey {
+            case slug, name, teams
+            case clubLogoUrl = "club_logo_url"
+        }
+    }
+    
+    let tenants: [TenantData]
 }
 
 struct LeaderboardResponse: Decodable {

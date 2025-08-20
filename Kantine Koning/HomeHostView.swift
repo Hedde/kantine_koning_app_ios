@@ -207,7 +207,17 @@ private struct TeamsView: View {
                 VStack(spacing: 8) {
                     ForEach(tenant.teams.sorted(by: { $0.name < $1.name }), id: \.id) { team in
                         SwipeableRow(onTap: { onTeamSelected(team.id) }, onDelete: { store.removeTeam(team.id, from: tenant.slug) }) {
-                            HStack {
+                            HStack(spacing: 16) {
+                                // Club logo (same for all teams in this tenant)
+                                AsyncImage(url: store.tenantInfo[tenant.slug]?.clubLogoUrl.flatMap(URL.init)) { image in
+                                    image.resizable().scaledToFit()
+                                } placeholder: {
+                                    Image(systemName: "building.2.fill")
+                                        .foregroundStyle(KKTheme.accent)
+                                }
+                                .frame(width: 40, height: 40)
+                                .cornerRadius(6)
+                                
                                 VStack(alignment: .leading, spacing: 4) {
                                     HStack(spacing: 8) {
                 Text(team.name)
@@ -544,7 +554,7 @@ private struct DienstCardView: View {
         return Color.green
     }
     private var isFullyStaffed: Bool { volunteers.count >= minimumBemanning }
-    private var minimumBemanning: Int { 2 } // Default from old app
+    private var minimumBemanning: Int { d.minimumBemanning }
     private var durationText: String {
         let minutes = Int(d.endTime.timeIntervalSince(d.startTime) / 60)
         let h = minutes / 60, m = minutes % 60
@@ -631,7 +641,17 @@ private struct ClubsViewInternal: View {
                 VStack(spacing: 8) {
                     ForEach(Array(store.model.tenants.values), id: \.slug) { tenant in
                         SwipeableRow(onTap: { onTenantSelected(tenant.slug) }, onDelete: { store.removeTenant(tenant.slug) }) {
-                            HStack {
+                            HStack(spacing: 16) {
+                                // Club logo (from tenant info)
+                                AsyncImage(url: store.tenantInfo[tenant.slug]?.clubLogoUrl.flatMap(URL.init)) { image in
+                                    image.resizable().scaledToFit()
+                                } placeholder: {
+                                    Image(systemName: "building.2.fill")
+                                        .foregroundStyle(KKTheme.accent)
+                                }
+                                .frame(width: 40, height: 40)
+                                .cornerRadius(6)
+                                
                                 VStack(alignment: .leading, spacing: 4) {
                                     Text(tenant.name)
                                         .font(KKFont.title(18))

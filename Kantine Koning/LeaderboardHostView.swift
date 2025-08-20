@@ -78,22 +78,17 @@ struct LeaderboardHostView: View {
                         Spacer(minLength: 24)
                         
                         // Header for global
-                        HStack(spacing: 12) {
-                            Image(systemName: "globe")
-                                .font(.system(size: 48))
-                                .foregroundStyle(KKTheme.accent)
-                            
-                            VStack(alignment: .leading, spacing: 4) {
-                                Text("NATIONAAL")
-                                    .font(KKFont.heading(20))
-                                    .fontWeight(.regular)
-                                    .kerning(-0.5)
-                                    .foregroundStyle(KKTheme.textPrimary)
-                                Text("Leaderboard")
-                                    .font(KKFont.title(14))
-                                    .foregroundStyle(KKTheme.textSecondary)
-                            }
+                        VStack(spacing: 8) {
+                            Text("KANTINE KONING")
+                                .font(KKFont.heading(24))
+                                .fontWeight(.regular)
+                                .kerning(-1.0)
+                                .foregroundStyle(KKTheme.textPrimary)
+                            Text("Nationaal Leaderboard")
+                                .font(KKFont.title(16))
+                                .foregroundStyle(KKTheme.textSecondary)
                         }
+                        .multilineTextAlignment(.center)
                         
                         // Period header
                         Text(selectedPeriod.headerText)
@@ -148,8 +143,9 @@ struct LeaderboardHostView: View {
                         Spacer(minLength: 24)
                         
                         // Header with club info
-                        HStack(spacing: 12) {
-                            AsyncImage(url: store.leaderboards[tenant.slug]?.clubLogoUrl.flatMap(URL.init)) { image in
+                        VStack(spacing: 16) {
+                            // Club logo
+                            AsyncImage(url: store.tenantInfo[tenant.slug]?.clubLogoUrl.flatMap(URL.init)) { image in
                                 image.resizable().scaledToFit()
                             } placeholder: {
                                 Image(systemName: "building.2.fill")
@@ -158,16 +154,18 @@ struct LeaderboardHostView: View {
                             .frame(width: 48, height: 48)
                             .cornerRadius(8)
                             
-                            VStack(alignment: .leading, spacing: 4) {
+                            // Title and subtitle
+                            VStack(spacing: 8) {
                                 Text(tenant.name.uppercased())
-                                    .font(KKFont.heading(20))
+                                    .font(KKFont.heading(24))
                                     .fontWeight(.regular)
-                                    .kerning(-0.5)
+                                    .kerning(-1.0)
                                     .foregroundStyle(KKTheme.textPrimary)
                                 Text("Leaderboard")
-                                    .font(KKFont.title(14))
+                                    .font(KKFont.title(16))
                                     .foregroundStyle(KKTheme.textSecondary)
                             }
+                            .multilineTextAlignment(.center)
                         }
                         
                         // Period header
@@ -390,23 +388,17 @@ private struct LeaderboardMenuView: View {
                 Spacer(minLength: 24)
                 
                 // Header
-                VStack(spacing: 16) {
-                    Image(systemName: "trophy.fill")
-                        .font(.system(size: 64))
-                        .foregroundStyle(KKTheme.accent)
-                    
-                    VStack(spacing: 8) {
-                        Text("LEADERBOARD")
-                            .font(KKFont.heading(28))
-                            .fontWeight(.regular)
-                            .kerning(-1.0)
-                            .foregroundStyle(KKTheme.textPrimary)
-                        Text("Kies wat je wilt bekijken")
-                            .font(KKFont.title(16))
-                            .foregroundStyle(KKTheme.textSecondary)
-                    }
-                    .multilineTextAlignment(.center)
+                VStack(spacing: 8) {
+                    Text("LEADERBOARD")
+                        .font(KKFont.heading(28))
+                        .fontWeight(.regular)
+                        .kerning(-1.0)
+                        .foregroundStyle(KKTheme.textPrimary)
+                    Text("Kies wat je wilt bekijken")
+                        .font(KKFont.title(16))
+                        .foregroundStyle(KKTheme.textSecondary)
                 }
+                .multilineTextAlignment(.center)
                 
                 // Menu options
                 VStack(spacing: 16) {
@@ -415,7 +407,7 @@ private struct LeaderboardMenuView: View {
                         HStack {
                             VStack(alignment: .leading, spacing: 4) {
                                 HStack(spacing: 8) {
-                                    Image(systemName: "globe")
+                                    Image(systemName: "trophy.fill")
                                         .foregroundColor(KKTheme.accent)
                                     Text("Nationaal Leaderboard")
                                         .font(KKFont.title(18))
@@ -442,7 +434,7 @@ private struct LeaderboardMenuView: View {
                             HStack {
                                 VStack(alignment: .leading, spacing: 4) {
                                     HStack(spacing: 8) {
-                                        Image(systemName: "building.2")
+                                        Image(systemName: "trophy.fill")
                                             .foregroundColor(KKTheme.accent)
                                         Text(tenant.name)
                                             .font(KKFont.title(18))
@@ -464,7 +456,7 @@ private struct LeaderboardMenuView: View {
                         .buttonStyle(.plain)
                     }
                 }
-                .padding(.horizontal, 24)
+                .padding(.horizontal, 12)
                 
                 Spacer(minLength: 24)
             }
@@ -480,23 +472,17 @@ private struct LeaderboardInfoView: View {
                 Spacer(minLength: 24)
                 
                 // Header
-                VStack(spacing: 16) {
-                    Image(systemName: "info.circle.fill")
-                        .font(.system(size: 64))
-                        .foregroundStyle(KKTheme.accent)
-                    
-                    VStack(spacing: 8) {
-                        Text("OVER DE LEADERBOARD")
-                            .font(KKFont.heading(24))
-                            .fontWeight(.regular)
-                            .kerning(-1.0)
-                            .foregroundStyle(KKTheme.textPrimary)
-                        Text("Hoe werkt het puntensysteem?")
-                            .font(KKFont.title(16))
-                            .foregroundStyle(KKTheme.textSecondary)
-                    }
-                    .multilineTextAlignment(.center)
+                VStack(spacing: 8) {
+                    Text("OVER DE LEADERBOARD")
+                        .font(KKFont.heading(24))
+                        .fontWeight(.regular)
+                        .kerning(-1.0)
+                        .foregroundStyle(KKTheme.textPrimary)
+                    Text("Hoe werkt het puntensysteem?")
+                        .font(KKFont.title(16))
+                        .foregroundStyle(KKTheme.textSecondary)
                 }
+                .multilineTextAlignment(.center)
                 
                 // Info sections
                 VStack(spacing: 24) {

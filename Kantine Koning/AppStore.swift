@@ -20,6 +20,7 @@ final class AppStore: ObservableObject {
     @Published var pendingCTA: CTA?
     @Published var leaderboards: [String: LeaderboardData] = [:]  // tenantSlug -> LeaderboardData
     @Published var globalLeaderboard: GlobalLeaderboardData?
+    @Published var tenantInfo: [String: TenantInfo] = [:] // tenantSlug -> TenantInfo (club logos etc.)
 
     // Services
     private let enrollmentRepository: EnrollmentRepository
@@ -265,12 +266,64 @@ final class AppStore: ObservableObject {
             }
         }
         
+        // Preload leaderboard data for club logos (background fetch)
+        preloadLeaderboardData()
+        
         // Fetch diensten using enrollment-specific tokens (handled in repository)
         dienstRepository.fetchUpcoming(for: model) { [weak self] result in
             DispatchQueue.main.async {
                 if case .success(let items) = result { 
                     print("[AppStore] ✅ Received \(items.count) diensten")
                     self?.upcoming = items 
+                }
+            }
+        }
+    }
+    
+    private func preloadLeaderboardData() {
+        // Preload tenant info (including club logos) - more efficient than leaderboard data
+        refreshTenantInfo()
+    }
+    
+    func refreshTenantInfo() {
+        // Use any available token to fetch tenant info for all enrollments
+        guard let anyToken = model.tenants.values.first?.signedDeviceToken else {
+            print("[AppStore] ⚠️ No auth token available for tenant info")
+            return
+        }
+        
+        let backend = BackendClient()
+        backend.authToken = anyToken
+        
+        backend.fetchTenantInfo { [weak self] result in
+            DispatchQueue.main.async {
+                switch result {
+                case .success(let response):
+                    print("[AppStore] ✅ Received tenant info for \(response.tenants.count) tenants")
+                    var newTenantInfo: [String: TenantInfo] = [:]
+                    
+                    for tenantData in response.tenants {
+                        let teams = tenantData.teams.map { teamData in
+                            TenantInfo.TeamInfo(
+                                id: teamData.id,
+                                code: teamData.code,
+                                name: teamData.name,
+                                role: teamData.role
+                            )
+                        }
+                        
+                        newTenantInfo[tenantData.slug] = TenantInfo(
+                            slug: tenantData.slug,
+                            name: tenantData.name,
+                            clubLogoUrl: tenantData.clubLogoUrl,
+                            teams: teams
+                        )
+                    }
+                    
+                    self?.tenantInfo = newTenantInfo
+                    
+                case .failure(let error):
+                    print("[AppStore] ❌ Failed to fetch tenant info: \(error)")
                 }
             }
         }
@@ -437,7 +490,8 @@ extension AppStore {
                             status: updated.status,
                             locationName: updated.locatie_naam,
                             volunteers: updated.aanmeldingen,
-                            updatedAt: updated.updated_at
+                            updatedAt: updated.updated_at,
+                            minimumBemanning: updated.minimum_bemanning
                         )
                         self?.upcoming[index] = updatedDienst
                     }
@@ -504,7 +558,8 @@ extension AppStore {
                             status: updated.status,
                             locationName: updated.locatie_naam,
                             volunteers: updated.aanmeldingen,
-                            updatedAt: updated.updated_at
+                            updatedAt: updated.updated_at,
+                            minimumBemanning: updated.minimum_bemanning
                         )
                         self?.upcoming[index] = updatedDienst
                     }
