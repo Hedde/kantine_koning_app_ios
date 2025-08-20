@@ -250,28 +250,41 @@ final class BackendClient {
         }.resume()
     }
 
-    // MARK: - Data
+    // MARK: - Single Tenant Diensten (Per-enrollment)
     func fetchDiensten(tenant: TenantID, completion: @escaping (Result<[DienstDTO], Error>) -> Void) {
         print("[Backend] 📡 Fetching diensten for tenant \(tenant)")
         print("[Backend] 🔑 Auth token available: \(authToken?.prefix(20) ?? "nil")")
         
         var comps = URLComponents(url: baseURL.appendingPathComponent("/api/mobile/v1/diensten"), resolvingAgainstBaseURL: false)!
-        comps.queryItems = [URLQueryItem(name: "tenant", value: tenant), URLQueryItem(name: "past_days", value: "14"), URLQueryItem(name: "future_days", value: "60")]
+        comps.queryItems = [
+            URLQueryItem(name: "tenant", value: tenant), 
+            URLQueryItem(name: "past_days", value: "14"), 
+            URLQueryItem(name: "future_days", value: "60")
+        ]
         guard let url = comps.url else { completion(.failure(NSError(domain: "Backend", code: -3))); return }
         var req = URLRequest(url: url)
         
-        // Add auth token if available - backend will filter by enrolled teams
+        // Add auth token - backend will filter by enrolled teams in this specific JWT
         if let token = authToken, !token.isEmpty {
             req.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
-            print("[Backend] 🔑 Using authenticated request - backend will filter by enrolled teams")
+            print("[Backend] 🔑 Using tenant-specific auth token for filtering")
         } else {
-            print("[Backend] ⚠️ No auth token - will get all diensten")
+            print("[Backend] ⚠️ No auth token - cannot fetch diensten")
+            completion(.failure(NSError(domain: "Backend", code: 401)))
+            return
         }
         
         URLSession.shared.dataTask(with: req) { data, response, error in
-            if let error = error { completion(.failure(error)); return }
+            if let error = error { 
+                let userFriendlyError = self.createUserFriendlyError(from: error, context: "diensten")
+                completion(.failure(userFriendlyError))
+                return 
+            }
             guard let http = response as? HTTPURLResponse, let data = data, (200..<300).contains(http.statusCode) else {
-                completion(.failure(NSError(domain: "Backend", code: -1))); return
+                let statusCode = (response as? HTTPURLResponse)?.statusCode ?? -1
+                let userFriendlyError = self.createUserFriendlyError(from: statusCode, data: data ?? Data(), context: "diensten")
+                completion(.failure(userFriendlyError))
+                return
             }
             do {
                 struct Resp: Decodable { let diensten: [DienstDTO] }
@@ -286,7 +299,70 @@ final class BackendClient {
                 }
                 let resp = try decoder.decode(Resp.self, from: data)
                 completion(.success(resp.diensten))
-            } catch { completion(.failure(error)) }
+            } catch { 
+                let userError = NSError(domain: "Backend", code: -2, userInfo: [
+                    NSLocalizedDescriptionKey: "Ongeldig antwoord ontvangen van server voor diensten"
+                ])
+                completion(.failure(userError))
+            }
+        }.resume()
+    }
+
+    // MARK: - All Diensten (Multi-tenant)
+    func fetchAllDiensten(completion: @escaping (Result<[DienstDTO], Error>) -> Void) {
+        print("[Backend] 📡 Fetching ALL diensten for all enrolled tenants/teams")
+        print("[Backend] 🔑 Auth token available: \(authToken?.prefix(20) ?? "nil")")
+        
+        var comps = URLComponents(url: baseURL.appendingPathComponent("/api/mobile/v1/diensten"), resolvingAgainstBaseURL: false)!
+        comps.queryItems = [
+            URLQueryItem(name: "past_days", value: "14"), 
+            URLQueryItem(name: "future_days", value: "60")
+            // No tenant parameter = fetch for all enrolled tenants
+        ]
+        guard let url = comps.url else { completion(.failure(NSError(domain: "Backend", code: -3))); return }
+        var req = URLRequest(url: url)
+        
+        // Add auth token - backend will use device_id to find all enrollments
+        if let token = authToken, !token.isEmpty {
+            req.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+            print("[Backend] 🔑 Using authenticated request - backend will find all enrolled teams")
+        } else {
+            print("[Backend] ⚠️ No auth token - cannot fetch diensten")
+            completion(.failure(NSError(domain: "Backend", code: 401)))
+            return
+        }
+        
+        URLSession.shared.dataTask(with: req) { data, response, error in
+            if let error = error { 
+                let userFriendlyError = self.createUserFriendlyError(from: error, context: "diensten")
+                completion(.failure(userFriendlyError))
+                return 
+            }
+            guard let http = response as? HTTPURLResponse, let data = data, (200..<300).contains(http.statusCode) else {
+                let statusCode = (response as? HTTPURLResponse)?.statusCode ?? -1
+                let userFriendlyError = self.createUserFriendlyError(from: statusCode, data: data ?? Data(), context: "diensten")
+                completion(.failure(userFriendlyError))
+                return
+            }
+            do {
+                struct Resp: Decodable { let diensten: [DienstDTO] }
+                let decoder = JSONDecoder()
+                let isoNoFrac = ISO8601DateFormatter(); isoNoFrac.formatOptions = [.withInternetDateTime]
+                let isoFrac = ISO8601DateFormatter(); isoFrac.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+                decoder.dateDecodingStrategy = .custom { dec in
+                    let c = try dec.singleValueContainer(); let s = try c.decode(String.self)
+                    if let d = isoFrac.date(from: s) { return d }
+                    if let d = isoNoFrac.date(from: s) { return d }
+                    throw DecodingError.dataCorruptedError(in: c, debugDescription: "Invalid date: \(s)")
+                }
+                let resp = try decoder.decode(Resp.self, from: data)
+                completion(.success(resp.diensten))
+            } catch { 
+                let userError = NSError(domain: "Backend", code: -2, userInfo: [
+                    NSLocalizedDescriptionKey: "Ongeldig antwoord ontvangen van server voor diensten"
+                ])
+                completion(.failure(userError))
+            }
         }.resume()
     }
 

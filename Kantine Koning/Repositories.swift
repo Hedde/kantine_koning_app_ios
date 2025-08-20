@@ -94,13 +94,24 @@ final class DefaultDienstRepository: DienstRepository {
         backend.authToken = token
     }
 
-    func fetchUpcoming(for model: DomainModel, completion: @escaping (Result<[Dienst], Error>) -> Void) {
+        func fetchUpcoming(for model: DomainModel, completion: @escaping (Result<[Dienst], Error>) -> Void) {
+        // Per-tenant approach: each tenant has its own auth token and team access
         let group = DispatchGroup()
         var collected: [Dienst] = []
         var firstError: Error?
+        
+        print("[Dienst] 🔄 Fetching diensten for \(model.tenants.count) tenants with separate auth tokens")
+        
         for tenant in model.tenants.values {
             group.enter()
-            backend.fetchDiensten(tenant: tenant.slug) { result in
+            
+            // Use tenant-specific auth token
+            let tenantBackend = BackendClient()
+            tenantBackend.authToken = tenant.signedDeviceToken
+            
+            print("[Dienst] 📡 Fetching for tenant \(tenant.slug) with token \(tenant.signedDeviceToken?.prefix(20) ?? "nil")")
+            
+            tenantBackend.fetchDiensten(tenant: tenant.slug) { result in
                 switch result {
                 case .success(let items):
                     print("[Dienst] 📦 Fetched \(items.count) diensten for tenant \(tenant.slug)")
@@ -122,32 +133,37 @@ final class DefaultDienstRepository: DienstRepository {
                     }
                     collected.append(contentsOf: mapped)
                 case .failure(let err):
+                    print("[Dienst] ❌ Failed to fetch diensten for tenant \(tenant.slug): \(err)")
                     if firstError == nil { firstError = err }
                 }
                 group.leave()
             }
         }
+        
         group.notify(queue: .global()) {
             if let err = firstError { completion(.failure(err)); return }
             
-            // Backend already filters by enrolled teams via JWT, no need for client-side filtering
-            print("[Dienst] 📊 Backend returned \(collected.count) diensten (already filtered by JWT)")
+            print("[Dienst] 📊 Collected \(collected.count) diensten from all tenants")
             
             // Dedup by id; keep newest by updatedAt then startTime
             var byId: [String: Dienst] = [:]
-            for d in collected { if let existing = byId[d.id] {
+            for d in collected { 
+                if let existing = byId[d.id] {
                     let choose: Bool
                     if let l = d.updatedAt, let r = existing.updatedAt { choose = l > r }
                     else if d.updatedAt != nil { choose = true }
                     else if existing.updatedAt != nil { choose = false }
                     else { choose = d.startTime >= existing.startTime }
                     if choose { byId[d.id] = d }
-                } else { byId[d.id] = d } }
-            let unique = Array(byId.values)
-            let now = Date()
-            let future = unique.filter { $0.startTime >= now }.sorted { $0.startTime < $1.startTime }
-            let past = unique.filter { $0.startTime < now }.sorted { $0.startTime > $1.startTime }
-            print("[Dienst] ✅ Final result: \(unique.count) diensten (\(future.count) future, \(past.count) past)")
+                } else { 
+                    byId[d.id] = d 
+                } 
+            }
+            
+            let deduped = Array(byId.values)
+            let future = deduped.filter { $0.startTime >= Date() }.sorted { $0.startTime < $1.startTime }
+            let past = deduped.filter { $0.startTime < Date() }.sorted { $0.startTime > $1.startTime }
+            print("[Dienst] ✅ Final result: \(deduped.count) diensten (\(future.count) future, \(past.count) past)")
             completion(.success(future + past))
         }
     }

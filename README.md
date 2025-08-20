@@ -64,14 +64,57 @@ Home → Verenigingen → Teams → Diensten
 3. Direct registreren → `registerMemberDevice`
 4. Appfase `registered`, alleen-lezen diensten
 
+## Multi-Tenant Architectuur ⚠️ BELANGRIJK
+
+### 📊 Enrollment Model
+- **Eén enrollment = Eén tenant + Specifieke teams + Eigen JWT token**
+- **Meerdere enrollments mogelijk** voor hetzelfde device:
+  - VV Wilhelmus - Manager voor JO11-3, JO11-5
+  - VV Wilhelmus - Lid voor JO13-1 (aparte enrollment!)  
+  - AGOVV - Lid voor JO10-5
+- **Hardware identifier** linkt alle enrollments van hetzelfde fysieke device
+
+### 🔑 Auth Token Strategy
+- **Per tenant = Per JWT**: Elke tenant heeft eigen `signedDeviceToken`
+- **Team filtering**: JWT bevat `team_codes` voor die specifieke enrollment
+- **API calls**: ALTIJD per enrollment/tenant met juiste auth token
+
+### 📡 API Call Patterns
+```swift
+// ✅ CORRECT: Per-tenant calls met eigen auth
+for tenant in model.tenants.values {
+    let tenantBackend = BackendClient()
+    tenantBackend.authToken = tenant.signedDeviceToken  // Tenant-specific JWT
+    tenantBackend.fetchDiensten(tenant: tenant.slug)
+}
+
+// ❌ FOUT: Single call met één JWT (mist andere tenants)
+backend.authToken = model.primaryAuthToken  // Alleen eerste tenant
+backend.fetchAllDiensten()  // Mist enrollments van andere tenants
+```
+
+### 🏗️ Backend Enrollment Storage
+- **Tabel**: `device_enrollments` (public schema)
+- **Per enrollment**: `device_id` (unique per tenant), `tenant_slug`, `team_codes[]`, `role`
+- **Hardware linking**: `hardware_identifier` (consistent across enrollments)
+- **Multi-tenant lookup**: `WHERE hardware_identifier = X AND status = active`
+
 ## Diensten en vrijwilligers
-- Ophalen per tenant via `/api/mobile/v1/diensten`, client-side dedup en sortering (toekomst eerst)
-- Managers kunnen vrijwilligers toevoegen/verwijderen via API; validaties: geen verleden, naam ≤ 15 tekens, geen duplicaten
+- **Ophalen**: Per tenant via `/api/mobile/v1/diensten?tenant=slug` met tenant-specifieke JWT
+- **Filtering**: Backend filtert op `team_codes` uit JWT token van die enrollment
+- **Aggregatie**: Client-side dedup en sortering (toekomst eerst)
+- **Validaties**: Managers kunnen vrijwilligers toevoegen/verwijderen; naam ≤ 15 tekens, geen duplicaten
+
+## Leaderboard
+- **Tenant-specifiek**: `/api/mobile/v1/leaderboard?tenant=slug&team_id=X` (highlight eigen team)
+- **Globaal**: `/api/mobile/v1/leaderboard/global?tenant=slug&team_id=X` (cross-tenant)
+- **Performance**: Top 10 + eigen team (als buiten top 10)
+- **Opt-out**: Tenants kunnen zich afmelden voor globale leaderboard
 
 ## Backend integratie
-- Endpoints: `/api/mobile/v1/enrollments/*`, `/device/*`, `/diensten`, `/teams/search`, vrijwilligers-CRUD
-- Auth: signed device token uit `registerDevice` als Bearer token
-- APNs: `updateAPNsToken` verstuurt ook build-omgeving en appversie
+- **Endpoints**: `/api/mobile/v1/enrollments/*`, `/device/*`, `/diensten`, `/teams/search`, `/leaderboard/*`, vrijwilligers-CRUD
+- **Auth**: Signed device token uit `registerDevice` als Bearer token **PER TENANT**
+- **APNs**: `updateAPNsToken` verstuurt ook build-omgeving en appversie
 
 ## Requirements
 - iOS 16.0+
@@ -89,10 +132,49 @@ Optioneel: override backend via Info.plist → `API_BASE_URL`.
 - Camera: QR-code scanning
 - Notifications: dienstupdates en CTA’s
 
+## ⚠️ Multi-Tenant Development Pitfalls
+
+### 🚨 Auth Token Mistakes (VAAK VOORKOMEND)
+```swift
+// ❌ FOUT: Gebruik van primaryAuthToken voor alle API calls
+let token = store.model.primaryAuthToken  // Alleen eerste tenant!
+backend.authToken = token
+backend.fetchDiensten(tenant: "agovv")  // Fails - token is voor vvwilhelmus
+
+// ✅ CORRECT: Tenant-specifieke tokens
+let tenant = store.model.tenants["agovv"]
+backend.authToken = tenant.signedDeviceToken  // AGOVV-specifieke JWT
+backend.fetchDiensten(tenant: "agovv")  // Works - juiste teams in JWT
+```
+
+### 🏗️ Enrollment Complexity
+- **1 Device** kan **meerdere enrollments** hebben voor **dezelfde tenant**:
+  - Manager enrollment: JO11-3, JO11-5 (full access)
+  - Lid enrollment: JO13-1 (read-only)
+- **Hardware identifier** is de **enige** consistente link tussen enrollments
+- **Device ID** is **uniek per enrollment** (niet per device!)
+
+### 📡 API Design Principes
+1. **ALTIJD per-enrollment calls** doen met enrollment-specifieke JWT
+2. **NOOIT aggregated endpoints** gebruiken die cross-tenant data verwachten
+3. **Client-side aggregatie** van multiple enrollment responses
+4. **Deduplicatie** op dienst ID (zelfde dienst kan in multiple responses zitten)
+
+### 🔍 Debugging Multi-Tenant Issues
+```elixir
+# Backend: Check enrollments voor device
+[DEVICES] Found hardware_identifier=iPhone_ABC123
+[DEVICES] Found 3 enrollments: vvwilhelmus(manager), vvwilhelmus(lid), agovv(lid)
+
+# iOS: Check tenant tokens
+print("Tenant \(tenant.slug): token=\(tenant.signedDeviceToken?.prefix(20))")
+```
+
 ## Troubleshooting / Bekende beperkingen
 - Max 5 teams per gebruiker (enforced bij enrollment en member-registratie)
 - Vrijwilliger toevoegen kan alleen voor toekomstige diensten en enkel als manager
-- “Alles resetten” wist lokaal en probeert backend-opschoning indien auth-token aanwezig
+- "Alles resetten" wist lokaal en probeert backend-opschoning indien auth-token aanwezig
+- **Multi-tenant**: Gebruik ALTIJD tenant-specifieke JWT tokens, niet primaryAuthToken
 
 ---
 
