@@ -19,6 +19,7 @@ final class AppStore: ObservableObject {
     @Published var onboardingScan: ScannedTenant?
     @Published var pendingCTA: CTA?
     @Published var leaderboards: [String: LeaderboardData] = [:]  // tenantSlug -> LeaderboardData
+    @Published var globalLeaderboard: GlobalLeaderboardData?
 
     // Services
     private let enrollmentRepository: EnrollmentRepository
@@ -252,14 +253,21 @@ final class AppStore: ObservableObject {
     
     // MARK: - Leaderboard Management
     func refreshLeaderboard(for tenantSlug: String, period: String = "season", teamId: String? = nil) {
-        guard let auth = model.primaryAuthToken else { return }
+        print("[Store] 🔄 Refreshing leaderboard for tenant=\(tenantSlug) period=\(period) teamId=\(teamId ?? "nil")")
+        guard let auth = model.primaryAuthToken else { 
+            print("[Store] ❌ No auth token for leaderboard refresh")
+            return 
+        }
+        
         leaderboardRepository.fetchLeaderboard(tenant: tenantSlug, period: period, teamId: teamId, auth: auth) { [weak self] result in
             DispatchQueue.main.async {
                 switch result {
                 case .success(let leaderboard):
+                    print("[Store] ✅ Leaderboard fetch success, updating store")
                     self?.updateLeaderboard(leaderboard, for: tenantSlug, period: period)
                 case .failure(let error):
                     print("[Store] ❌ Failed to refresh leaderboard for \(tenantSlug): \(error)")
+                    print("[Store] ❌ Error details: \(error.localizedDescription)")
                 }
             }
         }
@@ -291,6 +299,8 @@ final class AppStore: ObservableObject {
         
         leaderboards[tenantSlug] = leaderboardData
         print("[Store] ✅ Updated leaderboard for \(tenantSlug): \(leaderboardData.teams.count) teams")
+        print("[Store] 📊 Leaderboard data stored with key: \(tenantSlug)")
+        print("[Store] 📊 Current leaderboards keys: \(Array(leaderboards.keys))")
     }
 
     // MARK: - Deep links

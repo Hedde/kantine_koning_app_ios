@@ -4,6 +4,7 @@ struct HomeHostView: View {
     @EnvironmentObject var store: AppStore
     @State private var showSettings = false
     @State private var showLeaderboard = false
+    @State private var leaderboardShowingInfo = false
     @State private var selectedTenant: String? = nil
     @State private var selectedTeam: String? = nil
 
@@ -16,18 +17,18 @@ struct HomeHostView: View {
                 } else if showLeaderboard {
                     LeaderboardHostView(
                         initialTenant: selectedTenant,
-                        initialTeam: selectedTeam
+                        initialTeam: selectedTeam,
+                        showingInfo: leaderboardShowingInfo,
+                        onInfoToggle: { showingInfo in
+                            leaderboardShowingInfo = showingInfo
+                        }
                     ).environmentObject(store)
                 } else if let tenantSlug = selectedTenant, let teamId = selectedTeam, let tenant = store.model.tenants[tenantSlug] {
                     TeamDienstenView(tenant: tenant, teamId: teamId).environmentObject(store)
                 } else if let tenantSlug = selectedTenant, let tenant = store.model.tenants[tenantSlug] {
                     TeamsView(tenant: tenant,
                               onTeamSelected: { teamId in selectedTeam = teamId },
-                              onBack: { selectedTenant = nil },
-                              onLeaderboardTap: { 
-                                  showLeaderboard = true 
-                                  showSettings = false
-                              })
+                              onBack: { selectedTenant = nil })
                     .environmentObject(store)
                 } else {
                     ClubsViewInternal(
@@ -77,9 +78,14 @@ struct HomeHostView: View {
                         if !showLeaderboard {
                             showLeaderboard = true
                             showSettings = false
+                            leaderboardShowingInfo = false
+                        } else {
+                            // Toggle info when already in leaderboard
+                            leaderboardShowingInfo.toggle()
                         }
                     },
-                    isSettingsActive: showSettings
+                    isSettingsActive: showSettings,
+                    showLeaderboard: showLeaderboard
                 )
                 .background(KKTheme.surface)
             }
@@ -93,6 +99,7 @@ private struct TopNavigationBar: View {
     let onSettingsAction: () -> Void
     let onLeaderboardAction: () -> Void
     let isSettingsActive: Bool
+    let showLeaderboard: Bool
     var body: some View {
         ZStack {
             // Background
@@ -117,10 +124,20 @@ private struct TopNavigationBar: View {
                 
                 // Right side
                 HStack(spacing: 12) {
-                    Button(action: onLeaderboardAction) {
-                        Image(systemName: "trophy.fill")
-                            .font(.title2)
-                            .foregroundColor(KKTheme.textSecondary)
+                    if showLeaderboard {
+                        // Question mark/X icon when in leaderboard
+                        Button(action: onLeaderboardAction) {
+                            Image(systemName: "questionmark.circle.fill")
+                                .font(.title2)
+                                .foregroundColor(KKTheme.textSecondary)
+                        }
+                    } else {
+                        // Trophy icon when not in leaderboard
+                        Button(action: onLeaderboardAction) {
+                            Image(systemName: "trophy.fill")
+                                .font(.title2)
+                                .foregroundColor(KKTheme.textSecondary)
+                        }
                     }
                     Button(action: onSettingsAction) {
                         Image(systemName: isSettingsActive ? "xmark.circle.fill" : "gearshape.fill")
@@ -171,7 +188,6 @@ private struct TeamsView: View {
     let tenant: DomainModel.Tenant
     let onTeamSelected: (String) -> Void
     let onBack: () -> Void
-    let onLeaderboardTap: () -> Void
     @EnvironmentObject var store: AppStore
     var body: some View {
         ScrollView {
@@ -188,26 +204,6 @@ private struct TeamsView: View {
                         .foregroundStyle(KKTheme.textSecondary)
                 }
                 .multilineTextAlignment(.center)
-                
-                // Leaderboard button
-                Button(action: onLeaderboardTap) {
-                    HStack {
-                        Image(systemName: "trophy.fill")
-                            .foregroundColor(KKTheme.accent)
-                        Text("Bekijk leaderboard")
-                            .font(KKFont.title(16))
-                            .foregroundStyle(KKTheme.textPrimary)
-                        Spacer()
-                        Image(systemName: "chevron.right")
-                            .foregroundStyle(KKTheme.textSecondary)
-                    }
-                    .padding(.horizontal, 20)
-                    .padding(.vertical, 16)
-                    .background(KKTheme.surfaceAlt)
-                    .cornerRadius(8)
-                }
-                .padding(.horizontal, 12)
-                
                 VStack(spacing: 8) {
                     ForEach(tenant.teams.sorted(by: { $0.name < $1.name }), id: \.id) { team in
                         SwipeableRow(onTap: { onTeamSelected(team.id) }, onDelete: { store.removeTeam(team.id, from: tenant.slug) }) {
@@ -501,10 +497,12 @@ private struct DienstCardView: View {
                             .font(KKFont.body(16)).foregroundColor(KKTheme.textPrimary)
                     }
                     .onSubmit { addVolunteer() }
+                    
                     HStack(spacing: 12) {
                         Button("Annuleren") { showAddVolunteer = false; newVolunteerName = "" }.buttonStyle(KKSecondaryButton())
                         Button("Toevoegen") { addVolunteer() }.disabled(newVolunteerName.trimmingCharacters(in: .whitespaces).isEmpty).buttonStyle(KKPrimaryButton())
                     }
+                    .padding(.top, 8)
                 }
             } else {
                 if isManager {

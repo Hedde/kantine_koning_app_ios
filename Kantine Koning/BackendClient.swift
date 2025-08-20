@@ -486,6 +486,11 @@ final class BackendClient {
             }
             
             do {
+                // Log the raw response for debugging
+                if let responseString = String(data: data, encoding: .utf8) {
+                    print("[Backend] 📄 Raw leaderboard response: \(responseString)")
+                }
+                
                 let decoder = JSONDecoder()
                 decoder.keyDecodingStrategy = .convertFromSnakeCase
                 let leaderboard = try decoder.decode(LeaderboardResponse.self, from: data)
@@ -493,6 +498,12 @@ final class BackendClient {
                 completion(.success(leaderboard))
             } catch {
                 print("[Backend] ❌ leaderboard decode error: \(error)")
+                
+                // Log more detailed error info
+                if let responseString = String(data: data, encoding: .utf8) {
+                    print("[Backend] 📄 Failed response body: \(responseString)")
+                }
+                
                 let userError = NSError(domain: "Backend", code: -2, userInfo: [
                     NSLocalizedDescriptionKey: "Ongeldig antwoord ontvangen van server voor leaderboard"
                 ])
@@ -659,21 +670,13 @@ struct LeaderboardResponse: Decodable {
         let slug: String
         let name: String
         let leaderboardOptOut: Bool
-        
-        private enum CodingKeys: String, CodingKey {
-            case slug, name
-            case leaderboardOptOut = "leaderboard_opt_out"
-        }
+        // No custom CodingKeys needed - keyDecodingStrategy handles snake_case conversion
     }
     
     struct ClubInfo: Decodable {
         let name: String
         let logoUrl: String?
-        
-        private enum CodingKeys: String, CodingKey {
-            case name
-            case logoUrl = "logo_url"
-        }
+        // No custom CodingKeys needed - keyDecodingStrategy handles snake_case conversion
     }
     
     struct TeamEntry: Decodable {
@@ -733,11 +736,8 @@ struct LeaderboardResponse: Decodable {
         }
         
         private enum CodingKeys: String, CodingKey {
-            case rank, team, points
-            case totalHours = "total_hours"
-            case recentChange = "recent_change" 
-            case positionChange = "position_change"
-            case highlighted
+            case rank, team, points, totalHours, recentChange, positionChange, highlighted
+            // No manual mapping needed - keyDecodingStrategy handles snake_case conversion
         }
     }
     
@@ -785,11 +785,7 @@ struct GlobalLeaderboardResponse: Decodable {
             let name: String
             let slug: String
             let logoUrl: String?
-            
-            private enum CodingKeys: String, CodingKey {
-                case name, slug
-                case logoUrl = "logo_url"
-            }
+            // No custom CodingKeys needed - keyDecodingStrategy handles snake_case conversion
         }
         
         let rank: Int
@@ -818,11 +814,8 @@ struct GlobalLeaderboardResponse: Decodable {
         }
         
         private enum CodingKeys: String, CodingKey {
-            case rank, team, club, points
-            case totalHours = "total_hours"
-            case recentChange = "recent_change"
-            case positionChange = "position_change" 
-            case highlighted
+            case rank, team, club, points, totalHours, recentChange, positionChange, highlighted
+            // No manual mapping needed - keyDecodingStrategy handles snake_case conversion
         }
     }
     

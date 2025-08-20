@@ -4,13 +4,15 @@ struct LeaderboardHostView: View {
     @EnvironmentObject var store: AppStore
     let initialTenant: String?
     let initialTeam: String?
+    let showingInfo: Bool
+    let onInfoToggle: (Bool) -> Void
     
     @State private var selectedTenant: String?
     @State private var selectedTeam: String?
     @State private var selectedPeriod: LeaderboardPeriod = .season
-    @State private var showGlobal = false
     @State private var isLoading = false
     @State private var errorMessage: String?
+    @State private var showingMenu = true  // Start with menu when no tenant selected
     
     enum LeaderboardPeriod: String, CaseIterable {
         case week = "week"
@@ -19,32 +21,161 @@ struct LeaderboardHostView: View {
         
         var displayName: String {
             switch self {
-            case .week: return "Week"
-            case .month: return "Maand"
-            case .season: return "Seizoen"
+            case .week: return "Deze week"
+            case .month: return "Deze maand"
+            case .season: return "Dit seizoen"
+            }
+        }
+        
+        var headerText: String {
+            let today = Date()
+            switch self {
+            case .week:
+                let weekStart = Calendar.current.dateInterval(of: .weekOfYear, for: today)?.start ?? today
+                let formatter = DateFormatter()
+                formatter.locale = Locale(identifier: "nl_NL")
+                formatter.dateFormat = "d MMM"
+                let weekEnd = Calendar.current.date(byAdding: .day, value: 6, to: weekStart) ?? today
+                return "Week \(Calendar.current.component(.weekOfYear, from: today)) (\(formatter.string(from: weekStart)) - \(formatter.string(from: weekEnd)))"
+            case .month:
+                let formatter = DateFormatter()
+                formatter.locale = Locale(identifier: "nl_NL")
+                formatter.dateFormat = "MMMM yyyy"
+                return formatter.string(from: today)
+            case .season:
+                let year = today.month >= 8 ? today.year : today.year - 1
+                return "Seizoen \(year)-\(year + 1)"
             }
         }
     }
     
     var body: some View {
         VStack(spacing: 0) {
-            if let tenantSlug = selectedTenant, let tenant = store.model.tenants[tenantSlug] {
+            if showingInfo {
+                LeaderboardInfoView()
+            } else if showingMenu {
+                LeaderboardMenuView(
+                    tenants: Array(store.model.tenants.values.sorted(by: { $0.name < $1.name })),
+                    onNationalSelected: {
+                        showingMenu = false
+                        selectedTenant = "global"  // Special marker for global
+                        loadGlobalLeaderboard()
+                    },
+                    onTenantSelected: { tenantSlug in
+                        showingMenu = false
+                        selectedTenant = tenantSlug
+                        loadLeaderboard(for: tenantSlug)
+                    }
+                )
+            } else if selectedTenant == "global" {
+                // Global leaderboard view
                 ScrollView {
                     VStack(spacing: 24) {
                         Spacer(minLength: 24)
                         
-                        // Header
-                        VStack(spacing: 8) {
-                            Text("LEADERBOARD")
-                                .font(KKFont.heading(24))
-                                .fontWeight(.regular)
-                                .kerning(-1.0)
-                                .foregroundStyle(KKTheme.textPrimary)
-                            Text("Bekijk de ranglijst van teams")
-                                .font(KKFont.title(16))
-                                .foregroundStyle(KKTheme.textSecondary)
+                        // Header for global
+                        VStack(spacing: 12) {
+                            HStack(spacing: 12) {
+                                Image(systemName: "globe")
+                                    .font(.system(size: 48))
+                                    .foregroundStyle(KKTheme.accent)
+                                
+                                VStack(spacing: 4) {
+                                    Text("NATIONAAL")
+                                        .font(KKFont.heading(20))
+                                        .fontWeight(.regular)
+                                        .kerning(-0.5)
+                                        .foregroundStyle(KKTheme.textPrimary)
+                                    Text("Leaderboard")
+                                        .font(KKFont.title(14))
+                                        .foregroundStyle(KKTheme.textSecondary)
+                                }
+                            }
                         }
                         .multilineTextAlignment(.center)
+                        
+                        // Period header
+                        Text(selectedPeriod.headerText)
+                            .font(KKFont.title(16))
+                            .foregroundStyle(KKTheme.textSecondary)
+                            .multilineTextAlignment(.center)
+                        
+                        // Period selector
+                        HStack(spacing: 8) {
+                            ForEach(LeaderboardPeriod.allCases, id: \.self) { period in
+                                Button(action: { 
+                                    selectedPeriod = period
+                                    loadGlobalLeaderboard()
+                                }) {
+                                    Text(period.displayName)
+                                        .font(KKFont.body(14))
+                                        .padding(.horizontal, 16)
+                                        .padding(.vertical, 8)
+                                        .background(selectedPeriod == period ? KKTheme.accent : KKTheme.surfaceAlt)
+                                        .foregroundColor(selectedPeriod == period ? .white : KKTheme.textPrimary)
+                                        .cornerRadius(8)
+                                }
+                            }
+                        }
+                        .padding(.horizontal, 24)
+                        
+                        // Content
+                        if isLoading {
+                            ProgressView()
+                                .padding(.vertical, 32)
+                        } else if let error = errorMessage {
+                            ErrorView(message: error, onRetry: loadGlobalLeaderboard)
+                        } else if let globalData = store.globalLeaderboard {
+                            GlobalLeaderboardView(leaderboard: globalData, highlightedTeamId: selectedTeam)
+                        }
+                        
+                        Spacer(minLength: 24)
+                    }
+                }
+                .refreshable {
+                    loadGlobalLeaderboard()
+                }
+                .onAppear {
+                    loadGlobalLeaderboard()
+                }
+            } else if let tenantSlug = selectedTenant, let tenant = store.model.tenants[tenantSlug] {
+                ScrollView {
+                    VStack(spacing: 24) {
+                        Spacer(minLength: 24)
+                        
+                        // Header with club info
+                        VStack(spacing: 12) {
+                            // Club logo and name
+                            HStack(spacing: 12) {
+                                AsyncImage(url: store.leaderboards[tenant.slug]?.clubLogoUrl.flatMap(URL.init)) { image in
+                                    image.resizable().scaledToFit()
+                                } placeholder: {
+                                    Image(systemName: "building.2.fill")
+                                        .foregroundStyle(KKTheme.accent)
+                                }
+                                .frame(width: 48, height: 48)
+                                .background(KKTheme.surfaceAlt)
+                                .cornerRadius(8)
+                                
+                                VStack(spacing: 4) {
+                                    Text(tenant.name.uppercased())
+                                        .font(KKFont.heading(20))
+                                        .fontWeight(.regular)
+                                        .kerning(-0.5)
+                                        .foregroundStyle(KKTheme.textPrimary)
+                                    Text("Leaderboard")
+                                        .font(KKFont.title(14))
+                                        .foregroundStyle(KKTheme.textSecondary)
+                                }
+                            }
+                        }
+                        .multilineTextAlignment(.center)
+                        
+                        // Period header
+                        Text(selectedPeriod.headerText)
+                            .font(KKFont.title(16))
+                            .foregroundStyle(KKTheme.textSecondary)
+                            .multilineTextAlignment(.center)
                         
                         // Period selector
                         VStack(spacing: 12) {
@@ -96,11 +227,11 @@ struct LeaderboardHostView: View {
                     loadLeaderboard(for: tenant.slug)
                 }
             } else {
-                // Show leaderboard welcome page
+                // Show club selection for leaderboard
                 LeaderboardWelcomeView(
                     onTenantSelected: { tenantSlug in
                         selectedTenant = tenantSlug
-                        showGlobal = false
+                        showingMenu = false
                     }
                 )
                 .environmentObject(store)
@@ -114,6 +245,9 @@ struct LeaderboardHostView: View {
             if selectedTeam == nil {
                 selectedTeam = initialTeam
             }
+            
+            // Show menu if no tenant initially selected and not showing info
+            showingMenu = (initialTenant == nil && !showingInfo)
         }
     }
     
@@ -125,13 +259,74 @@ struct LeaderboardHostView: View {
         store.refreshLeaderboard(for: tenantSlug, period: selectedPeriod.rawValue, teamId: selectedTeam)
         
         // Check if data loaded successfully after a short delay
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
-            if store.leaderboards[tenantSlug] != nil {
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
+            print("[LeaderboardView] 🔍 Checking if data loaded for tenant: \(tenantSlug)")
+            print("[LeaderboardView] 🔍 Available leaderboards: \(Array(store.leaderboards.keys))")
+            
+            if let leaderboard = store.leaderboards[tenantSlug] {
+                print("[LeaderboardView] ✅ Found leaderboard data with \(leaderboard.teams.count) teams")
                 isLoading = false
                 errorMessage = nil
             } else {
+                print("[LeaderboardView] ❌ No leaderboard data found")
                 isLoading = false
                 errorMessage = "Kon leaderboard niet laden"
+            }
+        }
+    }
+    
+    private func loadGlobalLeaderboard() {
+        isLoading = true
+        errorMessage = nil
+        
+        // Use first tenant for authentication
+        guard let firstTenant = store.model.tenants.values.first else {
+            errorMessage = "Geen verenigingen beschikbaar"
+            isLoading = false
+            return
+        }
+        
+        let client = BackendClient()
+        client.authToken = store.model.primaryAuthToken
+        
+        client.fetchGlobalLeaderboard(
+            tenant: firstTenant.slug,
+            period: selectedPeriod.rawValue,
+            teamId: selectedTeam
+        ) { result in
+            DispatchQueue.main.async {
+                isLoading = false
+                switch result {
+                case .success(let leaderboard):
+                    store.globalLeaderboard = GlobalLeaderboardData(
+                        period: leaderboard.period,
+                        teams: leaderboard.teams.map { teamEntry in
+                            GlobalLeaderboardTeam(
+                                id: teamEntry.team.id,
+                                name: teamEntry.team.name,
+                                code: teamEntry.team.code,
+                                rank: teamEntry.rank,
+                                points: teamEntry.points,
+                                totalHours: teamEntry.totalHours,
+                                recentChange: teamEntry.recentChange,
+                                positionChange: teamEntry.positionChange,
+                                highlighted: teamEntry.highlighted,
+                                clubName: teamEntry.club.name,
+                                clubSlug: teamEntry.club.slug,
+                                clubLogoUrl: teamEntry.club.logoUrl
+                            )
+                        },
+                        lastUpdated: Date()
+                    )
+                    print("[Leaderboard] ✅ Loaded global leaderboard: \(leaderboard.teams.count) teams")
+                case .failure(let error):
+                    if (error as NSError).code == 403 {
+                        errorMessage = "Deze vereniging heeft zich afgemeld voor de globale leaderboard."
+                    } else {
+                        errorMessage = self.formatErrorMessage(error, context: "globale leaderboard")
+                    }
+                    print("[Leaderboard] ❌ Failed to load global leaderboard: \(error)")
+                }
             }
         }
     }
@@ -163,6 +358,189 @@ struct LeaderboardHostView: View {
         
         // Generic fallback
         return "Er is een fout opgetreden bij het laden van \(context)"
+    }
+}
+
+// MARK: - Menu View
+private struct LeaderboardMenuView: View {
+    let tenants: [DomainModel.Tenant]
+    let onNationalSelected: () -> Void
+    let onTenantSelected: (String) -> Void
+    
+    var body: some View {
+        ScrollView {
+            VStack(spacing: 32) {
+                Spacer(minLength: 24)
+                
+                // Header
+                VStack(spacing: 16) {
+                    Image(systemName: "trophy.fill")
+                        .font(.system(size: 64))
+                        .foregroundStyle(KKTheme.accent)
+                    
+                    VStack(spacing: 8) {
+                        Text("LEADERBOARD")
+                            .font(KKFont.heading(28))
+                            .fontWeight(.regular)
+                            .kerning(-1.0)
+                            .foregroundStyle(KKTheme.textPrimary)
+                        Text("Kies wat je wilt bekijken")
+                            .font(KKFont.title(16))
+                            .foregroundStyle(KKTheme.textSecondary)
+                    }
+                    .multilineTextAlignment(.center)
+                }
+                
+                // Menu options
+                VStack(spacing: 16) {
+                    // National leaderboard option
+                    Button(action: onNationalSelected) {
+                        HStack {
+                            VStack(alignment: .leading, spacing: 4) {
+                                HStack(spacing: 8) {
+                                    Image(systemName: "globe")
+                                        .foregroundColor(KKTheme.accent)
+                                    Text("Nationaal Leaderboard")
+                                        .font(KKFont.title(18))
+                                        .foregroundStyle(KKTheme.textPrimary)
+                                }
+                                Text("Ranglijst van alle verenigingen")
+                                    .font(KKFont.body(14))
+                                    .foregroundStyle(KKTheme.textSecondary)
+                            }
+                            Spacer()
+                            Image(systemName: "chevron.right")
+                                .foregroundStyle(KKTheme.textSecondary)
+                        }
+                        .padding(.horizontal, 20)
+                        .padding(.vertical, 16)
+                        .background(KKTheme.surfaceAlt)
+                        .cornerRadius(8)
+                    }
+                    .buttonStyle(.plain)
+                    
+                    // Individual tenant options
+                    ForEach(tenants, id: \.slug) { tenant in
+                        Button(action: { onTenantSelected(tenant.slug) }) {
+                            HStack {
+                                VStack(alignment: .leading, spacing: 4) {
+                                    HStack(spacing: 8) {
+                                        Image(systemName: "building.2")
+                                            .foregroundColor(KKTheme.accent)
+                                        Text(tenant.name)
+                                            .font(KKFont.title(18))
+                                            .foregroundStyle(KKTheme.textPrimary)
+                                    }
+                                    Text("\(tenant.teams.count) team\(tenant.teams.count == 1 ? "" : "s")")
+                                        .font(KKFont.body(14))
+                                        .foregroundStyle(KKTheme.textSecondary)
+                                }
+                                Spacer()
+                                Image(systemName: "chevron.right")
+                                    .foregroundStyle(KKTheme.textSecondary)
+                            }
+                            .padding(.horizontal, 20)
+                            .padding(.vertical, 16)
+                            .background(KKTheme.surfaceAlt)
+                            .cornerRadius(8)
+                        }
+                        .buttonStyle(.plain)
+                    }
+                }
+                .padding(.horizontal, 24)
+                
+                Spacer(minLength: 24)
+            }
+        }
+    }
+}
+
+// MARK: - Info View
+private struct LeaderboardInfoView: View {
+    var body: some View {
+        ScrollView {
+            VStack(spacing: 32) {
+                Spacer(minLength: 24)
+                
+                // Header
+                VStack(spacing: 16) {
+                    Image(systemName: "info.circle.fill")
+                        .font(.system(size: 64))
+                        .foregroundStyle(KKTheme.accent)
+                    
+                    VStack(spacing: 8) {
+                        Text("OVER DE LEADERBOARD")
+                            .font(KKFont.heading(24))
+                            .fontWeight(.regular)
+                            .kerning(-1.0)
+                            .foregroundStyle(KKTheme.textPrimary)
+                        Text("Hoe werkt het puntensysteem?")
+                            .font(KKFont.title(16))
+                            .foregroundStyle(KKTheme.textSecondary)
+                    }
+                    .multilineTextAlignment(.center)
+                }
+                
+                // Info sections
+                VStack(spacing: 24) {
+                    InfoSectionView(
+                        icon: "clock.fill",
+                        title: "Punten per uur",
+                        description: "Teams krijgen 1 punt voor elk uur dat ze dienst draaien. Hoe meer diensten, hoe meer punten!"
+                    )
+                    
+                    InfoSectionView(
+                        icon: "calendar",
+                        title: "Verschillende periodes",
+                        description: "Bekijk rankings per week, maand of seizoen. Zo zie je zowel recente prestaties als langere trends."
+                    )
+                    
+                    InfoSectionView(
+                        icon: "arrow.up.arrow.down",
+                        title: "Positionering",
+                        description: "Groene pijltjes betekenen dat een team is gestegen, rode pijltjes betekenen gedaald in de ranglijst."
+                    )
+                    
+                    InfoSectionView(
+                        icon: "trophy.fill",
+                        title: "Ranglijsten",
+                        description: "Er zijn zowel nationale ranglijsten (alle clubs) als club-specifieke ranglijsten (alleen teams van jouw club)."
+                    )
+                }
+                .padding(.horizontal, 24)
+                
+                Spacer(minLength: 24)
+            }
+        }
+    }
+}
+
+private struct InfoSectionView: View {
+    let icon: String
+    let title: String
+    let description: String
+    
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack(spacing: 12) {
+                Image(systemName: icon)
+                    .font(.title2)
+                    .foregroundStyle(KKTheme.accent)
+                    .frame(width: 32)
+                
+                Text(title)
+                    .font(KKFont.title(18))
+                    .foregroundStyle(KKTheme.textPrimary)
+                
+                Spacer()
+            }
+            
+            Text(description)
+                .font(KKFont.body(14))
+                .foregroundStyle(KKTheme.textSecondary)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+        .kkCard()
     }
 }
 
@@ -229,95 +607,17 @@ private struct LeaderboardWelcomeView: View {
                             .multilineTextAlignment(.center)
                             .padding(.horizontal, 24)
                         
-                        // Show available tenants as buttons
-                        LazyVStack(spacing: 8) {
-                            ForEach(Array(store.model.tenants.values.sorted(by: { $0.name < $1.name })), id: \.slug) { tenant in
-                                Button(action: {
-                                    onTenantSelected(tenant.slug)
-                                }) {
-                                    HStack {
-                                        VStack(alignment: .leading, spacing: 4) {
-                                            Text(tenant.name)
-                                                .font(KKFont.title(16))
-                                                .foregroundStyle(KKTheme.textPrimary)
-                                            Text("\(tenant.teams.count) team\(tenant.teams.count == 1 ? "" : "s")")
-                                                .font(KKFont.body(12))
-                                                .foregroundStyle(KKTheme.textSecondary)
-                                        }
-                                        Spacer()
-                                        Image(systemName: "trophy")
-                                            .foregroundStyle(KKTheme.accent)
-                                        Image(systemName: "chevron.right")
-                                            .foregroundStyle(KKTheme.textSecondary)
-                                    }
-                                    .padding(.horizontal, 16)
-                                    .padding(.vertical, 12)
-                                    .background(KKTheme.surfaceAlt)
-                                    .cornerRadius(8)
-                                }
-                                .buttonStyle(.plain)
-                            }
-                        }
+                        Text("Ga terug naar het hoofdmenu en klik op het trophy icoon om een leaderboard te bekijken.")
+                            .font(KKFont.body(14))
+                            .foregroundStyle(KKTheme.textSecondary)
+                            .multilineTextAlignment(.center)
+                            .padding(.horizontal, 24)
                     }
                     .kkCard()
                     .padding(.horizontal, 24)
                 }
                 
-                // Info section
-                VStack(spacing: 16) {
-                    Text("Over de leaderboard")
-                        .font(KKFont.title(18))
-                        .foregroundStyle(KKTheme.textPrimary)
-                    
-                    VStack(alignment: .leading, spacing: 12) {
-                        InfoRow(
-                            icon: "clock.fill",
-                            title: "Punten per uur",
-                            description: "Teams krijgen punten voor elke dienst die ze draaien"
-                        )
-                        
-                        InfoRow(
-                            icon: "calendar",
-                            title: "Verschillende periodes",
-                            description: "Bekijk rankings per week, maand of seizoen"
-                        )
-                        
-                        InfoRow(
-                            icon: "arrow.up.arrow.down",
-                            title: "Positionering",
-                            description: "Zie hoe teams stijgen of dalen in de ranglijst"
-                        )
-                    }
-                }
-                .kkCard()
-                .padding(.horizontal, 24)
-                
                 Spacer(minLength: 24)
-            }
-        }
-    }
-}
-
-private struct InfoRow: View {
-    let icon: String
-    let title: String
-    let description: String
-    
-    var body: some View {
-        HStack(spacing: 12) {
-            Image(systemName: icon)
-                .font(.title3)
-                .foregroundStyle(KKTheme.accent)
-                .frame(width: 24)
-            
-            VStack(alignment: .leading, spacing: 2) {
-                Text(title)
-                    .font(KKFont.body(14))
-                    .fontWeight(.medium)
-                    .foregroundStyle(KKTheme.textPrimary)
-                Text(description)
-                    .font(KKFont.body(12))
-                    .foregroundStyle(KKTheme.textSecondary)
             }
         }
     }
@@ -330,33 +630,6 @@ private struct LocalLeaderboardView: View {
     
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
-            // Club info header
-            if let clubName = leaderboard.clubName {
-                HStack(spacing: 12) {
-                    // Club logo placeholder or actual logo
-                    AsyncImage(url: leaderboard.clubLogoUrl.flatMap(URL.init)) { image in
-                        image.resizable().scaledToFit()
-                    } placeholder: {
-                        Image(systemName: "building.2")
-                            .foregroundStyle(KKTheme.textSecondary)
-                    }
-                    .frame(width: 32, height: 32)
-                    .background(KKTheme.surfaceAlt)
-                    .cornerRadius(6)
-                    
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text(clubName)
-                            .font(KKFont.title(16))
-                            .foregroundStyle(KKTheme.textPrimary)
-                        Text("\(leaderboard.period.capitalized) ranglijst")
-                            .font(KKFont.body(12))
-                            .foregroundStyle(KKTheme.textSecondary)
-                    }
-                    Spacer()
-                }
-                .padding(.horizontal, 24)
-            }
-            
             // Teams list
             LazyVStack(spacing: 8) {
                 ForEach(Array(leaderboard.teams.enumerated()), id: \.element.id) { index, team in
@@ -372,6 +645,138 @@ private struct LocalLeaderboardView: View {
     }
 }
 
+// MARK: - Global Leaderboard View
+private struct GlobalLeaderboardView: View {
+    let leaderboard: GlobalLeaderboardData
+    let highlightedTeamId: String?
+    
+    var body: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            // Teams list with club logos
+            LazyVStack(spacing: 8) {
+                ForEach(Array(leaderboard.teams.enumerated()), id: \.element.id) { index, team in
+                    GlobalTeamRowView(
+                        team: team,
+                        isHighlighted: highlightedTeamId != nil && team.id == highlightedTeamId
+                    )
+                }
+            }
+            .padding(.horizontal, 16)
+        }
+    }
+}
+
+// MARK: - Global Team Row
+private struct GlobalTeamRowView: View {
+    let team: GlobalLeaderboardTeam
+    let isHighlighted: Bool
+    
+    var body: some View {
+        HStack(spacing: 12) {
+            // Rank
+            ZStack {
+                Circle()
+                    .fill(isHighlighted ? KKTheme.accent : rankColor)
+                    .frame(width: 32, height: 32)
+                if isHighlighted {
+                    Circle()
+                        .stroke(Color.white, lineWidth: 2)
+                        .frame(width: 32, height: 32)
+                }
+                Text("\(team.rank)")
+                    .font(KKFont.body(14))
+                    .fontWeight(isHighlighted ? .bold : .medium)
+                    .foregroundColor(.white)
+            }
+            
+            // Club logo
+            AsyncImage(url: team.clubLogoUrl.flatMap(URL.init)) { image in
+                image.resizable().scaledToFit()
+            } placeholder: {
+                Image(systemName: "building.2")
+                    .foregroundStyle(KKTheme.textSecondary)
+            }
+            .frame(width: 32, height: 32)
+            .background(KKTheme.surfaceAlt)
+            .cornerRadius(6)
+            .overlay(
+                // Special border for highlighted team's club logo
+                RoundedRectangle(cornerRadius: 6)
+                    .stroke(isHighlighted ? KKTheme.accent : Color.clear, lineWidth: 2)
+            )
+            
+            // Team and club info
+            VStack(alignment: .leading, spacing: 4) {
+                HStack(spacing: 8) {
+                    Text(team.name)
+                        .font(KKFont.title(16))
+                        .fontWeight(isHighlighted ? .bold : .regular)
+                        .foregroundStyle(isHighlighted ? KKTheme.accent : KKTheme.textPrimary)
+                    if let code = team.code {
+                        Text("(\(code))")
+                            .font(KKFont.body(12))
+                            .foregroundStyle(KKTheme.textSecondary)
+                    }
+                    if isHighlighted {
+                        Text("JIJ")
+                            .font(KKFont.body(10))
+                            .fontWeight(.bold)
+                            .padding(.horizontal, 6)
+                            .padding(.vertical, 2)
+                            .background(KKTheme.accent)
+                            .foregroundColor(.white)
+                            .cornerRadius(4)
+                    }
+                }
+                
+                HStack(spacing: 16) {
+                    Text(team.clubName)
+                        .font(KKFont.body(12))
+                        .foregroundStyle(KKTheme.textSecondary)
+                    
+                    Text("\(team.points) punten")
+                        .font(KKFont.body(12))
+                        .foregroundStyle(KKTheme.textSecondary)
+                    
+                    Text("\(String(format: "%.1f", team.totalHours)) uur")
+                        .font(KKFont.body(12))
+                        .foregroundStyle(KKTheme.textSecondary)
+                }
+            }
+            
+            Spacer()
+            
+            // Position change indicator
+            if team.positionChange != 0 {
+                HStack(spacing: 4) {
+                    Image(systemName: team.positionChange > 0 ? "arrow.up" : "arrow.down")
+                        .font(.caption)
+                    Text("\(abs(team.positionChange))")
+                        .font(KKFont.body(10))
+                }
+                .foregroundColor(team.positionChange > 0 ? .green : .red)
+            }
+        }
+        .padding(.horizontal, 16)
+        .padding(.vertical, 12)
+        .background(isHighlighted ? KKTheme.accent.opacity(0.1) : KKTheme.surfaceAlt)
+        .cornerRadius(8)
+        .overlay(
+            RoundedRectangle(cornerRadius: 8)
+                .stroke(isHighlighted ? KKTheme.accent : Color.clear, lineWidth: 2)
+        )
+    }
+    
+    private var rankColor: Color {
+        switch team.rank {
+        case 1: return Color.yellow
+        case 2: return Color.gray
+        case 3: return Color.orange
+        default: return KKTheme.accent
+        }
+    }
+}
+
 // MARK: - Team Row Views
 private struct TeamRowView: View {
     let team: LeaderboardTeam
@@ -383,11 +788,16 @@ private struct TeamRowView: View {
             // Rank
             ZStack {
                 Circle()
-                    .fill(rankColor)
+                    .fill(isHighlighted ? KKTheme.accent : rankColor)
                     .frame(width: 32, height: 32)
+                if isHighlighted {
+                    Circle()
+                        .stroke(Color.white, lineWidth: 2)
+                        .frame(width: 32, height: 32)
+                }
                 Text("\(team.rank)")
                     .font(KKFont.body(14))
-                    .fontWeight(.medium)
+                    .fontWeight(isHighlighted ? .bold : .medium)
                     .foregroundColor(.white)
             }
             
@@ -396,11 +806,22 @@ private struct TeamRowView: View {
                 HStack(spacing: 8) {
                     Text(team.name)
                         .font(KKFont.title(16))
-                        .foregroundStyle(KKTheme.textPrimary)
+                        .fontWeight(isHighlighted ? .bold : .regular)
+                        .foregroundStyle(isHighlighted ? KKTheme.accent : KKTheme.textPrimary)
                     if let code = team.code {
                         Text("(\(code))")
                             .font(KKFont.body(12))
                             .foregroundStyle(KKTheme.textSecondary)
+                    }
+                    if isHighlighted {
+                        Text("JIJ")
+                            .font(KKFont.body(10))
+                            .fontWeight(.bold)
+                            .padding(.horizontal, 6)
+                            .padding(.vertical, 2)
+                            .background(KKTheme.accent)
+                            .foregroundColor(.white)
+                            .cornerRadius(4)
                     }
                 }
                 
