@@ -55,7 +55,14 @@ final class AppStore: ObservableObject {
         pushService.requestAuthorization()
     }
 
-    func startNewEnrollment() { appPhase = .onboarding }
+    func startNewEnrollment() { 
+        print("[Onboarding] 🔄 Starting fresh enrollment flow")
+        // Clear all onboarding state for clean start
+        onboardingScan = nil
+        searchResults = []
+        appPhase = .onboarding
+        print("[Onboarding] ✅ Onboarding state cleared")
+    }
     func resetAll() {
         print("[Reset] 🗑️ Starting full app reset...")
         print("[Reset] 📊 Current model has \(model.tenants.count) tenants")
@@ -85,6 +92,12 @@ final class AppStore: ObservableObject {
     private func clearLocalState() {
         print("[Reset] 🧹 Clearing local state...")
         print("[Reset] 📊 Before clear: \(model.tenants.count) tenants, \(upcoming.count) diensten")
+        
+        // Clear backend auth token first
+        enrollmentRepository.setAuthToken("")
+        dienstRepository.setAuthToken("")
+        pushService.setAuthToken("")
+        
         model = .empty
         upcoming = []
         searchResults = []
@@ -266,6 +279,8 @@ extension AppStore {
     }
 
     func addVolunteer(tenant: TenantID, dienstId: String, name: String, completion: @escaping (Result<Void, Error>) -> Void) {
+        print("[AppStore] 📡 Adding volunteer: ensuring auth token is set")
+        ensureBackendAuthToken()
         dienstRepository.addVolunteer(tenant: tenant, dienstId: dienstId, name: name) { [weak self] result in
             DispatchQueue.main.async {
                 switch result {
@@ -280,6 +295,8 @@ extension AppStore {
     }
 
     func removeVolunteer(tenant: TenantID, dienstId: String, name: String, completion: @escaping (Result<Void, Error>) -> Void) {
+        print("[AppStore] 📡 Removing volunteer: ensuring auth token is set")
+        ensureBackendAuthToken()
         dienstRepository.removeVolunteer(tenant: tenant, dienstId: dienstId, name: name) { [weak self] result in
             DispatchQueue.main.async {
                 switch result {
@@ -290,6 +307,19 @@ extension AppStore {
                     completion(.failure(err))
                 }
             }
+        }
+    }
+    
+    // MARK: - Auth token management
+    private func ensureBackendAuthToken() {
+        if let token = model.primaryAuthToken {
+            print("[AppStore] 🔑 Setting backend auth token: \(token.prefix(20))...")
+            // Update all backend clients with current token
+            enrollmentRepository.setAuthToken(token)
+            dienstRepository.setAuthToken(token)
+            pushService.setAuthToken(token)
+        } else {
+            print("[AppStore] ⚠️ No auth token available for backend calls")
         }
     }
 }

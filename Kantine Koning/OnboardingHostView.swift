@@ -26,24 +26,21 @@ struct OnboardingHostView: View {
 
                 if let scanned = store.onboardingScan {
                     if step == nil {
+                        // Step 1: Role selection after scan
                         ClubEnrollContainer(
                             tenantName: scanned.name,
                             selectedRole: $selectedRole,
                             onContinue: { if let sel = selectedRole { step = sel } }
                         )
                         .padding(.bottom, 8)
-                        // Subtle rescan below
-                        Button(action: { store.onboardingScan = nil; scanning = true }) {
-                            HStack(spacing: 6) {
-                                Image(systemName: "qrcode.viewfinder")
-                                Text("Opnieuw scannen")
-                            }
+                        // Opnieuw scannen - want misschien verkeerde QR gescand
+                        SubtleActionButton(icon: "qrcode.viewfinder", text: "Opnieuw scannen") {
+                            store.onboardingScan = nil
+                            scanning = true
                         }
-                        .buttonStyle(.plain)
-                        .foregroundStyle(KKTheme.textSecondary)
-                        .padding(.horizontal, 24)
                     } else if step == .manager {
                         if store.searchResults.isEmpty {
+                            // Step 2a: Manager email verification
                             ManagerVerifySection(email: $email, isLoading: submitting, errorText: $errorText, onSubmit: {
                                 submitting = true
                                 errorText = nil
@@ -51,14 +48,25 @@ struct OnboardingHostView: View {
                                     submitting = false
                                     if case .failure(let err) = result { errorText = ErrorTranslations.translate(err) }
                                 }
-                            }, onBack: { step = nil })
+                            })
+                            .padding(.bottom, 8)
+                            // Terug - want misschien toch verenigingslid willen worden
+                            SubtleActionButton(icon: "chevron.left", text: "Terug") { step = nil }
                         } else {
+                            // Step 2b: Manager team selection
                             ManagerTeamPickerSection(allowed: sortedAllowedTeams(),
                                                      selected: $selectedManagerTeams,
                                                      onSubmit: submitManagerTeams,
                                                      enrolledIds: enrolledTeamIdsForTenant(tenant))
+                            .padding(.bottom, 8)
+                            // Terug - want misschien andere teams willen of email wijzigen
+                            SubtleActionButton(icon: "chevron.left", text: "Terug") { 
+                                store.searchResults = []
+                                selectedManagerTeams = []
+                            }
                         }
                     } else if step == .member {
+                        // Step 2c: Member team search
                         MemberSearchSection(
                             tenant: tenant,
                             searchQuery: $searchQuery,
@@ -67,6 +75,9 @@ struct OnboardingHostView: View {
                             onSearch: { q in store.searchTeams(tenant: tenant, query: q) },
                             onSubmit: registerMember
                         )
+                        .padding(.bottom, 8)
+                        // Terug - want misschien toch teammanager willen worden
+                        SubtleActionButton(icon: "chevron.left", text: "Terug") { step = nil }
                     }
                 } else {
                     // Old design: square scanner container with overlay
@@ -197,18 +208,33 @@ private extension OnboardingHostView {
     }
 
     func startScanning() {
-        if scannedOnce { store.onboardingScan = nil }
+        print("[Onboarding] 📷 Starting scanner - clearing all cached state")
+        // Always clear all onboarding state for fresh start
+        store.onboardingScan = nil
+        store.searchResults = []
         scanning = true
         selectedRole = nil
         step = nil
+        selectedMemberTeams = []
+        selectedManagerTeams = []
+        searchQuery = ""
+        email = ""
+        errorText = nil
+        print("[Onboarding] ✅ All onboarding state cleared for fresh scan")
     }
 
     func handleScanned(_ code: String) {
         print("[QR] 📦 Raw payload=\(code)")
         scannedOnce = true
         scanning = false
+        // Clear all state for fresh enrollment flow
         selectedRole = nil
         step = nil
+        selectedMemberTeams = []
+        selectedManagerTeams = []
+        searchQuery = ""
+        email = ""
+        errorText = nil
         // Accept direct formats: 
         //  - kantinekoning://tenant?slug=&name=
         //  - kantinekoning://invite?tenant=&tenant_name=
@@ -289,64 +315,51 @@ private struct ManagerVerifySection: View {
     var isLoading: Bool
     @Binding var errorText: String?
     var onSubmit: () -> Void
-    var onBack: () -> Void
     var body: some View {
-        VStack(spacing: 16) {
-            VStack(alignment: .leading, spacing: 12) {
-                Text("E-mailadres teammanager").font(KKFont.body(12)).foregroundStyle(KKTheme.textSecondary)
-                Text("Voer het e-mailadres in waarmee je als teammanager bekend bent bij deze club.")
-                    .font(KKFont.body(11)).foregroundStyle(KKTheme.textSecondary).italic()
-                ZStack(alignment: .leading) {
-                    if email.isEmpty {
-                        Text("manager@club.nl")
-                            .foregroundColor(.secondary)
-                            .padding(.leading, 12)
-                            .font(KKFont.body(16))
-                    }
-                    TextField("", text: $email)
-                        .padding(12)
-                        .background(KKTheme.surfaceAlt)
-                        .cornerRadius(8)
-                        .textContentType(.emailAddress)
-                        .keyboardType(.emailAddress)
-                        .textInputAutocapitalization(.never)
-                        .autocorrectionDisabled(true)
-                        .submitLabel(.done)
+        VStack(alignment: .leading, spacing: 12) {
+            Text("E-mailadres teammanager").font(KKFont.body(12)).foregroundStyle(KKTheme.textSecondary)
+            Text("Voer het e-mailadres in waarmee je als teammanager bekend bent bij deze club.")
+                .font(KKFont.body(11)).foregroundStyle(KKTheme.textSecondary).italic()
+            ZStack(alignment: .leading) {
+                if email.isEmpty {
+                    Text("manager@club.nl")
+                        .foregroundColor(.secondary)
+                        .padding(.leading, 12)
                         .font(KKFont.body(16))
-                        .foregroundColor(KKTheme.textPrimary)
-                        .onSubmit { onSubmit() }
                 }
-                if let errorText = errorText {
-                    Text(errorText)
-                        .font(KKFont.body(12))
-                        .foregroundStyle(.red)
-                }
-                Button(action: onSubmit) { 
-                    if isLoading {
-                        HStack {
-                            ProgressView()
-                                .tint(KKTheme.accent)
-                            Text("Controleren...")
-                        }
-                    } else {
-                        Text("Teams ophalen")
+                TextField("", text: $email)
+                    .padding(12)
+                    .background(KKTheme.surfaceAlt)
+                    .cornerRadius(8)
+                    .textContentType(.emailAddress)
+                    .keyboardType(.emailAddress)
+                    .textInputAutocapitalization(.never)
+                    .autocorrectionDisabled(true)
+                    .submitLabel(.done)
+                    .font(KKFont.body(16))
+                    .foregroundColor(KKTheme.textPrimary)
+                    .onSubmit { onSubmit() }
+            }
+            if let errorText = errorText {
+                Text(errorText)
+                    .font(KKFont.body(12))
+                    .foregroundStyle(.red)
+            }
+            Button(action: onSubmit) { 
+                if isLoading {
+                    HStack {
+                        ProgressView()
+                            .tint(KKTheme.accent)
+                        Text("Controleren...")
                     }
-                }
-                .disabled(isLoading)
-                .buttonStyle(KKSecondaryButton())
-            }
-            .kkCard()
-            
-            // Subtle back below card
-            Button(action: onBack) {
-                HStack(spacing: 6) {
-                    Image(systemName: "chevron.left").font(.body)
-                    Text("Terug").font(KKFont.body(12))
+                } else {
+                    Text("Teams ophalen")
                 }
             }
-            .buttonStyle(.plain)
-            .foregroundStyle(KKTheme.textSecondary)
+            .disabled(isLoading)
+            .buttonStyle(KKSecondaryButton())
         }
+        .kkCard()
         .padding(.horizontal, 12)
     }
 }
@@ -667,6 +680,24 @@ private struct FoundClubCard: View {
 
 private extension View {
     func eraseToAnyView() -> AnyView { AnyView(self) }
+}
+
+// MARK: - Reusable subtle action button
+private struct SubtleActionButton: View {
+    let icon: String
+    let text: String
+    let action: () -> Void
+    var body: some View {
+        Button(action: action) {
+            HStack(spacing: 6) {
+                Image(systemName: icon).font(.body)
+                Text(text).font(KKFont.body(12))
+            }
+        }
+        .buttonStyle(.plain)
+        .foregroundStyle(KKTheme.textSecondary)
+        .padding(.horizontal, 24)
+    }
 }
 
 

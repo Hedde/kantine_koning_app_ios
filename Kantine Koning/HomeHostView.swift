@@ -321,6 +321,7 @@ private struct DienstCardView: View {
     @State private var newVolunteerName = ""
     @State private var showCelebration = false
     @State private var confettiTrigger = 0
+    @EnvironmentObject var store: AppStore
     
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
@@ -482,16 +483,52 @@ private struct DienstCardView: View {
     
     private func addVolunteer() {
         let name = newVolunteerName.trimmingCharacters(in: .whitespaces)
-        guard isManager, !name.isEmpty, name.count <= 15, !volunteers.contains(name) else { return }
-        guard d.startTime >= Date() else { return }
+        guard isManager, !name.isEmpty, name.count <= 15, !volunteers.contains(name) else { 
+            print("[Volunteer] ❌ Add validation failed: manager=\(isManager) name='\(name)' exists=\(volunteers.contains(name))")
+            return 
+        }
+        guard d.startTime >= Date() else { 
+            print("[Volunteer] ❌ Cannot add to past dienst")
+            return 
+        }
+        
+        print("[Volunteer] 📡 Adding volunteer '\(name)' to dienst \(d.id)")
         newVolunteerName = ""
         showAddVolunteer = false
-        volunteers.append(name)
-        if isFullyStaffed { triggerCelebration() }
+        
+        // Call backend API instead of local update
+        store.addVolunteer(tenant: d.tenantId, dienstId: d.id, name: name) { result in
+            switch result {
+            case .success:
+                print("[Volunteer] ✅ Successfully added volunteer via API")
+                volunteers.append(name)
+                if isFullyStaffed { triggerCelebration() }
+            case .failure(let err):
+                print("[Volunteer] ❌ Failed to add volunteer: \(err)")
+                // Revert UI state on failure
+                showAddVolunteer = true
+                newVolunteerName = name
+            }
+        }
     }
     private func removeVolunteer(_ name: String) {
-        guard isManager else { return }
-        volunteers.removeAll { $0 == name }
+        guard isManager else { 
+            print("[Volunteer] ❌ Remove denied: not manager")
+            return 
+        }
+        
+        print("[Volunteer] 📡 Removing volunteer '\(name)' from dienst \(d.id)")
+        
+        // Call backend API instead of local update
+        store.removeVolunteer(tenant: d.tenantId, dienstId: d.id, name: name) { result in
+            switch result {
+            case .success:
+                print("[Volunteer] ✅ Successfully removed volunteer via API")
+                volunteers.removeAll { $0 == name }
+            case .failure(let err):
+                print("[Volunteer] ❌ Failed to remove volunteer: \(err)")
+            }
+        }
     }
     private func triggerCelebration() {
         withAnimation(.spring(response: 0.4, dampingFraction: 0.6)) { showCelebration = true }

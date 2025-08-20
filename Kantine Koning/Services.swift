@@ -5,6 +5,7 @@ import UIKit
 protocol PushService {
     func requestAuthorization()
     func updateAPNs(token: String, auth: String?)
+    func setAuthToken(_ token: String)
 }
 
 final class DefaultPushService: PushService {
@@ -24,6 +25,10 @@ final class DefaultPushService: PushService {
         backend.updateAPNsToken(token) { result in
             if case .failure(let err) = result { print("APNs upload failed: \(err)") }
         }
+    }
+    
+    func setAuthToken(_ token: String) {
+        backend.authToken = token
     }
 }
 

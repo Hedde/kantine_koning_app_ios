@@ -278,17 +278,32 @@ final class BackendClient {
 
     // MARK: - Volunteers
     func addVolunteer(tenant: TenantID, dienstId: String, name: String, completion: @escaping (Result<DienstDTO, Error>) -> Void) {
+        print("[Backend] 📡 Adding volunteer '\(name)' to dienst \(dienstId) in tenant \(tenant)")
+        print("[Backend] 🔑 Auth token available: \(authToken?.prefix(20) ?? "nil")")
+        
         var comps = URLComponents(url: baseURL.appendingPathComponent("/api/mobile/v1/diensten/\(dienstId)/volunteer"), resolvingAgainstBaseURL: false)!
         comps.queryItems = [URLQueryItem(name: "tenant", value: tenant)]
         var req = URLRequest(url: comps.url!)
         req.httpMethod = "POST"
         req.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        if let token = authToken { req.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization") }
+        
+        guard let token = authToken, !token.isEmpty else {
+            print("[Backend] ❌ No auth token for volunteer add")
+            completion(.failure(NSError(domain: "Backend", code: 401, userInfo: [NSLocalizedDescriptionKey: "No authentication token available"])))
+            return
+        }
+        
+        req.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
         req.httpBody = try? JSONSerialization.data(withJSONObject: ["naam": name])
         URLSession.shared.dataTask(with: req) { data, response, error in
-            if let error = error { completion(.failure(error)); return }
+            if let error = error { 
+                print("[Backend] ❌ addVolunteer network error: \(error)")
+                completion(.failure(error)); return 
+            }
             guard let http = response as? HTTPURLResponse, let data = data, (200..<300).contains(http.statusCode) else {
-                completion(.failure(NSError(domain: "Backend", code: -1))); return
+                let body = data.flatMap { String(data: $0, encoding: .utf8) } ?? "<no body>"
+                print("[Backend] ❌ addVolunteer HTTP \(http.statusCode) body=\(body)")
+                completion(.failure(NSError(domain: "Backend", code: http.statusCode, userInfo: [NSLocalizedDescriptionKey: body]))); return
             }
             do {
                 struct Resp: Decodable { let dienst: DienstDTO }
@@ -308,11 +323,21 @@ final class BackendClient {
     }
 
     func removeVolunteer(tenant: TenantID, dienstId: String, name: String, completion: @escaping (Result<DienstDTO, Error>) -> Void) {
+        print("[Backend] 📡 Removing volunteer '\(name)' from dienst \(dienstId) in tenant \(tenant)")
+        print("[Backend] 🔑 Auth token available: \(authToken?.prefix(20) ?? "nil")")
+        
         var comps = URLComponents(url: baseURL.appendingPathComponent("/api/mobile/v1/diensten/\(dienstId)/volunteer"), resolvingAgainstBaseURL: false)!
         comps.queryItems = [URLQueryItem(name: "tenant", value: tenant), URLQueryItem(name: "naam", value: name)]
         var req = URLRequest(url: comps.url!)
         req.httpMethod = "DELETE"
-        if let token = authToken { req.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization") }
+        
+        guard let token = authToken, !token.isEmpty else {
+            print("[Backend] ❌ No auth token for volunteer remove")
+            completion(.failure(NSError(domain: "Backend", code: 401, userInfo: [NSLocalizedDescriptionKey: "No authentication token available"])))
+            return
+        }
+        
+        req.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
         URLSession.shared.dataTask(with: req) { data, response, error in
             if let error = error { completion(.failure(error)); return }
             guard let http = response as? HTTPURLResponse, let data = data, (200..<300).contains(http.statusCode) else {
@@ -376,7 +401,6 @@ final class BackendClient {
         print("[MemberRegister] 📡 Registering member device for tenant=\(tenantSlug) teams=\(teamIds)")
         
         // Create a member enrollment token and register via the same endpoint
-        let now = Date()
         let exp = Int(Date().addingTimeInterval(10 * 60).timeIntervalSince1970)
         let claims: [String: Any] = [
             "tenant_slug": tenantSlug,
