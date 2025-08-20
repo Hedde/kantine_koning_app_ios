@@ -9,7 +9,9 @@ final class BackendClient {
         let defaultURL = "https://kantinekoning.com"
         #endif
         let override = Bundle.main.object(forInfoDictionaryKey: "API_BASE_URL") as? String
-        return URL(string: override ?? defaultURL)!
+        let urlString = override ?? defaultURL
+        print("[Backend] 🌐 Using base URL: \(urlString)")
+        return URL(string: urlString)!
     }()
 
     var authToken: String?

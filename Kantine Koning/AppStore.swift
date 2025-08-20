@@ -232,6 +232,10 @@ final class AppStore: ObservableObject {
                 print("[AppStore]     → team id=\(team.id) code=\(team.code ?? "nil") name=\(team.name)")
             }
         }
+        
+        // Ensure auth token is set before fetching diensten
+        ensureBackendAuthToken()
+        
         dienstRepository.fetchUpcoming(for: model) { [weak self] result in
             DispatchQueue.main.async {
                 if case .success(let items) = result { 
