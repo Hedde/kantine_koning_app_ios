@@ -103,11 +103,13 @@ final class DefaultDienstRepository: DienstRepository {
             backend.fetchDiensten(tenant: tenant.slug) { result in
                 switch result {
                 case .success(let items):
+                    print("[Dienst] 📦 Fetched \(items.count) diensten for tenant \(tenant.slug)")
                     let mapped = items.map { dto in
-                        Dienst(
+                        print("[Dienst]   → dienst id=\(dto.id) team_id=\(dto.team?.id ?? "nil") team_code=\(dto.team?.code ?? "nil") team_naam=\(dto.team?.naam ?? "nil")")
+                        let dienst = Dienst(
                             id: dto.id,
                             tenantId: dto.tenant_id,
-                            teamId: dto.team?.id,
+                            teamId: dto.team?.code ?? dto.team?.id, // Use team code as teamId for matching
                             startTime: dto.start_tijd,
                             endTime: dto.eind_tijd,
                             status: dto.status,
@@ -115,6 +117,8 @@ final class DefaultDienstRepository: DienstRepository {
                             volunteers: dto.aanmeldingen,
                             updatedAt: dto.updated_at
                         )
+                        print("[Dienst]   → mapped teamId=\(dienst.teamId ?? "nil") for matching")
+                        return dienst
                     }
                     collected.append(contentsOf: mapped)
                 case .failure(let err):

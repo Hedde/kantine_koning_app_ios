@@ -225,9 +225,19 @@ final class AppStore: ObservableObject {
 
     func refreshDiensten() {
         guard model.isEnrolled else { return }
+        print("[AppStore] 🔄 Refreshing diensten for \(model.tenants.count) tenants")
+        for (slug, tenant) in model.tenants {
+            print("[AppStore]   → tenant \(slug): \(tenant.teams.count) teams")
+            for team in tenant.teams {
+                print("[AppStore]     → team id=\(team.id) code=\(team.code ?? "nil") name=\(team.name)")
+            }
+        }
         dienstRepository.fetchUpcoming(for: model) { [weak self] result in
             DispatchQueue.main.async {
-                if case .success(let items) = result { self?.upcoming = items }
+                if case .success(let items) = result { 
+                    print("[AppStore] ✅ Received \(items.count) diensten")
+                    self?.upcoming = items 
+                }
             }
         }
     }

@@ -302,8 +302,9 @@ final class BackendClient {
             }
             guard let http = response as? HTTPURLResponse, let data = data, (200..<300).contains(http.statusCode) else {
                 let body = data.flatMap { String(data: $0, encoding: .utf8) } ?? "<no body>"
-                print("[Backend] ❌ addVolunteer HTTP \(http.statusCode) body=\(body)")
-                completion(.failure(NSError(domain: "Backend", code: http.statusCode, userInfo: [NSLocalizedDescriptionKey: body]))); return
+                let statusCode = (response as? HTTPURLResponse)?.statusCode ?? -1
+                print("[Backend] ❌ addVolunteer HTTP \(statusCode) body=\(body)")
+                completion(.failure(NSError(domain: "Backend", code: statusCode, userInfo: [NSLocalizedDescriptionKey: body]))); return
             }
             do {
                 struct Resp: Decodable { let dienst: DienstDTO }
