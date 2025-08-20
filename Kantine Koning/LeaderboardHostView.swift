@@ -29,21 +29,25 @@ struct LeaderboardHostView: View {
         
         var headerText: String {
             let today = Date()
+            let calendar = Calendar.current
+            
             switch self {
             case .week:
-                let weekStart = Calendar.current.dateInterval(of: .weekOfYear, for: today)?.start ?? today
+                let weekStart = calendar.dateInterval(of: .weekOfYear, for: today)?.start ?? today
                 let formatter = DateFormatter()
                 formatter.locale = Locale(identifier: "nl_NL")
                 formatter.dateFormat = "d MMM"
-                let weekEnd = Calendar.current.date(byAdding: .day, value: 6, to: weekStart) ?? today
-                return "Week \(Calendar.current.component(.weekOfYear, from: today)) (\(formatter.string(from: weekStart)) - \(formatter.string(from: weekEnd)))"
+                let weekEnd = calendar.date(byAdding: .day, value: 6, to: weekStart) ?? today
+                return "Week \(calendar.component(.weekOfYear, from: today)) (\(formatter.string(from: weekStart)) - \(formatter.string(from: weekEnd)))"
             case .month:
                 let formatter = DateFormatter()
                 formatter.locale = Locale(identifier: "nl_NL")
                 formatter.dateFormat = "MMMM yyyy"
                 return formatter.string(from: today)
             case .season:
-                let year = today.month >= 8 ? today.year : today.year - 1
+                let currentMonth = calendar.component(.month, from: today)
+                let currentYear = calendar.component(.year, from: today)
+                let year = currentMonth >= 8 ? currentYear : currentYear - 1
                 return "Seizoen \(year)-\(year + 1)"
             }
         }
