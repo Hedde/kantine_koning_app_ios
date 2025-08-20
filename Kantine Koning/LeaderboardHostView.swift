@@ -303,7 +303,8 @@ struct LeaderboardHostView: View {
         }
         
         let client = BackendClient()
-        client.authToken = store.model.primaryAuthToken
+        // Use any available tenant token for global leaderboard (read-only operation)
+        client.authToken = store.model.tenants.values.first?.signedDeviceToken
         
         client.fetchGlobalLeaderboard(
             tenant: firstTenant.slug,

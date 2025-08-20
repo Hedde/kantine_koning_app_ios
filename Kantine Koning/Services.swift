@@ -5,7 +5,7 @@ import UIKit
 protocol PushService {
     func requestAuthorization()
     func updateAPNs(token: String, auth: String?)
-    func setAuthToken(_ token: String)
+    // NOTE: setAuthToken removed - auth is now per-operation in updateAPNs
 }
 
 final class DefaultPushService: PushService {
@@ -27,9 +27,7 @@ final class DefaultPushService: PushService {
         }
     }
     
-    func setAuthToken(_ token: String) {
-        backend.authToken = token
-    }
+    // NOTE: setAuthToken removed - auth is now per-operation via updateAPNs parameter
 }
 
 

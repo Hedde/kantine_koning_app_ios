@@ -88,7 +88,9 @@ for tenant in model.tenants.values {
     tenantBackend.fetchDiensten(tenant: tenant.slug)
 }
 
-// ❌ FOUT: Single call met één JWT (mist andere tenants)
+// ❌ FOUT: Single call met één JWT (mist andere tenants)  
+// NOTE: Deze approach is deprecated - gebruik enrollment-specific tokens
+let backend = BackendClient()
 backend.authToken = model.primaryAuthToken  // Alleen eerste tenant
 backend.fetchAllDiensten()  // Mist enrollments van andere tenants
 ```
@@ -136,10 +138,16 @@ Optioneel: override backend via Info.plist → `API_BASE_URL`.
 
 ### 🚨 Auth Token Mistakes (VAAK VOORKOMEND)
 ```swift
-// ❌ FOUT: Gebruik van primaryAuthToken voor alle API calls
+// ❌ FOUT: Gebruik van primaryAuthToken voor alle API calls (DEPRECATED)
 let token = store.model.primaryAuthToken  // Alleen eerste tenant!
+let backend = BackendClient()
 backend.authToken = token
 backend.fetchDiensten(tenant: "agovv")  // Fails - token is voor vvwilhelmus
+
+// ✅ CORRECT: Gebruik enrollment-specific tokens
+let backend = BackendClient()
+backend.authToken = store.model.tenants["agovv"]?.signedDeviceToken
+backend.fetchDiensten(tenant: "agovv")  // Success - juiste token voor agovv
 
 // ✅ CORRECT: Tenant-specifieke tokens
 let tenant = store.model.tenants["agovv"]
@@ -174,7 +182,7 @@ print("Tenant \(tenant.slug): token=\(tenant.signedDeviceToken?.prefix(20))")
 - Max 5 teams per gebruiker (enforced bij enrollment en member-registratie)
 - Vrijwilliger toevoegen kan alleen voor toekomstige diensten en enkel als manager
 - "Alles resetten" wist lokaal en probeert backend-opschoning indien auth-token aanwezig
-- **Multi-tenant**: Gebruik ALTIJD tenant-specifieke JWT tokens, niet primaryAuthToken
+- **Multi-tenant**: Gebruik ALTIJD enrollment-specifieke JWT tokens via `model.authTokenForTeam()` of `tenant.signedDeviceToken`, NIET `primaryAuthToken`
 
 ---
 

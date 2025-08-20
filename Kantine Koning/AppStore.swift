@@ -52,7 +52,17 @@ final class AppStore: ObservableObject {
         else if DeepLink.isCTA(url) { handleCTALink(url) }
     }
 
-    func setPushToken(_ token: String) { self.pushToken = token; pushService.updateAPNs(token: token, auth: model.primaryAuthToken) }
+    func setPushToken(_ token: String) { 
+        self.pushToken = token
+        // Register APNs token once with any available enrollment token
+        // Backend will update all enrollments for this device
+        if let anyAuthToken = model.tenants.values.first?.signedDeviceToken {
+            print("[AppStore] 📱 Registering APNs token with backend using any available auth token")
+            pushService.updateAPNs(token: token, auth: anyAuthToken)
+        } else {
+            print("[AppStore] ⚠️ No auth tokens available for APNs registration")
+        }
+    }
     func handlePushRegistrationFailure(_ error: Error) { print("APNs failure: \(error)") }
     func handleNotification(userInfo: [AnyHashable: Any]) { /* map to actions if needed */ }
 
@@ -72,9 +82,9 @@ final class AppStore: ObservableObject {
         print("[Reset] 🗑️ Starting full app reset...")
         print("[Reset] 📊 Current model has \(model.tenants.count) tenants")
         
-        // Call backend to remove all enrollments first
-        if let authToken = model.primaryAuthToken {
-            print("[Reset] 📡 Calling backend removeAllEnrollments with token: \(authToken.prefix(20))...")
+        // Call backend to remove all enrollments using any available token
+        if let anyToken = model.tenants.values.first?.signedDeviceToken {
+            print("[Reset] 📡 Calling backend removeAllEnrollments with token: \(anyToken.prefix(20))...")
             enrollmentRepository.removeAllEnrollments { [weak self] result in
                 print("[Reset] 📥 Backend removeAll completed with result: \(result)")
                 DispatchQueue.main.async {
@@ -98,10 +108,7 @@ final class AppStore: ObservableObject {
         print("[Reset] 🧹 Clearing local state...")
         print("[Reset] 📊 Before clear: \(model.tenants.count) tenants, \(upcoming.count) diensten")
         
-        // Clear backend auth token first
-        enrollmentRepository.setAuthToken("")
-        dienstRepository.setAuthToken("")
-        pushService.setAuthToken("")
+        // Clear local state (auth tokens are now handled per-operation)
         
         model = .empty
         upcoming = []
@@ -178,7 +185,11 @@ final class AppStore: ObservableObject {
                     self.enrollmentRepository.persist(model: self.model)
                     self.appPhase = .registered
                     self.refreshDiensten()
-                    if let token = self.pushToken, let auth = self.model.primaryAuthToken { self.pushService.updateAPNs(token: token, auth: auth) }
+                    // Register push token with backend (once, using any available auth token)
+                    if let token = self.pushToken, let anyAuthToken = self.model.tenants.values.first?.signedDeviceToken {
+                        print("[AppStore] 📱 Re-registering APNs token after enrollment completion")
+                        self.pushService.updateAPNs(token: token, auth: anyAuthToken)
+                    }
                     completion(.success(()))
                 }
             case .failure(let err): completion(.failure(err))
@@ -188,7 +199,10 @@ final class AppStore: ObservableObject {
 
     func removeTenant(_ tenant: TenantID) {
         print("[AppStore] 🗑️ Removing tenant: \(tenant)")
-        print("[AppStore] 🔍 Auth token available: \(model.primaryAuthToken != nil)")
+        
+        // Get the specific tenant's token before removing it from the model
+        let tenantToken = model.tenants[tenant]?.signedDeviceToken
+        print("[AppStore] 🔍 Tenant-specific auth token available: \(tenantToken != nil)")
         
         // Always update local state first for immediate UI feedback
         let updatedModel = model.removingTenant(tenant)
@@ -196,20 +210,28 @@ final class AppStore: ObservableObject {
         enrollmentRepository.persist(model: model)
         print("[AppStore] ✅ Local tenant removal complete")
         
-        // Try backend removal if we have auth (managers only)
-        if model.primaryAuthToken != nil {
-            enrollmentRepository.removeTenant(tenant) { result in
+        // Try backend removal if we have the tenant's auth token
+        if let token = tenantToken {
+            // Create a temporary backend client with the specific tenant's token
+            let tempBackend = BackendClient()
+            tempBackend.authToken = token
+            print("[AppStore] 🔑 Using tenant-specific token for removal")
+            
+            tempBackend.removeTenant(tenant) { result in
                 print("[AppStore] 📡 Backend tenant removal result: \(result)")
                 // Local state already updated, so no need to update again
             }
         } else {
-            print("[AppStore] ⚠️ No auth token - member enrollment, local removal only")
+            print("[AppStore] ⚠️ No tenant-specific auth token - member enrollment, local removal only")
         }
     }
 
     func removeTeam(_ team: TeamID, from tenant: TenantID) {
         print("[AppStore] 🗑️ Removing team: \(team) from tenant: \(tenant)")
-        print("[AppStore] 🔍 Auth token available: \(model.primaryAuthToken != nil)")
+        
+        // Get the specific token for this team/tenant before removing it from the model
+        let authToken = model.authTokenForTeam(team, in: tenant)
+        print("[AppStore] 🔍 Team-specific auth token available: \(authToken != nil)")
         
         // Always update local state first for immediate UI feedback
         let updatedModel = model.removingTeam(team, from: tenant)
@@ -217,14 +239,19 @@ final class AppStore: ObservableObject {
         enrollmentRepository.persist(model: model)
         print("[AppStore] ✅ Local team removal complete")
         
-        // Try backend removal if we have auth (managers only)
-        if model.primaryAuthToken != nil {
-            enrollmentRepository.removeTeams([team]) { result in
+        // Try backend removal if we have the team's auth token
+        if let token = authToken {
+            // Create a temporary backend client with the specific token
+            let tempBackend = BackendClient()
+            tempBackend.authToken = token
+            print("[AppStore] 🔑 Using enrollment-specific token for team removal")
+            
+            tempBackend.removeTeams([team]) { result in
                 print("[AppStore] 📡 Backend team removal result: \(result)")
                 // Local state already updated, so no need to update again
             }
         } else {
-            print("[AppStore] ⚠️ No auth token - member enrollment, local removal only")
+            print("[AppStore] ⚠️ No enrollment-specific auth token - member enrollment, local removal only")
         }
     }
 
@@ -238,9 +265,7 @@ final class AppStore: ObservableObject {
             }
         }
         
-        // Ensure auth token is set before fetching diensten
-        ensureBackendAuthToken()
-        
+        // Fetch diensten using enrollment-specific tokens (handled in repository)
         dienstRepository.fetchUpcoming(for: model) { [weak self] result in
             DispatchQueue.main.async {
                 if case .success(let items) = result { 
@@ -254,8 +279,8 @@ final class AppStore: ObservableObject {
     // MARK: - Leaderboard Management
     func refreshLeaderboard(for tenantSlug: String, period: String = "season", teamId: String? = nil) {
         print("[Store] 🔄 Refreshing leaderboard for tenant=\(tenantSlug) period=\(period) teamId=\(teamId ?? "nil")")
-        guard let auth = model.primaryAuthToken else { 
-            print("[Store] ❌ No auth token for leaderboard refresh")
+        guard let auth = model.tenants[tenantSlug]?.signedDeviceToken else { 
+            print("[Store] ❌ No auth token for tenant \(tenantSlug) leaderboard refresh")
             return 
         }
         
@@ -492,17 +517,8 @@ extension AppStore {
     }
     
     // MARK: - Auth token management
-    private func ensureBackendAuthToken() {
-        if let token = model.primaryAuthToken {
-            print("[AppStore] 🔑 Setting backend auth token: \(token.prefix(20))...")
-            // Update all backend clients with current token
-            enrollmentRepository.setAuthToken(token)
-            dienstRepository.setAuthToken(token)
-            pushService.setAuthToken(token)
-        } else {
-            print("[AppStore] ⚠️ No auth token available for backend calls")
-        }
-    }
+    // NOTE: We now use enrollment-specific tokens per operation instead of global auth tokens
+    // Each operation creates its own BackendClient with the appropriate tenant-specific token
 }
 
 // MARK: - CTA

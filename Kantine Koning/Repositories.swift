@@ -4,7 +4,7 @@ import Foundation
 protocol EnrollmentRepository {
     func loadModel() -> DomainModel
     func persist(model: DomainModel)
-    func setAuthToken(_ token: String)
+    // NOTE: Auth tokens are now handled per-operation with enrollment-specific tokens
     func requestEnrollment(email: String, tenant: TenantID, teamCodes: [TeamID], completion: @escaping (Result<Void, Error>) -> Void)
     func fetchAllowedTeams(email: String, tenant: TenantID, completion: @escaping (Result<[SearchTeam], Error>) -> Void)
     func registerDevice(enrollmentToken: String, pushToken: String?, completion: @escaping (Result<EnrollmentDelta, Error>) -> Void)
@@ -35,9 +35,7 @@ final class DefaultEnrollmentRepository: EnrollmentRepository {
         if let data = try? JSONEncoder().encode(model) { storage.set(data, forKey: storageKey) }
     }
     
-    func setAuthToken(_ token: String) {
-        backend.authToken = token
-    }
+    // NOTE: Auth tokens are now handled per-operation with enrollment-specific tokens
 
     func requestEnrollment(email: String, tenant: TenantID, teamCodes: [TeamID], completion: @escaping (Result<Void, Error>) -> Void) {
         backend.requestEnrollment(email: email, tenantSlug: tenant, teamCodes: teamCodes, completion: completion)
@@ -79,7 +77,7 @@ final class DefaultEnrollmentRepository: EnrollmentRepository {
 
 // MARK: - Dienst Repository
 protocol DienstRepository {
-    func setAuthToken(_ token: String)
+    // NOTE: Auth tokens are now handled per-operation with enrollment-specific tokens
     func fetchUpcoming(for model: DomainModel, completion: @escaping (Result<[Dienst], Error>) -> Void)
     func addVolunteer(tenant: TenantID, dienstId: String, name: String, completion: @escaping (Result<Dienst, Error>) -> Void)
     func removeVolunteer(tenant: TenantID, dienstId: String, name: String, completion: @escaping (Result<Dienst, Error>) -> Void)
@@ -90,9 +88,7 @@ final class DefaultDienstRepository: DienstRepository {
     private let backend: BackendClient
     init(backend: BackendClient = BackendClient()) { self.backend = backend }
     
-    func setAuthToken(_ token: String) {
-        backend.authToken = token
-    }
+    // NOTE: Auth tokens are now handled per-operation with enrollment-specific tokens
 
         func fetchUpcoming(for model: DomainModel, completion: @escaping (Result<[Dienst], Error>) -> Void) {
         // Per-tenant approach: each tenant has its own auth token and team access
