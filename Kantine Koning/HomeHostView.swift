@@ -2,53 +2,92 @@ import SwiftUI
 
 struct HomeHostView: View {
     @EnvironmentObject var store: AppStore
+    @State private var showSettings = false
+    @State private var selectedTenant: String? = nil
+    @State private var selectedTeam: String? = nil
 
     var body: some View {
-        NavigationView {
-            List {
-                NotificationPermissionCard()
-                Section("Verenigingen") {
-                    ForEach(Array(store.model.tenants.values), id: \.slug) { tenant in
-                        NavigationLink(destination: TeamsView(tenant: tenant).environmentObject(store)) {
-                            VStack(alignment: .leading) {
-                                Text(tenant.name).font(.headline)
-                                Text(tenant.slug).foregroundColor(.secondary).font(.caption)
-                            }
+        NavigationStack {
+            VStack(spacing: 0) {
+                // Main Content
+                if showSettings {
+                    SettingsViewInternal().environmentObject(store)
+                } else if let tenantSlug = selectedTenant, let teamId = selectedTeam, let tenant = store.model.tenants[tenantSlug] {
+                    TeamDienstenView(tenant: tenant, teamId: teamId).environmentObject(store)
+                } else if let tenantSlug = selectedTenant, let tenant = store.model.tenants[tenantSlug] {
+                    TeamsView(tenant: tenant,
+                              onTeamSelected: { teamId in selectedTeam = teamId },
+                              onBack: { selectedTenant = nil })
+                    .environmentObject(store)
+                } else {
+                    ClubsViewInternal(onTenantSelected: { slug in
+                        selectedTenant = slug
+                        // Auto-select team when only one exists
+                        if let tenant = store.model.tenants[slug], tenant.teams.count == 1, let onlyTeam = tenant.teams.first {
+                            selectedTeam = onlyTeam.id
                         }
-                        .swipeActions(edge: .trailing, allowsFullSwipe: true) {
-                            Button(role: .destructive) { store.removeTenant(tenant.slug) } label: { Label("Verwijder", systemImage: "trash") }
-                        }
-                    }
+                    })
+                    .environmentObject(store)
                 }
-                if !store.upcoming.isEmpty {
-                    Section("Diensten") {
-                        ForEach(store.upcoming, id: \.id) { d in
-                            NavigationLink(destination: DienstDetail(dienst: d).environmentObject(store)) {
-                                VStack(alignment: .leading) {
-                                    Text(d.status)
-                                    Text(d.startTime, style: .date).font(.caption).foregroundColor(.secondary)
-                                }
-                            }
+
+                // Subtle back control
+                if (selectedTenant != nil) && (selectedTeam == nil) {
+                    Button {
+                        if selectedTeam != nil { selectedTeam = nil }
+                        else if selectedTenant != nil { selectedTenant = nil }
+                    } label: {
+                        HStack(spacing: 6) {
+                            Image(systemName: "chevron.left").font(.body)
+                            Text("Terug").font(KKFont.body(12))
                         }
                     }
+                    .buttonStyle(.plain)
+                    .foregroundStyle(KKTheme.textSecondary)
+                    .padding(.vertical, 12)
+                    .padding(.horizontal, 24)
                 }
             }
-            .navigationTitle("Kantine Koning")
-            .toolbar {
-                ToolbarItem(placement: .navigationBarTrailing) {
-                    HStack {
-                        Button("Reset") { store.resetAll() }
-                        Button("Refresh") { store.refreshDiensten() }
-                    }
-                }
-                ToolbarItem(placement: .bottomBar) {
-                    if store.pendingCTA != nil {
-                        Button("Open actie") { store.performCTA() }
-                            .buttonStyle(KKPrimaryButton())
-                    }
-                }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .background(KKTheme.surface.ignoresSafeArea())
+            .safeAreaInset(edge: .top) {
+                TopNavigationBar(
+                    onHomeAction: {
+                        selectedTenant = nil
+                        selectedTeam = nil
+                        showSettings = false
+                    },
+                    onSettingsAction: { showSettings.toggle() },
+                    isSettingsActive: showSettings
+                )
+                .background(KKTheme.surface)
             }
         }
+    }
+}
+
+// MARK: - Top Navigation Bar
+private struct TopNavigationBar: View {
+    let onHomeAction: () -> Void
+    let onSettingsAction: () -> Void
+    let isSettingsActive: Bool
+    var body: some View {
+        HStack(spacing: 12) {
+            Button(action: onHomeAction) {
+                Image(systemName: "house.fill").font(.title2).foregroundColor(KKTheme.textSecondary)
+            }
+            Spacer()
+            BrandAssets.logoImage().resizable().scaledToFit().frame(width: 44, height: 44)
+            Spacer()
+            Button(action: onSettingsAction) {
+                Image(systemName: isSettingsActive ? "xmark.circle.fill" : "gearshape.fill")
+                    .font(.title2)
+                    .foregroundColor(KKTheme.textSecondary)
+            }
+        }
+        .padding(.horizontal, 24)
+        .padding(.vertical, 16)
+        .background(KKTheme.surface)
+        .overlay(Rectangle().frame(height: 1).foregroundColor(KKTheme.surfaceAlt).padding(.top, 56))
     }
 }
 
@@ -80,18 +119,146 @@ private struct NotificationPermissionCard: View {
 
 private struct TeamsView: View {
     let tenant: DomainModel.Tenant
+    let onTeamSelected: (String) -> Void
+    let onBack: () -> Void
     @EnvironmentObject var store: AppStore
     var body: some View {
-        List(tenant.teams, id: \.id) { team in
-            VStack(alignment: .leading) {
+        ScrollView {
+            VStack(spacing: 24) {
+                Spacer(minLength: 24)
+                VStack(spacing: 8) {
+                    Text("SELECTEER TEAM")
+                        .font(KKFont.heading(24))
+                        .fontWeight(.regular)
+                        .kerning(-1.0)
+                        .foregroundStyle(KKTheme.textPrimary)
+                    Text("Bij \(tenant.name)")
+                        .font(KKFont.title(16))
+                        .foregroundStyle(KKTheme.textSecondary)
+                }
+                .multilineTextAlignment(.center)
+                VStack(spacing: 8) {
+                    ForEach(tenant.teams.sorted(by: { $0.name < $1.name }), id: \.id) { team in
+                        SwipeableRow(onTap: { onTeamSelected(team.id) }, onDelete: { store.removeTeam(team.id, from: tenant.slug) }) {
+                            HStack {
+                                VStack(alignment: .leading, spacing: 4) {
+                                    HStack(spacing: 8) {
                 Text(team.name)
-                Text(team.id).font(.caption).foregroundColor(.secondary)
-            }
-            .swipeActions(edge: .trailing, allowsFullSwipe: true) {
-                Button(role: .destructive) { store.removeTeam(team.id, from: tenant.slug) } label: { Label("Verwijder", systemImage: "trash") }
+                                            .font(KKFont.title(18))
+                                            .foregroundStyle(KKTheme.textPrimary)
+                                        if team.role == .manager {
+                                            Text("Manager")
+                                                .font(KKFont.body(10))
+                                                .padding(.horizontal, 8)
+                                                .padding(.vertical, 3)
+                                                .background(KKTheme.accent.opacity(0.12))
+                                                .foregroundStyle(KKTheme.accent)
+                                                .cornerRadius(6)
+                                        }
+                                    }
+                                    Text(dienstCountText(for: team.id))
+                                        .font(KKFont.body(14))
+                                        .foregroundStyle(KKTheme.textSecondary)
+                                }
+                                Spacer()
+                                Image(systemName: "chevron.right")
+                                    .foregroundStyle(KKTheme.textSecondary)
+                                    .font(.title2)
+                            }
+                            .padding(.horizontal, 20)
+                            .padding(.vertical, 16)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .background(KKTheme.surfaceAlt)
+                            .cornerRadius(8)
+                        }
+                    }
+                }
+                .padding(.horizontal, 12)
+                Spacer(minLength: 24)
             }
         }
-        .navigationTitle(tenant.name)
+    }
+    private func dienstCountText(for teamId: String) -> String {
+        let count = store.upcoming.filter { $0.teamId == teamId && $0.tenantId == tenant.slug }.count
+        return count == 0 ? "Geen diensten" : count == 1 ? "1 dienst" : "\(count) diensten"
+    }
+}
+
+private struct DienstRow: View {
+    let d: Dienst
+    var body: some View {
+        HStack(spacing: 12) {
+            VStack(alignment: .leading, spacing: 4) {
+                Text(d.tenantId).font(KKFont.body(12)).foregroundStyle(KKTheme.textSecondary)
+                Text(d.status.capitalized).font(KKFont.title(16)).foregroundStyle(KKTheme.textPrimary)
+                Text(d.startTime.formatted(date: .abbreviated, time: .shortened)).font(KKFont.body(12)).foregroundStyle(KKTheme.textSecondary)
+            }
+            Spacer()
+            Image(systemName: "chevron.right").foregroundStyle(KKTheme.textSecondary)
+        }
+        .padding(16)
+        .background(KKTheme.surfaceAlt)
+        .cornerRadius(12)
+    }
+}
+
+private struct TeamDienstenView: View {
+    let tenant: DomainModel.Tenant
+    let teamId: String
+    @EnvironmentObject var store: AppStore
+    var body: some View {
+        ScrollView {
+            VStack(spacing: 24) {
+                Spacer(minLength: 24)
+                VStack(spacing: 8) {
+                    Text(tenant.teams.first(where: { $0.id == teamId })?.name.uppercased() ?? "TEAM")
+                        .font(KKFont.heading(24))
+                        .fontWeight(.regular)
+                        .kerning(-1.0)
+                        .foregroundStyle(KKTheme.textPrimary)
+                    Text("Aankomende diensten")
+                        .font(KKFont.title(16))
+                        .foregroundStyle(KKTheme.textSecondary)
+                }
+                .multilineTextAlignment(.center)
+                
+                if diensten.isEmpty {
+                    VStack(spacing: 16) {
+                        Image(systemName: "calendar.badge.exclamationmark")
+                            .font(.system(size: 48))
+                            .foregroundStyle(KKTheme.textSecondary)
+                        VStack(spacing: 8) {
+                            Text("Geen diensten gevonden")
+                                .font(KKFont.title(18))
+                                .foregroundStyle(KKTheme.textPrimary)
+                            Text("Er zijn momenteel geen aankomende diensten voor dit team.")
+                                .font(KKFont.body(14))
+                                .foregroundStyle(KKTheme.textSecondary)
+                                .multilineTextAlignment(.center)
+                        }
+                    }
+                    .padding(.vertical, 32)
+                } else {
+                    VStack(spacing: 12) {
+                        ForEach(diensten) { d in
+                            DienstCardView(d: d, isManager: (tenant.teams.first{ $0.id == teamId }?.role == .manager))
+                        }
+                    }
+                    .padding(.horizontal, 16)
+                }
+                Spacer(minLength: 24)
+            }
+        }
+        .refreshable { store.refreshDiensten() }
+        .background(KKTheme.surface.ignoresSafeArea())
+    }
+    
+    private var diensten: [Dienst] {
+        let filtered = store.upcoming.filter { $0.teamId == teamId && $0.tenantId == tenant.slug }
+        let now = Date()
+        let future = filtered.filter { $0.startTime >= now }.sorted { $0.startTime < $1.startTime }
+        let past = filtered.filter { $0.startTime < now }.sorted { $0.startTime > $1.startTime }
+        return future + past
     }
 }
 
@@ -132,7 +299,7 @@ private struct DienstDetail: View {
         working = true
         store.addVolunteer(tenant: dienst.tenantId, dienstId: dienst.id, name: name) { result in
             working = false
-            if case .failure(let err) = result { errorText = err.localizedDescription }
+            if case .failure(let err) = result { errorText = ErrorTranslations.translate(err) }
         }
     }
 
@@ -140,7 +307,384 @@ private struct DienstDetail: View {
         working = true
         store.removeVolunteer(tenant: dienst.tenantId, dienstId: dienst.id, name: v) { result in
             working = false
-            if case .failure(let err) = result { errorText = err.localizedDescription }
+            if case .failure(let err) = result { errorText = ErrorTranslations.translate(err) }
+        }
+    }
+}
+
+// MARK: - Dienst Card View (exact old design colors/fonts)
+private struct DienstCardView: View {
+    let d: Dienst
+    let isManager: Bool
+    @State private var volunteers: [String] = []
+    @State private var showAddVolunteer = false
+    @State private var newVolunteerName = ""
+    @State private var showCelebration = false
+    @State private var confettiTrigger = 0
+    
+    var body: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            // Header with date and time
+            VStack(alignment: .leading, spacing: 8) {
+                HStack {
+                    Text(dateText)
+                        .font(KKFont.title(18))
+                        .foregroundStyle(KKTheme.textPrimary)
+                    Spacer()
+                    // Location badge
+                    HStack(spacing: 4) {
+                        Image(systemName: "location.fill").font(.caption)
+                        Text(locationText).font(KKFont.body(12))
+                    }
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 4)
+                    .background(Color.blue.opacity(0.1))
+                    .foregroundStyle(Color.blue)
+                    .cornerRadius(8)
+                }
+                HStack(spacing: 4) {
+                    Image(systemName: "clock").font(.caption).foregroundStyle(KKTheme.textSecondary)
+                    Text(timeRangeText).font(KKFont.body(14)).foregroundStyle(KKTheme.textSecondary)
+                }
+            }
+            
+            // Volunteer status and progress
+            VStack(alignment: .leading, spacing: 8) {
+                HStack {
+                    Text("Bemanning").font(KKFont.body(12)).foregroundStyle(KKTheme.textSecondary)
+                    Spacer()
+                    HStack(spacing: 4) {
+                        Text("\(volunteers.count)/\(minimumBemanning)")
+                            .font(KKFont.body(12))
+                            .fontWeight(.medium)
+                        Circle().fill(statusColor).frame(width: 8, height: 8)
+                    }
+                    .foregroundStyle(statusColor)
+                }
+                ProgressView(value: Double(volunteers.count), total: Double(minimumBemanning))
+                    .tint(statusColor)
+                    .background(Color.gray.opacity(0.2))
+                    .cornerRadius(4)
+            }
+            
+            // Volunteers list
+            if !volunteers.isEmpty {
+                VStack(alignment: .leading, spacing: 8) {
+                    Text("Aangemeld:").font(KKFont.body(12)).foregroundStyle(KKTheme.textSecondary)
+                    LazyVStack(spacing: 6) {
+                        ForEach(volunteers, id: \.self) { volunteer in
+                            HStack {
+                                HStack(spacing: 8) {
+                                    Image(systemName: "person.fill").font(.caption).foregroundStyle(Color.green)
+                                    Text(volunteer).font(KKFont.body(14)).foregroundStyle(KKTheme.textPrimary)
+                                }
+                                Spacer()
+                                if isManager {
+                                    Button(action: { removeVolunteer(volunteer) }) {
+                                        Image(systemName: "minus.circle.fill").foregroundStyle(Color.red).font(.title3)
+                                    }
+                                }
+                            }
+                            .padding(.horizontal, 12).padding(.vertical, 8)
+                            .background(Color.green.opacity(0.1)).cornerRadius(8)
+                        }
+                    }
+                }
+            }
+            
+            // Add volunteer section or celebration
+            if isFullyStaffed {
+                VStack(spacing: 12) {
+                    HStack {
+                        Image(systemName: "checkmark.circle.fill")
+                            .foregroundStyle(Color.green)
+                            .font(.title2)
+                            .scaleEffect(showCelebration ? 1.2 : 1.0)
+                            .animation(.spring(response: 0.4, dampingFraction: 0.6), value: showCelebration)
+                        Text("Volledig bemand!")
+                            .font(KKFont.title(16))
+                            .foregroundStyle(Color.green)
+                            .fontWeight(.medium)
+                        Spacer()
+                    }
+                    Text("Deze dienst heeft genoeg vrijwilligers. Bedankt voor je hulp! 🎉")
+                        .font(KKFont.body(14))
+                        .foregroundStyle(KKTheme.textSecondary)
+                        .multilineTextAlignment(.leading)
+                }
+                .padding(16)
+                .background(Color.green.opacity(0.1))
+                .cornerRadius(12)
+                .overlay(RoundedRectangle(cornerRadius: 12).stroke(Color.green.opacity(0.3), lineWidth: 1))
+            } else if showAddVolunteer && isManager {
+                VStack(spacing: 8) {
+                    ZStack(alignment: .leading) {
+                        if newVolunteerName.isEmpty {
+                            Text("Naam vrijwilliger...").foregroundColor(.gray).padding(.leading, 12).font(KKFont.body(16))
+                        }
+                        TextField("", text: $newVolunteerName)
+                            .padding(12).background(Color.white).cornerRadius(8)
+                            .overlay(RoundedRectangle(cornerRadius: 8).stroke(Color.gray.opacity(0.3), lineWidth: 1))
+                            .font(KKFont.body(16)).foregroundColor(KKTheme.textPrimary)
+                    }
+                    .onSubmit { addVolunteer() }
+                    HStack(spacing: 12) {
+                        Button("Annuleren") { showAddVolunteer = false; newVolunteerName = "" }.buttonStyle(KKSecondaryButton())
+                        Button("Toevoegen") { addVolunteer() }.disabled(newVolunteerName.trimmingCharacters(in: .whitespaces).isEmpty).buttonStyle(KKPrimaryButton())
+                    }
+                }
+            } else {
+                if isManager {
+                    Button(action: { showAddVolunteer = true }) {
+                        HStack { Image(systemName: "plus.circle"); Text("Vrijwilliger toevoegen") }
+                    }
+                    .buttonStyle(KKSecondaryButton())
+                } else {
+                    HStack(spacing: 8) {
+                        Image(systemName: "lock.fill").font(.caption).foregroundStyle(KKTheme.textSecondary)
+                        Text("Alleen lezen (verenigingslid)").font(KKFont.body(12)).foregroundStyle(KKTheme.textSecondary)
+                    }
+                }
+            }
+        }
+        .padding(16)
+        .background(KKTheme.surfaceAlt)
+        .cornerRadius(12)
+        .overlay(ConfettiView(trigger: confettiTrigger).allowsHitTesting(false))
+        .onAppear { volunteers = d.volunteers ?? [] }
+    }
+    
+    private var dateText: String {
+        let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: "nl_NL")
+        formatter.dateFormat = "d MMMM"
+        return formatter.string(from: d.startTime)
+    }
+    private var locationText: String { d.locationName?.isEmpty == false ? d.locationName! : "Kantine" }
+    private var timeRangeText: String {
+        let start = d.startTime.formatted(date: .omitted, time: .shortened)
+        let end = d.endTime.formatted(date: .omitted, time: .shortened)
+        let duration = durationText
+        return "\(start) - \(end) (\(duration))"
+    }
+    private var statusColor: Color {
+        if volunteers.count == 0 { return Color.red }
+        if volunteers.count < minimumBemanning { return Color.orange }
+        return Color.green
+    }
+    private var isFullyStaffed: Bool { volunteers.count >= minimumBemanning }
+    private var minimumBemanning: Int { 2 } // Default from old app
+    private var durationText: String {
+        let minutes = Int(d.endTime.timeIntervalSince(d.startTime) / 60)
+        let h = minutes / 60, m = minutes % 60
+        return h > 0 ? "\(h)h\(m > 0 ? " \(m)m" : "")" : "\(m)m"
+    }
+    
+    private func addVolunteer() {
+        let name = newVolunteerName.trimmingCharacters(in: .whitespaces)
+        guard isManager, !name.isEmpty, name.count <= 15, !volunteers.contains(name) else { return }
+        guard d.startTime >= Date() else { return }
+        newVolunteerName = ""
+        showAddVolunteer = false
+        volunteers.append(name)
+        if isFullyStaffed { triggerCelebration() }
+    }
+    private func removeVolunteer(_ name: String) {
+        guard isManager else { return }
+        volunteers.removeAll { $0 == name }
+    }
+    private func triggerCelebration() {
+        withAnimation(.spring(response: 0.4, dampingFraction: 0.6)) { showCelebration = true }
+        confettiTrigger += 1
+        DispatchQueue.main.asyncAfter(deadline: .now() + 2.0) {
+            withAnimation(.easeOut(duration: 0.3)) { showCelebration = false }
+        }
+    }
+}
+
+// MARK: - Clubs list (exact old design)
+private struct ClubsViewInternal: View {
+    @EnvironmentObject var store: AppStore
+    let onTenantSelected: (String) -> Void
+    var body: some View {
+        ScrollView {
+            VStack(spacing: 24) {
+                Spacer(minLength: 24)
+                VStack(spacing: 8) {
+                    Text("SELECTEER VERENIGING")
+                        .font(KKFont.heading(24))
+                        .fontWeight(.regular)
+                        .kerning(-1.0)
+                        .foregroundStyle(KKTheme.textPrimary)
+                    Text("Kies een vereniging om je team(s) te bekijken")
+                        .font(KKFont.title(16))
+                        .foregroundStyle(KKTheme.textSecondary)
+                }
+                .multilineTextAlignment(.center)
+                VStack(spacing: 8) {
+                    ForEach(Array(store.model.tenants.values), id: \.slug) { tenant in
+                        SwipeableRow(onTap: { onTenantSelected(tenant.slug) }, onDelete: { store.removeTenant(tenant.slug) }) {
+                            HStack {
+                                VStack(alignment: .leading, spacing: 4) {
+                                    Text(tenant.name)
+                                        .font(KKFont.title(18))
+                                        .foregroundStyle(KKTheme.textPrimary)
+                                    Text(teamCountText(for: tenant))
+                                        .font(KKFont.body(14))
+                                        .foregroundStyle(KKTheme.textSecondary)
+                                }
+                                Spacer()
+                                Image(systemName: "chevron.right")
+                                    .foregroundStyle(KKTheme.textSecondary)
+                                    .font(.title2)
+                            }
+                            .padding(.horizontal, 20)
+                            .padding(.vertical, 16)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .background(KKTheme.surfaceAlt)
+                            .cornerRadius(8)
+                        }
+                    }
+                }
+                .padding(.horizontal, 12)
+                Spacer(minLength: 24)
+            }
+        }
+    }
+    private func teamCountText(for tenant: DomainModel.Tenant) -> String {
+        let count = tenant.teams.count
+        return count == 1 ? "1 team" : "\(count) teams"
+    }
+}
+
+// MARK: - Swipeable Row (ported)
+private struct SwipeableRow<Content: View>: View {
+    let onTap: () -> Void
+    let onDelete: () -> Void
+    let content: () -> Content
+    @State private var offset: CGFloat = 0
+    @State private var showingDeleteConfirmation = false
+    private let deleteButtonWidth: CGFloat = 80
+    var body: some View {
+        ZStack {
+            content()
+                .frame(maxWidth: .infinity)
+                .offset(x: offset)
+                .onTapGesture { if offset == 0 { onTap() } else { withAnimation(.spring()) { offset = 0 } } }
+                .gesture(
+                    DragGesture()
+                        .onChanged { value in let t = value.translation.width; if t < 0 { offset = max(t, -deleteButtonWidth) } else if offset < 0 { offset = min(0, offset + t) } }
+                        .onEnded { value in withAnimation(.spring()) { if value.translation.width < -deleteButtonWidth/2 || value.velocity.width < -500 { offset = -deleteButtonWidth } else { offset = 0 } } }
+                )
+            HStack { Spacer(); Button(action: { showingDeleteConfirmation = true }) { VStack { Image(systemName: "trash").font(.title2); Text("Verwijder").font(.caption) } .foregroundColor(.white).frame(width: deleteButtonWidth).frame(maxHeight: .infinity).background(Color.red) } .offset(x: offset + deleteButtonWidth).opacity(offset < 0 ? 1 : 0) }
+        }
+        .clipped()
+        .alert("Bevestig verwijdering", isPresented: $showingDeleteConfirmation) {
+            Button("Annuleren", role: .cancel) { }
+            Button("Verwijderen", role: .destructive) { withAnimation(.spring()) { offset = 0; onDelete() } }
+        } message: { Text("Weet je zeker dat je deze enrollment wilt verwijderen?") }
+    }
+}
+
+// Legacy leftover internal - removed; use the new ClubsViewInternal above
+
+private struct SettingsViewInternal: View {
+    @EnvironmentObject var store: AppStore
+    @State private var showResetConfirm = false
+    @State private var showCapAlert = false
+    
+    // App info from Info.plist
+    private var appVersion: String {
+        (Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String) ?? "—"
+    }
+    private var appBuild: String {
+        (Bundle.main.object(forInfoDictionaryKey: "CFBundleVersion") as? String) ?? "—"
+    }
+    
+    var body: some View {
+        ScrollView {
+            VStack(spacing: 24) {
+                Spacer(minLength: 24)
+                VStack(spacing: 8) {
+                    Text("INSTELLINGEN")
+                        .font(KKFont.heading(24))
+                        .fontWeight(.regular)
+                        .kerning(-1.0)
+                        .foregroundStyle(KKTheme.textPrimary)
+                    Text("Beheer je aanmeldingen en voorkeuren")
+                        .font(KKFont.title(16))
+                        .foregroundStyle(KKTheme.textSecondary)
+                }
+                .multilineTextAlignment(.center)
+                
+                // Enrollment actions card
+                VStack(alignment: .leading, spacing: 12) {
+                    Text("Aanmeldingen")
+                        .font(KKFont.body(12))
+                        .foregroundStyle(KKTheme.textSecondary)
+                    Button {
+                        let totalTeams = store.model.tenants.values.reduce(0) { $0 + $1.teams.count }
+                        guard totalTeams < 5 else { showCapAlert = true; return }
+                        store.startNewEnrollment()
+                    } label: {
+                        Label("Team toevoegen", systemImage: "plus.circle.fill")
+                    }
+                    .buttonStyle(KKSecondaryButton())
+                }
+                .kkCard()
+                .padding(.horizontal, 24)
+
+                // Notifications card (info only)
+                VStack(alignment: .leading, spacing: 12) {
+                    Text("Notificaties")
+                        .font(KKFont.body(12))
+                        .foregroundStyle(KKTheme.textSecondary)
+                    Text("Push meldingen worden automatisch geconfigureerd bij eerste gebruik. Heb je geweigerd? Ga dan naar Instellingen > Apps > Kantine Koning om meldingen alsnog toe te staan.")
+                        .font(KKFont.body(12))
+                        .foregroundStyle(KKTheme.textSecondary)
+                }
+                .kkCard()
+                .padding(.horizontal, 24)
+                
+                // Destructive reset card
+                VStack(alignment: .leading, spacing: 12) {
+                    Text("Geavanceerd")
+                        .font(KKFont.body(12))
+                        .foregroundStyle(KKTheme.textSecondary)
+                    Text("Reset alle gegevens zet de app terug naar de beginstatus.")
+                        .font(KKFont.body(12))
+                        .foregroundStyle(KKTheme.textSecondary)
+                    Button {
+                        showResetConfirm = true
+                    } label: {
+                        Label("Alles resetten", systemImage: "trash.fill")
+                            .foregroundStyle(Color.red)
+                    }
+                    .buttonStyle(KKSecondaryButton())
+                }
+                .kkCard()
+                .padding(.horizontal, 24)
+                
+                // About: small centered text
+                Text("Kantine Koning – versie \(appVersion) (\(appBuild))")
+                    .font(KKFont.body(12))
+                    .foregroundStyle(KKTheme.textSecondary)
+                    .multilineTextAlignment(.center)
+                    .padding(.horizontal, 24)
+                
+                Spacer(minLength: 24)
+            }
+        }
+        .alert("Limiet bereikt", isPresented: $showCapAlert) {
+            Button("OK", role: .cancel) { }
+        } message: {
+            Text("Je kunt maximaal 5 teams volgen. Verwijder eerst een team om verder te gaan.")
+        }
+        .alert("Weet je het zeker?", isPresented: $showResetConfirm) {
+            Button("Annuleren", role: .cancel) { }
+            Button("Reset", role: .destructive) { store.resetAll() }
+        } message: {
+            Text("Dit verwijdert alle lokale enrollments en gegevens van dit apparaat.")
         }
     }
 }

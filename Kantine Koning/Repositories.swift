@@ -5,9 +5,11 @@ protocol EnrollmentRepository {
     func loadModel() -> DomainModel
     func persist(model: DomainModel)
     func requestEnrollment(email: String, tenant: TenantID, teamCodes: [TeamID], completion: @escaping (Result<Void, Error>) -> Void)
+    func fetchAllowedTeams(email: String, tenant: TenantID, completion: @escaping (Result<[SearchTeam], Error>) -> Void)
     func registerDevice(enrollmentToken: String, pushToken: String?, completion: @escaping (Result<EnrollmentDelta, Error>) -> Void)
     func removeTeams(_ teamCodes: [TeamID], completion: @escaping (Result<Void, Error>) -> Void)
     func removeTenant(_ tenant: TenantID, completion: @escaping (Result<Void, Error>) -> Void)
+    func removeAllEnrollments(completion: @escaping (Result<Void, Error>) -> Void)
     func searchTeams(tenant: TenantID, query: String, completion: @escaping (Result<[SearchTeam], Error>) -> Void)
     func registerMember(tenantSlug: String, tenantName: String, teamIds: [TeamID], pushToken: String?, completion: @escaping (Result<EnrollmentDelta, Error>) -> Void)
 }
@@ -36,6 +38,12 @@ final class DefaultEnrollmentRepository: EnrollmentRepository {
         backend.requestEnrollment(email: email, tenantSlug: tenant, teamCodes: teamCodes, completion: completion)
     }
 
+    func fetchAllowedTeams(email: String, tenant: TenantID, completion: @escaping (Result<[SearchTeam], Error>) -> Void) {
+        backend.fetchAllowedTeams(email: email, tenantSlug: tenant) { result in
+            completion(result.map { list in list.map { SearchTeam(id: $0.id, code: $0.code, name: $0.naam) } })
+        }
+    }
+
     func registerDevice(enrollmentToken: String, pushToken: String?, completion: @escaping (Result<EnrollmentDelta, Error>) -> Void) {
         backend.registerDevice(enrollmentToken: enrollmentToken, pushToken: pushToken, completion: completion)
     }
@@ -46,6 +54,11 @@ final class DefaultEnrollmentRepository: EnrollmentRepository {
 
     func removeTenant(_ tenant: TenantID, completion: @escaping (Result<Void, Error>) -> Void) {
         backend.removeTenant(tenant, completion: completion)
+    }
+    
+    func removeAllEnrollments(completion: @escaping (Result<Void, Error>) -> Void) {
+        print("[Repo] 📡 Repository calling backend.removeAllEnrollments")
+        backend.removeAllEnrollments(completion: completion)
     }
 
     func searchTeams(tenant: TenantID, query: String, completion: @escaping (Result<[SearchTeam], Error>) -> Void) {

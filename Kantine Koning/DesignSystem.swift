@@ -84,4 +84,67 @@ struct KKCard: ViewModifier {
 
 extension View { func kkCard() -> some View { modifier(KKCard()) } }
 
+// MARK: - Input styling (old app style)
+struct KKTextFieldStyle: TextFieldStyle {
+    let placeholder: String?
+    init(placeholder: String? = nil) { self.placeholder = placeholder }
+    func _body(configuration: TextField<_Label>) -> some View {
+        configuration
+            .padding(12)
+            .background(KKTheme.surfaceAlt)
+            .cornerRadius(8)
+            .font(KKFont.body(16))
+            .foregroundColor(KKTheme.textPrimary)
+    }
+}
+
+extension View {
+    func kkTextField() -> some View { textFieldStyle(KKTextFieldStyle()) }
+}
+
+// MARK: - Selectable row used for role and team selection (old app style)
+struct KKSelectableRow: View {
+    let title: String
+    let subtitle: String?
+    let isSelected: Bool
+    var isDisabled: Bool = false
+    var disabledReason: String? = nil
+    let action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            HStack(alignment: .center, spacing: 12) {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(title)
+                        .font(KKFont.title(16))
+                        .foregroundStyle(isDisabled ? KKTheme.textSecondary.opacity(0.6) : KKTheme.textPrimary)
+                    if let subtitle = subtitle, !subtitle.isEmpty {
+                        Text(subtitle)
+                            .font(KKFont.body(12))
+                            .foregroundStyle(KKTheme.textSecondary)
+                    }
+                    if isDisabled, let reason = disabledReason {
+                        Text(reason)
+                            .font(KKFont.body(11))
+                            .foregroundStyle(KKTheme.textSecondary.opacity(0.8))
+                            .italic()
+                    }
+                }
+                Spacer()
+                Image(systemName: isSelected ? "checkmark.circle.fill" : "circle")
+                    .foregroundStyle(isDisabled ? KKTheme.textSecondary.opacity(0.4) : (isSelected ? KKTheme.accent : KKTheme.textSecondary))
+            }
+            .padding(16)
+            .background(isDisabled ? KKTheme.surfaceAlt.opacity(0.6) : (isSelected ? KKTheme.accent.opacity(0.1) : KKTheme.surfaceAlt))
+            .overlay(
+                RoundedRectangle(cornerRadius: 12)
+                    .stroke(isDisabled ? Color.clear : (isSelected ? KKTheme.accent.opacity(0.6) : Color.clear), lineWidth: 1)
+            )
+            .cornerRadius(12)
+        }
+        .buttonStyle(PlainButtonStyle())
+        .disabled(isDisabled)
+    }
+}
+
 

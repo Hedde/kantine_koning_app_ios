@@ -19,6 +19,7 @@ final class DefaultPushService: PushService {
     }
 
     func updateAPNs(token: String, auth: String?) {
+        guard let auth = auth, !auth.isEmpty else { return }
         backend.authToken = auth
         backend.updateAPNsToken(token) { result in
             if case .failure(let err) = result { print("APNs upload failed: \(err)") }

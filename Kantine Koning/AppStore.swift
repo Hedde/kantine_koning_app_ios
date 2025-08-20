@@ -17,6 +17,7 @@ final class AppStore: ObservableObject {
     @Published var upcoming: [Dienst] = []
     @Published var searchResults: [SearchTeam] = []
     @Published var onboardingScan: ScannedTenant?
+    @Published var pendingCTA: CTA?
 
     // Services
     private let enrollmentRepository: EnrollmentRepository
@@ -56,25 +57,80 @@ final class AppStore: ObservableObject {
 
     func startNewEnrollment() { appPhase = .onboarding }
     func resetAll() {
+        print("[Reset] 🗑️ Starting full app reset...")
+        print("[Reset] 📊 Current model has \(model.tenants.count) tenants")
+        
+        // Call backend to remove all enrollments first
+        if let authToken = model.primaryAuthToken {
+            print("[Reset] 📡 Calling backend removeAllEnrollments with token: \(authToken.prefix(20))...")
+            enrollmentRepository.removeAllEnrollments { [weak self] result in
+                print("[Reset] 📥 Backend removeAll completed with result: \(result)")
+                DispatchQueue.main.async {
+                    switch result {
+                    case .success:
+                        print("[Reset] ✅ Backend reset successful")
+                    case .failure(let error):
+                        print("[Reset] ❌ Backend reset failed: \(error)")
+                    }
+                    // Always clear local state regardless
+                    self?.clearLocalState()
+                }
+            }
+        } else {
+            print("[Reset] ⚠️ No auth token for backend reset, clearing local only")
+            clearLocalState()
+        }
+    }
+    
+    private func clearLocalState() {
+        print("[Reset] 🧹 Clearing local state...")
+        print("[Reset] 📊 Before clear: \(model.tenants.count) tenants, \(upcoming.count) diensten")
         model = .empty
         upcoming = []
         searchResults = []
         onboardingScan = nil
         pushToken = nil
+        print("[Reset] 📊 After clear: \(model.tenants.count) tenants, \(upcoming.count) diensten")
+        print("[Reset] 🎯 Setting appPhase to .onboarding")
         appPhase = .onboarding
         enrollmentRepository.persist(model: model)
+        print("[Reset] ✅ Local reset complete - should now see onboarding")
     }
 
     // QR handling: a simplified representation of scanned tenant
     struct ScannedTenant { let slug: TenantID; let name: String }
     func handleQRScan(slug: TenantID, name: String) { onboardingScan = ScannedTenant(slug: slug, name: name) }
 
+    enum CTA: Equatable { case shiftVolunteer(token: String) }
+
     func submitEmail(_ email: String, for tenant: TenantID, selectedTeamCodes: [TeamID], completion: @escaping (Result<Void, Error>) -> Void) {
-        enrollmentRepository.requestEnrollment(email: email, tenant: tenant, teamCodes: selectedTeamCodes) { [weak self] result in
-            switch result {
-            case .success:
-                DispatchQueue.main.async { self?.appPhase = .enrollmentPending(EnrollmentContext(tenant: tenant, issuedAt: Date())); completion(.success(())) }
-            case .failure(let err): completion(.failure(err))
+        // Old flow: if no team codes yet, first fetch allowed teams for selection
+        if selectedTeamCodes.isEmpty {
+            print("[Enroll] 🔎 fetching allowed teams for email=\(email) tenant=\(tenant)")
+            enrollmentRepository.fetchAllowedTeams(email: email, tenant: tenant) { [weak self] result in
+                DispatchQueue.main.async {
+                    switch result {
+                    case .success(let teams):
+                        print("[Enroll] ✅ allowed teams count=\(teams.count)")
+                        // In a full flow, we would present team selection here.
+                        // For now, keep state for UI to show selection in onboarding.
+                        self?.searchResults = teams
+                        completion(.success(()))
+                    case .failure(let err):
+                        print("[Enroll] ❌ fetch allowed teams: \(err)")
+                        completion(.failure(err))
+                    }
+                }
+            }
+        } else {
+            enrollmentRepository.requestEnrollment(email: email, tenant: tenant, teamCodes: selectedTeamCodes) { [weak self] result in
+                switch result {
+                case .success:
+                    DispatchQueue.main.async { self?.appPhase = .enrollmentPending(EnrollmentContext(tenant: tenant, issuedAt: Date())); completion(.success(())) }
+                case .failure(let err): 
+                    let translated = ErrorTranslations.translate(err)
+                    completion(.failure(NSError(domain: "AppStore", code: -1, userInfo: [NSLocalizedDescriptionKey: translated])))
+                }
             }
         }
     }
@@ -113,22 +169,44 @@ final class AppStore: ObservableObject {
     }
 
     func removeTenant(_ tenant: TenantID) {
-        enrollmentRepository.removeTenant(tenant) { [weak self] _ in
-            guard let self = self else { return }
-            DispatchQueue.main.async {
-                self.model = self.model.removingTenant(tenant)
-                self.enrollmentRepository.persist(model: self.model)
+        print("[AppStore] 🗑️ Removing tenant: \(tenant)")
+        print("[AppStore] 🔍 Auth token available: \(model.primaryAuthToken != nil)")
+        
+        // Always update local state first for immediate UI feedback
+        let updatedModel = model.removingTenant(tenant)
+        model = updatedModel
+        enrollmentRepository.persist(model: model)
+        print("[AppStore] ✅ Local tenant removal complete")
+        
+        // Try backend removal if we have auth (managers only)
+        if model.primaryAuthToken != nil {
+            enrollmentRepository.removeTenant(tenant) { result in
+                print("[AppStore] 📡 Backend tenant removal result: \(result)")
+                // Local state already updated, so no need to update again
             }
+        } else {
+            print("[AppStore] ⚠️ No auth token - member enrollment, local removal only")
         }
     }
 
     func removeTeam(_ team: TeamID, from tenant: TenantID) {
-        enrollmentRepository.removeTeams([team]) { [weak self] _ in
-            guard let self = self else { return }
-            DispatchQueue.main.async {
-                self.model = self.model.removingTeam(team, from: tenant)
-                self.enrollmentRepository.persist(model: self.model)
+        print("[AppStore] 🗑️ Removing team: \(team) from tenant: \(tenant)")
+        print("[AppStore] 🔍 Auth token available: \(model.primaryAuthToken != nil)")
+        
+        // Always update local state first for immediate UI feedback
+        let updatedModel = model.removingTeam(team, from: tenant)
+        model = updatedModel
+        enrollmentRepository.persist(model: model)
+        print("[AppStore] ✅ Local team removal complete")
+        
+        // Try backend removal if we have auth (managers only)
+        if model.primaryAuthToken != nil {
+            enrollmentRepository.removeTeams([team]) { result in
+                print("[AppStore] 📡 Backend team removal result: \(result)")
+                // Local state already updated, so no need to update again
             }
+        } else {
+            print("[AppStore] ⚠️ No auth token - member enrollment, local removal only")
         }
     }
 
@@ -218,9 +296,6 @@ extension AppStore {
 
 // MARK: - CTA
 extension AppStore {
-    enum CTA { case shiftVolunteer(token: String) }
-    @Published var pendingCTA: CTA?
-
     func performCTA() {
         guard let cta = pendingCTA else { return }
         switch cta {
@@ -237,7 +312,7 @@ extension AppStore {
     func getNotificationStatus(completion: @escaping (NotificationStatus) -> Void) {
         UNUserNotificationCenter.current().getNotificationSettings { settings in
             switch settings.authorizationStatus {
-            case .authorized, .provisional: completion(.authorized)
+            case .authorized, .provisional, .ephemeral: completion(.authorized)
             case .denied: completion(.denied)
             case .notDetermined: completion(.notDetermined)
             @unknown default: completion(.denied)
