@@ -358,13 +358,64 @@ extension AppStore {
     }
 
     func addVolunteer(tenant: TenantID, dienstId: String, name: String, completion: @escaping (Result<Void, Error>) -> Void) {
-        print("[AppStore] 📡 Adding volunteer: ensuring auth token is set")
-        ensureBackendAuthToken()
-        dienstRepository.addVolunteer(tenant: tenant, dienstId: dienstId, name: name) { [weak self] result in
+        print("[AppStore] 📡 Adding volunteer: finding best auth token")
+        
+        // Find the dienst to determine which team it belongs to
+        guard let dienst = upcoming.first(where: { $0.id == dienstId }),
+              let dienstTeamId = dienst.teamId else {
+            print("[AppStore] ❌ Dienst \(dienstId) or team not found")
+            completion(.failure(NSError(domain: "AppStore", code: 404, userInfo: [NSLocalizedDescriptionKey: "Dienst not found"])))
+            return
+        }
+        
+        // Find tenant and check if we have manager access for this team
+        guard let tenantData = model.tenants[tenant] else {
+            print("[AppStore] ❌ Tenant \(tenant) not found")
+            completion(.failure(NSError(domain: "AppStore", code: 404, userInfo: [NSLocalizedDescriptionKey: "Tenant not found"])))
+            return
+        }
+        
+        // Check if we have manager role for this specific team
+        let hasManagerAccess = tenantData.teams.contains { team in
+            team.id == dienstTeamId && team.role == .manager
+        }
+        
+        guard hasManagerAccess else {
+            print("[AppStore] ❌ No manager access for team \(dienstTeamId)")
+            completion(.failure(NSError(domain: "AppStore", code: 403, userInfo: [NSLocalizedDescriptionKey: "No manager access for this team"])))
+            return
+        }
+        
+        // Use specific token for this team (from enrollment)
+        guard let authToken = model.authTokenForTeam(dienstTeamId, in: tenant) else {
+            print("[AppStore] ❌ No auth token for team \(dienstTeamId) in tenant \(tenant)")
+            completion(.failure(NSError(domain: "AppStore", code: 401, userInfo: [NSLocalizedDescriptionKey: "No auth token for this team"])))
+            return
+        }
+        
+        print("[AppStore] 🔑 Using enrollment-specific token for team \(dienstTeamId): \(authToken.prefix(20))...")
+        
+        let backend = BackendClient()
+        backend.authToken = authToken
+        backend.addVolunteer(tenant: tenant, dienstId: dienstId, name: name) { [weak self] result in
             DispatchQueue.main.async {
                 switch result {
                 case .success(let updated):
-                    self?.upcoming.replace(with: updated)
+                    // Update the dienst in our local list
+                    if let index = self?.upcoming.firstIndex(where: { $0.id == dienstId }) {
+                        let updatedDienst = Dienst(
+                            id: updated.id,
+                            tenantId: updated.tenant_id,
+                            teamId: updated.team?.code ?? updated.team?.id,
+                            startTime: updated.start_tijd,
+                            endTime: updated.eind_tijd,
+                            status: updated.status,
+                            locationName: updated.locatie_naam,
+                            volunteers: updated.aanmeldingen,
+                            updatedAt: updated.updated_at
+                        )
+                        self?.upcoming[index] = updatedDienst
+                    }
                     completion(.success(()))
                 case .failure(let err):
                     completion(.failure(err))
@@ -374,13 +425,64 @@ extension AppStore {
     }
 
     func removeVolunteer(tenant: TenantID, dienstId: String, name: String, completion: @escaping (Result<Void, Error>) -> Void) {
-        print("[AppStore] 📡 Removing volunteer: ensuring auth token is set")
-        ensureBackendAuthToken()
-        dienstRepository.removeVolunteer(tenant: tenant, dienstId: dienstId, name: name) { [weak self] result in
+        print("[AppStore] 📡 Removing volunteer: finding best auth token")
+        
+        // Find the dienst to determine which team it belongs to
+        guard let dienst = upcoming.first(where: { $0.id == dienstId }),
+              let dienstTeamId = dienst.teamId else {
+            print("[AppStore] ❌ Dienst \(dienstId) or team not found")
+            completion(.failure(NSError(domain: "AppStore", code: 404, userInfo: [NSLocalizedDescriptionKey: "Dienst not found"])))
+            return
+        }
+        
+        // Find tenant and check if we have manager access for this team
+        guard let tenantData = model.tenants[tenant] else {
+            print("[AppStore] ❌ Tenant \(tenant) not found")
+            completion(.failure(NSError(domain: "AppStore", code: 404, userInfo: [NSLocalizedDescriptionKey: "Tenant not found"])))
+            return
+        }
+        
+        // Check if we have manager role for this specific team
+        let hasManagerAccess = tenantData.teams.contains { team in
+            team.id == dienstTeamId && team.role == .manager
+        }
+        
+        guard hasManagerAccess else {
+            print("[AppStore] ❌ No manager access for team \(dienstTeamId)")
+            completion(.failure(NSError(domain: "AppStore", code: 403, userInfo: [NSLocalizedDescriptionKey: "No manager access for this team"])))
+            return
+        }
+        
+        // Use specific token for this team (from enrollment)
+        guard let authToken = model.authTokenForTeam(dienstTeamId, in: tenant) else {
+            print("[AppStore] ❌ No auth token for team \(dienstTeamId) in tenant \(tenant)")
+            completion(.failure(NSError(domain: "AppStore", code: 401, userInfo: [NSLocalizedDescriptionKey: "No auth token for this team"])))
+            return
+        }
+        
+        print("[AppStore] 🔑 Using enrollment-specific token for team \(dienstTeamId): \(authToken.prefix(20))...")
+        
+        let backend = BackendClient()
+        backend.authToken = authToken
+        backend.removeVolunteer(tenant: tenant, dienstId: dienstId, name: name) { [weak self] result in
             DispatchQueue.main.async {
                 switch result {
                 case .success(let updated):
-                    self?.upcoming.replace(with: updated)
+                    // Update the dienst in our local list
+                    if let index = self?.upcoming.firstIndex(where: { $0.id == dienstId }) {
+                        let updatedDienst = Dienst(
+                            id: updated.id,
+                            tenantId: updated.tenant_id,
+                            teamId: updated.team?.code ?? updated.team?.id,
+                            startTime: updated.start_tijd,
+                            endTime: updated.eind_tijd,
+                            status: updated.status,
+                            locationName: updated.locatie_naam,
+                            volunteers: updated.aanmeldingen,
+                            updatedAt: updated.updated_at
+                        )
+                        self?.upcoming[index] = updatedDienst
+                    }
                     completion(.success(()))
                 case .failure(let err):
                     completion(.failure(err))

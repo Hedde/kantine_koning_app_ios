@@ -78,25 +78,22 @@ struct LeaderboardHostView: View {
                         Spacer(minLength: 24)
                         
                         // Header for global
-                        VStack(spacing: 12) {
-                            HStack(spacing: 12) {
-                                Image(systemName: "globe")
-                                    .font(.system(size: 48))
-                                    .foregroundStyle(KKTheme.accent)
-                                
-                                VStack(spacing: 4) {
-                                    Text("NATIONAAL")
-                                        .font(KKFont.heading(20))
-                                        .fontWeight(.regular)
-                                        .kerning(-0.5)
-                                        .foregroundStyle(KKTheme.textPrimary)
-                                    Text("Leaderboard")
-                                        .font(KKFont.title(14))
-                                        .foregroundStyle(KKTheme.textSecondary)
-                                }
+                        HStack(spacing: 12) {
+                            Image(systemName: "globe")
+                                .font(.system(size: 48))
+                                .foregroundStyle(KKTheme.accent)
+                            
+                            VStack(alignment: .leading, spacing: 4) {
+                                Text("NATIONAAL")
+                                    .font(KKFont.heading(20))
+                                    .fontWeight(.regular)
+                                    .kerning(-0.5)
+                                    .foregroundStyle(KKTheme.textPrimary)
+                                Text("Leaderboard")
+                                    .font(KKFont.title(14))
+                                    .foregroundStyle(KKTheme.textSecondary)
                             }
                         }
-                        .multilineTextAlignment(.center)
                         
                         // Period header
                         Text(selectedPeriod.headerText)
@@ -130,7 +127,10 @@ struct LeaderboardHostView: View {
                         } else if let error = errorMessage {
                             ErrorView(message: error, onRetry: loadGlobalLeaderboard)
                         } else if let globalData = store.globalLeaderboard {
-                            GlobalLeaderboardView(leaderboard: globalData, highlightedTeamId: selectedTeam)
+                            GlobalLeaderboardView(
+                                leaderboard: globalData, 
+                                highlightedTeamCodes: Set(store.model.tenants.values.flatMap { $0.teams.map { $0.id } })
+                            )
                         }
                         
                         Spacer(minLength: 24)
@@ -148,32 +148,27 @@ struct LeaderboardHostView: View {
                         Spacer(minLength: 24)
                         
                         // Header with club info
-                        VStack(spacing: 12) {
-                            // Club logo and name
-                            HStack(spacing: 12) {
-                                AsyncImage(url: store.leaderboards[tenant.slug]?.clubLogoUrl.flatMap(URL.init)) { image in
-                                    image.resizable().scaledToFit()
-                                } placeholder: {
-                                    Image(systemName: "building.2.fill")
-                                        .foregroundStyle(KKTheme.accent)
-                                }
-                                .frame(width: 48, height: 48)
-                                .background(KKTheme.surfaceAlt)
-                                .cornerRadius(8)
-                                
-                                VStack(spacing: 4) {
-                                    Text(tenant.name.uppercased())
-                                        .font(KKFont.heading(20))
-                                        .fontWeight(.regular)
-                                        .kerning(-0.5)
-                                        .foregroundStyle(KKTheme.textPrimary)
-                                    Text("Leaderboard")
-                                        .font(KKFont.title(14))
-                                        .foregroundStyle(KKTheme.textSecondary)
-                                }
+                        HStack(spacing: 12) {
+                            AsyncImage(url: store.leaderboards[tenant.slug]?.clubLogoUrl.flatMap(URL.init)) { image in
+                                image.resizable().scaledToFit()
+                            } placeholder: {
+                                Image(systemName: "building.2.fill")
+                                    .foregroundStyle(KKTheme.accent)
+                            }
+                            .frame(width: 48, height: 48)
+                            .cornerRadius(8)
+                            
+                            VStack(alignment: .leading, spacing: 4) {
+                                Text(tenant.name.uppercased())
+                                    .font(KKFont.heading(20))
+                                    .fontWeight(.regular)
+                                    .kerning(-0.5)
+                                    .foregroundStyle(KKTheme.textPrimary)
+                                Text("Leaderboard")
+                                    .font(KKFont.title(14))
+                                    .foregroundStyle(KKTheme.textSecondary)
                             }
                         }
-                        .multilineTextAlignment(.center)
                         
                         // Period header
                         Text(selectedPeriod.headerText)
@@ -213,7 +208,24 @@ struct LeaderboardHostView: View {
                                 loadLeaderboard(for: tenant.slug)
                             })
                         } else if let leaderboardData = store.leaderboards[tenant.slug] {
-                            LocalLeaderboardView(leaderboard: leaderboardData, highlightedTeamId: selectedTeam)
+                            LocalLeaderboardView(
+                                leaderboard: leaderboardData, 
+                                highlightedTeamCodes: Set(tenant.teams.map { $0.id })  // These are codes, not IDs
+                            )
+                            .onAppear {
+                                let enrolledTeamCodes = Set(tenant.teams.map { $0.id })  // These are actually codes
+                                let leaderboardTeamIds = leaderboardData.teams.map { $0.id }
+                                
+                                print("[LeaderboardView] 🎯 Enrolled team codes: \(enrolledTeamCodes)")
+                                print("[LeaderboardView] 📊 Leaderboard team IDs: \(leaderboardTeamIds)")
+                                
+                                // Debug: show team mapping from leaderboard response
+                                for team in leaderboardData.teams {
+                                    if enrolledTeamCodes.contains(team.code ?? "") {
+                                        print("[LeaderboardView] 🔗 HIGHLIGHTED: \(team.name) (code: \(team.code ?? "nil")) rank \(team.rank)")
+                                    }
+                                }
+                            }
                         }
                         
                         Spacer(minLength: 24)
@@ -630,7 +642,7 @@ private struct LeaderboardWelcomeView: View {
 // MARK: - Local Leaderboard View
 private struct LocalLeaderboardView: View {
     let leaderboard: LeaderboardData
-    let highlightedTeamId: String?
+    let highlightedTeamCodes: Set<String>
     
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
@@ -639,7 +651,7 @@ private struct LocalLeaderboardView: View {
                 ForEach(Array(leaderboard.teams.enumerated()), id: \.element.id) { index, team in
                     TeamRowView(
                         team: team,
-                        isHighlighted: highlightedTeamId != nil && team.id == highlightedTeamId,
+                        isHighlighted: highlightedTeamCodes.contains(team.code ?? ""),
                         isLocal: true
                     )
                 }
@@ -652,7 +664,7 @@ private struct LocalLeaderboardView: View {
 // MARK: - Global Leaderboard View
 private struct GlobalLeaderboardView: View {
     let leaderboard: GlobalLeaderboardData
-    let highlightedTeamId: String?
+    let highlightedTeamCodes: Set<String>
     
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
@@ -661,7 +673,7 @@ private struct GlobalLeaderboardView: View {
                 ForEach(Array(leaderboard.teams.enumerated()), id: \.element.id) { index, team in
                     GlobalTeamRowView(
                         team: team,
-                        isHighlighted: highlightedTeamId != nil && team.id == highlightedTeamId
+                        isHighlighted: highlightedTeamCodes.contains(team.code ?? "")
                     )
                 }
             }
@@ -684,7 +696,7 @@ private struct GlobalTeamRowView: View {
                     .frame(width: 32, height: 32)
                 if isHighlighted {
                     Circle()
-                        .stroke(Color.white, lineWidth: 2)
+                        .stroke(Color.white, lineWidth: 1)
                         .frame(width: 32, height: 32)
                 }
                 Text("\(team.rank)")
@@ -701,13 +713,7 @@ private struct GlobalTeamRowView: View {
                     .foregroundStyle(KKTheme.textSecondary)
             }
             .frame(width: 32, height: 32)
-            .background(KKTheme.surfaceAlt)
             .cornerRadius(6)
-            .overlay(
-                // Special border for highlighted team's club logo
-                RoundedRectangle(cornerRadius: 6)
-                    .stroke(isHighlighted ? KKTheme.accent : Color.clear, lineWidth: 2)
-            )
             
             // Team and club info
             VStack(alignment: .leading, spacing: 4) {
@@ -763,15 +769,29 @@ private struct GlobalTeamRowView: View {
         }
         .padding(.horizontal, 16)
         .padding(.vertical, 12)
-        .background(isHighlighted ? KKTheme.accent.opacity(0.1) : KKTheme.surfaceAlt)
+        .background(highlightedBackground)
         .cornerRadius(8)
         .overlay(
             RoundedRectangle(cornerRadius: 8)
-                .stroke(isHighlighted ? KKTheme.accent : Color.clear, lineWidth: 2)
+                .stroke(isHighlighted ? Color.orange : Color.clear, lineWidth: 1)  // Dunne border
         )
+        .shadow(color: isHighlighted ? Color.orange.opacity(0.4) : Color.clear, radius: 6, x: 0, y: 2)
+        .scaleEffect(isHighlighted ? 1.02 : 1.0)
+        .animation(.easeInOut(duration: 0.2), value: isHighlighted)
+    }
+    
+    private var highlightedBackground: Color {
+        if isHighlighted {
+            return Color.orange.opacity(0.25)  // Test kleur
+        } else {
+            return KKTheme.surfaceAlt
+        }
     }
     
     private var rankColor: Color {
+        if isHighlighted {
+            return KKTheme.accent
+        }
         switch team.rank {
         case 1: return Color.yellow
         case 2: return Color.gray
@@ -796,7 +816,7 @@ private struct TeamRowView: View {
                     .frame(width: 32, height: 32)
                 if isHighlighted {
                     Circle()
-                        .stroke(Color.white, lineWidth: 2)
+                        .stroke(Color.white, lineWidth: 1)
                         .frame(width: 32, height: 32)
                 }
                 Text("\(team.rank)")
@@ -855,15 +875,21 @@ private struct TeamRowView: View {
         }
         .padding(.horizontal, 16)
         .padding(.vertical, 12)
-        .background(isHighlighted ? KKTheme.accent.opacity(0.1) : KKTheme.surfaceAlt)
+        .background(isHighlighted ? Color.orange.opacity(0.25) : KKTheme.surfaceAlt)
         .cornerRadius(8)
         .overlay(
             RoundedRectangle(cornerRadius: 8)
-                .stroke(isHighlighted ? KKTheme.accent : Color.clear, lineWidth: 2)
+                .stroke(isHighlighted ? Color.orange : Color.clear, lineWidth: 1)  // Dunne border
         )
+        .shadow(color: isHighlighted ? Color.orange.opacity(0.4) : Color.clear, radius: 6, x: 0, y: 2)
+        .scaleEffect(isHighlighted ? 1.02 : 1.0)
+        .animation(.easeInOut(duration: 0.2), value: isHighlighted)
     }
     
     private var rankColor: Color {
+        if isHighlighted {
+            return KKTheme.accent
+        }
         switch team.rank {
         case 1: return Color.yellow
         case 2: return Color.gray

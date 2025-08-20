@@ -6,12 +6,24 @@ typealias TeamID = String    // code or id from backend
 
 // MARK: - Domain
 struct DomainModel: Codable, Equatable {
+    // MARK: - Enrollment tracking for multi-token support
+    struct Enrollment: Codable, Equatable, Identifiable {
+        let id: String
+        let tenantSlug: TenantID
+        let teams: [TeamID]  // Team IDs for this enrollment
+        let role: Role
+        let signedDeviceToken: String
+        let enrolledAt: Date
+        let email: String?
+    }
+    
     struct Tenant: Codable, Equatable, Identifiable {
         var id: TenantID { slug }
         let slug: TenantID
         let name: String
         var teams: [Team]
-        var signedDeviceToken: String?
+        var signedDeviceToken: String?  // Primary token (backwards compatibility)
+        var enrollments: [String] = []  // Enrollment IDs for this tenant
     }
 
     struct Team: Codable, Equatable, Identifiable {
@@ -28,12 +40,13 @@ struct DomainModel: Codable, Equatable {
     var deviceID: String
     var apnsToken: String?
     var tenants: [TenantID: Tenant]
+    var enrollments: [String: Enrollment] = [:]  // enrollmentId -> Enrollment
     var createdAt: Date
     var updatedAt: Date
 
     static var empty: DomainModel {
         let now = Date()
-        return DomainModel(deviceID: UUID().uuidString, apnsToken: nil, tenants: [:], createdAt: now, updatedAt: now)
+        return DomainModel(deviceID: UUID().uuidString, apnsToken: nil, tenants: [:], enrollments: [:], createdAt: now, updatedAt: now)
     }
 
     var isEnrolled: Bool { !tenants.isEmpty }
@@ -49,6 +62,15 @@ struct DomainModel: Codable, Equatable {
         }
         print("[Model] ⚠️ No auth token available")
         return nil
+    }
+    
+    // MARK: - Token Management
+    func authTokenForTeam(_ teamId: TeamID, in tenant: TenantID) -> String? {
+        // Find enrollment that contains this team
+        let enrollment = enrollments.values.first { enrollment in
+            enrollment.tenantSlug == tenant && enrollment.teams.contains(teamId)
+        }
+        return enrollment?.signedDeviceToken ?? tenants[tenant]?.signedDeviceToken
     }
 
     // MARK: - Mutations (immutable-style)
@@ -73,10 +95,26 @@ struct DomainModel: Codable, Equatable {
         let incoming = delta.teams.filter { !existingIds.contains($0.id) }
         print("[Model] 📊 After dedup: \(incoming.count) teams to add")
         tenant.teams.append(contentsOf: incoming)
+        
+        // Create enrollment record to track this specific token/team combination
+        let enrollmentId = UUID().uuidString
+        let enrollment = Enrollment(
+            id: enrollmentId,
+            tenantSlug: delta.tenant.slug,
+            teams: delta.teams.map { $0.id },
+            role: delta.teams.first?.role ?? .member,
+            signedDeviceToken: delta.signedDeviceToken ?? "",
+            enrolledAt: now,
+            email: delta.teams.first?.email
+        )
+        
+        copy.enrollments[enrollmentId] = enrollment
+        tenant.enrollments.append(enrollmentId)
         copy.tenants[tenant.slug] = tenant
         copy.updatedAt = now
         
         print("[Model] 📊 Final tenant teams: \(tenant.teams.count)")
+        print("[Model] 📊 Created enrollment \(enrollmentId) with \(delta.teams.count) teams")
         for team in tenant.teams {
             print("[Model]   → final: id=\(team.id) code=\(team.code ?? "nil") name=\(team.name)")
         }
