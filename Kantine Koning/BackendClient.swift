@@ -2,7 +2,7 @@ import Foundation
 import UIKit
 
 final class BackendClient {
-    internal let baseURL: URL = {
+    let baseURL: URL = {
         #if DEBUG
         let defaultURL = "http://localhost:4000"
         #else
