@@ -1,68 +1,29 @@
 # Kantine Koning iOS App
 
-Een native iOS-app voor het beheren van kantinediensten bij sportverenigingen. De app ondersteunt zowel teammanagers als verenigingsleden met verschillende rollen en rechten.
+Een native SwiftUI-app voor het beheren van kantinediensten bij sportverenigingen. Ondersteunt zowel teammanagers als verenigingsleden met gescheiden rechten, multi-tenant gebruik en push notificaties.
 
 ## Features
 
-### 🔐 Accountloze Onboarding
-- QR-code scanning voor clubregistratie
-- Keuze tussen Teammanager en Verenigingslid
-- Email verificatie voor teammanagers
-- Team zoeken en selecteren voor verenigingsleden
+### 🔐 Accountloze onboarding
+- QR-code scannen voor clubregistratie
+- Rolkeuze: Teammanager of Verenigingslid
+- Manager: e‑mail verificatie en teamselectie, bevestigen via magic link
+- Lid: teams zoeken en direct aanmelden (geen e‑mail vereist)
 
-### 📱 Multi-tenant Support
-- Ondersteuning voor meerdere verenigingen per gebruiker
-- Maximum 5 teams per gebruiker (cross-tenant)
-- Verschillende rollen per vereniging mogelijk
+### 📱 Multi-tenant
+- Meerdere verenigingen en teams per gebruiker
+- Limiet van maximaal 5 teams totaal (cross-tenant)
+- Rollen per vereniging (manager/lid)
 
-### 🔔 Push Notificaties
-- Gerichte notificaties voor geplande diensten
-- Deep links naar specifieke teams
-- Magic link enrollment voor veilige registratie
+### 🔔 Push notificaties
+- APNs-registratie en token doorgeven aan backend
+- Notificaties verversen automatisch de lijst met diensten
 
 ### 👥 Vrijwilligersbeheer
-- Teammanagers: toevoegen/verwijderen van vrijwilligers
-- Verenigingsleden: alleen-lezen toegang
-- Realtime status updates (onbemand/gedeeltelijk/volledig)
+- Managers: vrijwilligers toevoegen/verwijderen per dienst
+- Leden: alleen-lezen toegang tot dienstinformatie
 
-## Code Structuur
-
-```
-Kantine Koning/
-├── Kantine_KoningApp.swift          # App entry point
-├── AppModel.swift                   # Core data model & business logic
-├── BackendClient.swift              # API client (stubbed)
-├── SecureStorage.swift              # Device credential storage
-├── DesignSystem.swift               # UI theming & components
-├── KeyboardHelpers.swift            # Keyboard management utilities
-├── TeamHelpers.swift                # Team data conversion helpers
-├── AppRouterView.swift              # Main app navigation
-├── OnboardingFlowView.swift         # QR scan & enrollment flow
-├── HomeView.swift                   # Home screen & dienst management
-├── QRScannerView.swift              # Camera integration
-└── Assets.xcassets/                 # Images, icons & branding
-```
-
-## Ondersteunde Flows
-
-### Teammanager Flow
-1. Scan QR-code van vereniging
-2. Kies rol: "Teammanager"
-3. Voer email adres in voor verificatie
-4. Selecteer geautoriseerde teams
-5. Bevestig enrollment via magic link
-6. Ontvang push notificaties voor diensten
-7. Beheer vrijwilligers voor diensten
-
-### Verenigingslid Flow
-1. Scan QR-code van vereniging
-2. Kies rol: "Verenigingslid"
-3. Zoek en selecteer teams (autocomplete)
-4. Direct registratie (geen email vereist)
-5. Ontvang push notificaties voor diensten
-6. Alleen-lezen toegang tot dienstoverzicht
-
-### Home Navigation
+### 🧭 Navigatie
 ```
 Home → Verenigingen → Teams → Diensten
   ↓        ↓         ↓         ↓
@@ -70,44 +31,68 @@ Home → Verenigingen → Teams → Diensten
        Delete    Delete      beheer
 ```
 
-## Tech Stack
+## Architectuur
+- `AppStore` (ObservableObject) beheert appfasen: launching, onboarding, enrollmentPending, registered
+- `DomainModel` met `Tenant`, `Team`, rollen (`manager`/`member`), persist via `UserDefaults` (`kk_domain_model`)
+- Repositories: `EnrollmentRepository` en `DienstRepository` → `BackendClient` voor HTTP-calls
+- `BackendClient` base URL:
+  - Debug: `http://localhost:4000`
+  - Release: `https://kantinekoning.com`
+  - Override via Info.plist key `API_BASE_URL`
+- Push: `UNUserNotificationCenter` + `updateAPNsToken`, refresh bij ontvangst
 
-- **SwiftUI** - Native iOS UI framework
-- **MVVM** - Model-View-ViewModel architecture
-- **AVFoundation** - Camera/QR scanning
-- **Push Notifications** - APNs integration
-- **Keychain** - Secure credential storage
-- **Combine** - Reactive data binding
+## Deep links
+- Device enroll (magic link): `kantinekoning://device-enroll?token=...` of web-variant op `...kantinekoning.com/.../device-enroll?token=...`
+- CTA: `kantinekoning://cta/shift-volunteer?token=...` (placeholder-UI; wist pending CTA)
 
-## Design System
+## QR-payloads
+- `kantinekoning://tenant?slug=<tenant_slug>&name=<club_naam>`
+- `kantinekoning://invite?tenant=<tenant_slug>&tenant_name=<club_naam>`
+- Genest via `data=` parameter met daarin een van bovenstaande URLs
 
-- **Kleuren**: Wit met oranje accenten (`#ef8b3b`)
-- **Fonts**: Comfortaa (headers), System (body)
-- **Branding**: Kantine Koning logo met zig-zag onderstreping
-- **Stijl**: Minimalistisch, consistent, toegankelijk
+## Flows
+### Teammanager
+1. Scan QR-code → kies “Teammanager”
+2. Voer e‑mail in → `fetchAllowedTeams`
+3. Kies teams → `requestEnrollment`
+4. Bevestig via magic link → `registerDevice` → appfase `registered`
+5. Ontvang pushmeldingen, beheer vrijwilligers
 
-## Development
+### Verenigingslid
+1. Scan QR-code → kies “Verenigingslid”
+2. Zoeken/seleceren van teams (`searchTeams`)
+3. Direct registreren → `registerMemberDevice`
+4. Appfase `registered`, alleen-lezen diensten
 
-### Requirements
+## Diensten en vrijwilligers
+- Ophalen per tenant via `/api/mobile/v1/diensten`, client-side dedup en sortering (toekomst eerst)
+- Managers kunnen vrijwilligers toevoegen/verwijderen via API; validaties: geen verleden, naam ≤ 15 tekens, geen duplicaten
+
+## Backend integratie
+- Endpoints: `/api/mobile/v1/enrollments/*`, `/device/*`, `/diensten`, `/teams/search`, vrijwilligers-CRUD
+- Auth: signed device token uit `registerDevice` als Bearer token
+- APNs: `updateAPNsToken` verstuurt ook build-omgeving en appversie
+
+## Requirements
 - iOS 16.0+
 - Xcode 15.0+
 - Swift 5.9+
 
-### Setup
+## Setup
 1. Open `Kantine Koning.xcodeproj` in Xcode
 2. Selecteer target device/simulator
 3. Build & Run
 
-### Backend Integration
-De app gebruikt momenteel stubbed API calls in `BackendClient.swift`. Voor productie:
-- Vervang stubs door echte `kantinekoning.com` endpoints
-- Configureer push notification certificates
-- Update enrollment token validatie
+Optioneel: override backend via Info.plist → `API_BASE_URL`.
 
 ## Permissions
+- Camera: QR-code scanning
+- Notifications: dienstupdates en CTA’s
 
-- **Camera**: Voor QR-code scanning
-- **Notifications**: Voor dienst updates
+## Troubleshooting / Bekende beperkingen
+- Max 5 teams per gebruiker (enforced bij enrollment en member-registratie)
+- Vrijwilliger toevoegen kan alleen voor toekomstige diensten en enkel als manager
+- “Alles resetten” wist lokaal en probeert backend-opschoning indien auth-token aanwezig
 
 ---
 

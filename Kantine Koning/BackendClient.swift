@@ -250,10 +250,22 @@ final class BackendClient {
 
     // MARK: - Data
     func fetchDiensten(tenant: TenantID, completion: @escaping (Result<[DienstDTO], Error>) -> Void) {
+        print("[Backend] 📡 Fetching diensten for tenant \(tenant)")
+        print("[Backend] 🔑 Auth token available: \(authToken?.prefix(20) ?? "nil")")
+        
         var comps = URLComponents(url: baseURL.appendingPathComponent("/api/mobile/v1/diensten"), resolvingAgainstBaseURL: false)!
         comps.queryItems = [URLQueryItem(name: "tenant", value: tenant), URLQueryItem(name: "past_days", value: "14"), URLQueryItem(name: "future_days", value: "60")]
         guard let url = comps.url else { completion(.failure(NSError(domain: "Backend", code: -3))); return }
-        let req = URLRequest(url: url)
+        var req = URLRequest(url: url)
+        
+        // Add auth token if available - backend will filter by enrolled teams
+        if let token = authToken, !token.isEmpty {
+            req.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+            print("[Backend] 🔑 Using authenticated request - backend will filter by enrolled teams")
+        } else {
+            print("[Backend] ⚠️ No auth token - will get all diensten")
+        }
+        
         URLSession.shared.dataTask(with: req) { data, response, error in
             if let error = error { completion(.failure(error)); return }
             guard let http = response as? HTTPURLResponse, let data = data, (200..<300).contains(http.statusCode) else {

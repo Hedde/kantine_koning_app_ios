@@ -129,6 +129,10 @@ final class DefaultDienstRepository: DienstRepository {
         }
         group.notify(queue: .global()) {
             if let err = firstError { completion(.failure(err)); return }
+            
+            // Backend already filters by enrolled teams via JWT, no need for client-side filtering
+            print("[Dienst] 📊 Backend returned \(collected.count) diensten (already filtered by JWT)")
+            
             // Dedup by id; keep newest by updatedAt then startTime
             var byId: [String: Dienst] = [:]
             for d in collected { if let existing = byId[d.id] {
@@ -143,6 +147,7 @@ final class DefaultDienstRepository: DienstRepository {
             let now = Date()
             let future = unique.filter { $0.startTime >= now }.sorted { $0.startTime < $1.startTime }
             let past = unique.filter { $0.startTime < now }.sorted { $0.startTime > $1.startTime }
+            print("[Dienst] ✅ Final result: \(unique.count) diensten (\(future.count) future, \(past.count) past)")
             completion(.success(future + past))
         }
     }
