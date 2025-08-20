@@ -124,7 +124,8 @@ struct LeaderboardHostView: View {
                         } else if let globalData = store.globalLeaderboard {
                             GlobalLeaderboardView(
                                 leaderboard: globalData, 
-                                highlightedTeamCodes: Set(store.model.tenants.values.flatMap { $0.teams.map { $0.id } })
+                                highlightedTeamCodes: Set(store.model.tenants.values.flatMap { $0.teams.map { $0.id } }),
+                                tenantInfo: store.tenantInfo
                             )
                         }
                         
@@ -378,6 +379,7 @@ struct LeaderboardHostView: View {
 
 // MARK: - Menu View
 private struct LeaderboardMenuView: View {
+    @EnvironmentObject var store: AppStore
     let tenants: [DomainModel.Tenant]
     let onNationalSelected: () -> Void
     let onTenantSelected: (String) -> Void
@@ -431,11 +433,19 @@ private struct LeaderboardMenuView: View {
                     // Individual tenant options
                     ForEach(tenants, id: \.slug) { tenant in
                         Button(action: { onTenantSelected(tenant.slug) }) {
-                            HStack {
+                            HStack(spacing: 16) {
+                                // Club logo
+                                AsyncImage(url: store.tenantInfo[tenant.slug]?.clubLogoUrl.flatMap(URL.init)) { image in
+                                    image.resizable().scaledToFit()
+                                } placeholder: {
+                                    Image(systemName: "building.2.fill")
+                                        .foregroundStyle(KKTheme.accent)
+                                }
+                                .frame(width: 40, height: 40)
+                                .cornerRadius(8)
+                                
                                 VStack(alignment: .leading, spacing: 4) {
                                     HStack(spacing: 8) {
-                                        Image(systemName: "trophy.fill")
-                                            .foregroundColor(KKTheme.accent)
                                         Text(tenant.name)
                                             .font(KKFont.title(18))
                                             .foregroundStyle(KKTheme.textPrimary)
@@ -652,6 +662,7 @@ private struct LocalLeaderboardView: View {
 private struct GlobalLeaderboardView: View {
     let leaderboard: GlobalLeaderboardData
     let highlightedTeamCodes: Set<String>
+    let tenantInfo: [String: TenantInfo]
     
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
@@ -660,7 +671,8 @@ private struct GlobalLeaderboardView: View {
                 ForEach(Array(leaderboard.teams.enumerated()), id: \.element.id) { index, team in
                     GlobalTeamRowView(
                         team: team,
-                        isHighlighted: highlightedTeamCodes.contains(team.code ?? "")
+                        isHighlighted: highlightedTeamCodes.contains(team.code ?? ""),
+                        tenantInfo: tenantInfo
                     )
                 }
             }
@@ -673,6 +685,7 @@ private struct GlobalLeaderboardView: View {
 private struct GlobalTeamRowView: View {
     let team: GlobalLeaderboardTeam
     let isHighlighted: Bool
+    let tenantInfo: [String: TenantInfo]
     
     var body: some View {
         HStack(spacing: 12) {
@@ -693,7 +706,7 @@ private struct GlobalTeamRowView: View {
             }
             
             // Club logo
-            AsyncImage(url: store.tenantInfo[team.clubSlug]?.clubLogoUrl.flatMap(URL.init)) { image in
+            AsyncImage(url: tenantInfo[team.clubSlug]?.clubLogoUrl.flatMap(URL.init)) { image in
                 image.resizable().scaledToFit()
             } placeholder: {
                 Image(systemName: "building.2")

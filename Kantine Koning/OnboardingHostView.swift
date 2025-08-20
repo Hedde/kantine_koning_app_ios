@@ -371,14 +371,33 @@ private struct MemberSearchSection: View {
     @Binding var selected: Set<TeamID>
     let onSearch: (String) -> Void
     let onSubmit: () -> Void
+    
+    private let maxDisplayedResults = 3
+    private var limitedResults: [SearchTeam] {
+        Array(results.prefix(maxDisplayedResults))
+    }
+    private var hasMoreResults: Bool {
+        results.count > maxDisplayedResults
+    }
+    
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
             Text("Zoek je team(s)").font(KKFont.body(12)).foregroundStyle(KKTheme.textSecondary)
+            
+            // Helpful instruction text
+            if searchQuery.isEmpty {
+                Text("Teams beginnen meestal met JO13, MO11, 1, 2, 3, enzovoorts")
+                    .font(KKFont.body(11))
+                    .foregroundStyle(KKTheme.textSecondary)
+                    .italic()
+            }
+            
             TextField("Bijv. JO11-3", text: $searchQuery)
                 .kkTextField()
                 .onChange(of: searchQuery) { _, newValue in onSearch(newValue) }
+            
             VStack(spacing: 8) {
-                ForEach(results, id: \.id) { t in
+                ForEach(limitedResults, id: \.id) { t in
                     KKSelectableRow(
                         title: t.name,
                         subtitle: t.code,
@@ -386,7 +405,23 @@ private struct MemberSearchSection: View {
                         action: { toggle(t.id) }
                     )
                 }
+                
+                // Show message when there are more results
+                if hasMoreResults {
+                    HStack {
+                        Image(systemName: "magnifyingglass")
+                            .foregroundStyle(KKTheme.textSecondary)
+                        Text("Er zijn \(results.count - maxDisplayedResults) meer resultaten. Typ meer letters voor een specifiekere zoekopdracht.")
+                            .font(KKFont.body(12))
+                            .foregroundStyle(KKTheme.textSecondary)
+                    }
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 8)
+                    .background(KKTheme.surface)
+                    .cornerRadius(6)
+                }
             }
+            
             Button("Aanmelden", action: onSubmit)
                 .disabled(selected.isEmpty)
                 .buttonStyle(KKPrimaryButton())

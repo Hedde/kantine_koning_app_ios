@@ -440,7 +440,7 @@ private struct DienstCardView: View {
                     }
                     .foregroundStyle(statusColor)
                 }
-                ProgressView(value: Double(volunteers.count), total: Double(minimumBemanning))
+                ProgressView(value: min(Double(volunteers.count), Double(minimumBemanning)), total: Double(minimumBemanning))
                     .tint(statusColor)
                     .background(Color.gray.opacity(0.2))
                     .cornerRadius(4)
@@ -763,7 +763,7 @@ private struct SettingsViewInternal: View {
 
                 // Notifications card (info only)
                 VStack(alignment: .leading, spacing: 12) {
-                    Text("Notificaties")
+                    Text("Push Meldingen")
                         .font(KKFont.body(12))
                         .foregroundStyle(KKTheme.textSecondary)
                     Text("Push meldingen worden automatisch geconfigureerd bij eerste gebruik. Heb je geweigerd? Ga dan naar Instellingen > Apps > Kantine Koning om meldingen alsnog toe te staan.")
@@ -772,6 +772,10 @@ private struct SettingsViewInternal: View {
                 }
                 .kkCard()
                 .padding(.horizontal, 24)
+                
+                // Email notification preferences per team (DUMMY)
+                EmailNotificationPreferencesView()
+                    .environmentObject(store)
                 
                 // Destructive reset card
                 VStack(alignment: .leading, spacing: 12) {
@@ -816,4 +820,206 @@ private struct SettingsViewInternal: View {
     }
 }
 
+// MARK: - Email Notification Preferences
+private struct EmailNotificationPreferencesView: View {
+    @EnvironmentObject var store: AppStore
+    @State private var emailPreferences: [String: Bool] = [:]  // teamId -> enabled
+    @State private var adminOverrides: [String: Bool] = [:]   // teamId -> admin disabled
+    @State private var pushStatus: [String: Bool] = [:]       // teamId -> has push notifications
+    
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text("E-mail Meldingen")
+                .font(KKFont.body(12))
+                .foregroundStyle(KKTheme.textSecondary)
+            
+            if store.model.tenants.isEmpty {
+                Text("Geen teams gevonden. Voeg eerst een team toe om e-mail voorkeuren in te stellen.")
+                    .font(KKFont.body(12))
+                    .foregroundStyle(KKTheme.textSecondary)
+                    .italic()
+            } else {
+                VStack(spacing: 8) {
+                    // Group teams by tenant
+                    ForEach(Array(store.model.tenants.values.sorted(by: { $0.name < $1.name })), id: \.slug) { tenant in
+                        // Tenant header
+                        HStack {
+                            Text(tenant.name)
+                                .font(KKFont.body(12))
+                                .fontWeight(.medium)
+                                .foregroundStyle(KKTheme.textPrimary)
+                            Spacer()
+                        }
+                        .padding(.top, 8)
+                        
+                        // Teams for this tenant
+                        ForEach(tenant.teams.sorted(by: { $0.name < $1.name }), id: \.id) { team in
+                            let isAdminDisabled = adminOverrides[team.id, default: false]
+                            let hasPushNotifications = pushStatus[team.id, default: false]
+                            let canDisableEmail = hasPushNotifications || team.role != .manager
+                            
+                            HStack(spacing: 12) {
+                                VStack(alignment: .leading, spacing: 2) {
+                                    Text(team.name)
+                                        .font(KKFont.body(14))
+                                        .foregroundStyle(KKTheme.textPrimary)
+                                    
+                                    HStack(spacing: 6) {
+                                        // Role badge
+                                        Text(team.role == .manager ? "Manager" : "Lid")
+                                            .font(KKFont.body(9))
+                                            .padding(.horizontal, 6)
+                                            .padding(.vertical, 2)
+                                            .background(team.role == .manager ? KKTheme.accent.opacity(0.12) : KKTheme.surfaceAlt)
+                                            .foregroundStyle(team.role == .manager ? KKTheme.accent : KKTheme.textSecondary)
+                                            .cornerRadius(4)
+                                        
+                                        // Admin override indicator
+                                        if isAdminDisabled {
+                                            Text("Admin uitgeschakeld")
+                                                .font(KKFont.body(8))
+                                                .padding(.horizontal, 4)
+                                                .padding(.vertical, 1)
+                                                .background(Color.red.opacity(0.12))
+                                                .foregroundStyle(Color.red)
+                                                .cornerRadius(3)
+                                        }
+                                        // Push status indicators
+                                        else if !emailPreferences[team.id, default: true] {
+                                            if hasPushNotifications {
+                                                Text("Alleen push-meldingen")
+                                                    .font(KKFont.body(8))
+                                                    .foregroundStyle(KKTheme.textSecondary)
+                                            } else {
+                                                Text("⚠️ Geforceerd email")
+                                                    .font(KKFont.body(8))
+                                                    .foregroundStyle(Color.orange)
+                                            }
+                                        }
+                                    }
+                                }
+                                
+                                Spacer()
+                                
+                                // Toggle with conditional disable
+                                Toggle("", isOn: Binding(
+                                    get: { 
+                                        if isAdminDisabled { return false }
+                                        return emailPreferences[team.id, default: true] 
+                                    },
+                                    set: { newValue in
+                                        // Prevent disabling email if no push notifications for managers
+                                        if !newValue && !canDisableEmail {
+                                            // Show warning - can't disable email without push notifications
+                                            return
+                                        }
+                                        
+                                        withAnimation(.easeInOut(duration: 0.2)) {
+                                            emailPreferences[team.id] = newValue
+                                        }
+                                        // Call backend API to update preferences
+                                        updateEmailPreference(for: team, in: tenant, enabled: newValue)
+                                    }
+                                ))
+                                .toggleStyle(SwitchToggleStyle(tint: KKTheme.accent))
+                                .disabled(isAdminDisabled)
+                                .opacity(isAdminDisabled ? 0.5 : 1.0)
+                            }
+                            .padding(.vertical, 4)
+                        }
+                    }
+                }
+                
+                // Info text
+                VStack(alignment: .leading, spacing: 4) {
+                    HStack(spacing: 6) {
+                        Image(systemName: "info.circle")
+                            .foregroundStyle(KKTheme.accent)
+                            .font(.caption)
+                        Text("E-mail meldingen uitschakelen")
+                            .font(KKFont.body(11))
+                            .fontWeight(.medium)
+                            .foregroundStyle(KKTheme.textPrimary)
+                        Spacer()
+                    }
+                    
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text("Schakel e-mail meldingen uit als je liever alleen push-meldingen ontvangt in de app.")
+                            .font(KKFont.body(10))
+                            .foregroundStyle(KKTheme.textSecondary)
+                            .fixedSize(horizontal: false, vertical: true)
+                        
+                        Text("⚠️ Teammanagers kunnen email alleen uitschakelen als push-meldingen werken. Anders blijft email geforceerd aan voor je veiligheid.")
+                            .font(KKFont.body(9))
+                            .foregroundStyle(Color.orange)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(.top, 8)
+                .padding(.horizontal, 12)
+                .padding(.vertical, 10)
+                .background(KKTheme.accent.opacity(0.05))
+                .cornerRadius(6)
+            }
+        }
+        .kkCard()
+        .padding(.horizontal, 24)
+        .onAppear {
+            // Initialize preferences (all enabled by default)
+            for tenant in store.model.tenants.values {
+                for team in tenant.teams {
+                    if emailPreferences[team.id] == nil {
+                        emailPreferences[team.id] = true
+                    }
+                    
+                    // Initialize admin override status (simulate - in real app this would come from API)
+                    // For demo: randomly simulate some admin overrides
+                    if adminOverrides[team.id] == nil {
+                        adminOverrides[team.id] = false // Default: admin allows email
+                    }
+                    
+                    // Initialize push notification status (simulate - in real app this would check actual status)
+                    // For demo: managers with device enrollment likely have push, members might not
+                    if pushStatus[team.id] == nil {
+                        pushStatus[team.id] = team.role == .manager // Simulate: managers likely have push
+                    }
+                }
+            }
+        }
+    }
+    
+    private func updateEmailPreference(for team: DomainModel.Team, in tenant: DomainModel.Tenant, enabled: Bool) {
+        print("📧 Email notifications for \(team.name) (\(tenant.name)): \(enabled ? "enabled" : "disabled")")
+        
+        // Use tenant-specific auth token for this enrollment
+        guard let authToken = tenant.signedDeviceToken else {
+            print("📧 ❌ No auth token for tenant \(tenant.name)")
+            // Revert UI state
+            withAnimation(.easeInOut(duration: 0.2)) {
+                emailPreferences[team.id] = !enabled
+            }
+            return
+        }
+        
+        let backend = BackendClient()
+        backend.authToken = authToken
+        
+        backend.updateEmailNotificationPreferences(enabled: enabled) { result in
+            DispatchQueue.main.async {
+                switch result {
+                case .success:
+                    print("📧 ✅ Email preference updated successfully for \(team.name)")
+                case .failure(let error):
+                    print("📧 ❌ Failed to update email preference for \(team.name): \(error)")
+                    // Revert UI state on failure
+                    withAnimation(.easeInOut(duration: 0.2)) {
+                        emailPreferences[team.id] = !enabled
+                    }
+                }
+            }
+        }
+    }
+}
 

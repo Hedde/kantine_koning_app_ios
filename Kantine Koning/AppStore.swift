@@ -105,6 +105,7 @@ final class AppStore: ObservableObject {
         }
     }
     
+    
     private func clearLocalState() {
         print("[Reset] 🧹 Clearing local state...")
         print("[Reset] 📊 Before clear: \(model.tenants.count) tenants, \(upcoming.count) diensten")
@@ -266,8 +267,8 @@ final class AppStore: ObservableObject {
             }
         }
         
-        // Preload leaderboard data for club logos (background fetch)
-        preloadLeaderboardData()
+        // Fetch tenant info for club logos (background fetch)
+        refreshTenantInfo()
         
         // Fetch diensten using enrollment-specific tokens (handled in repository)
         dienstRepository.fetchUpcoming(for: model) { [weak self] result in
@@ -278,11 +279,6 @@ final class AppStore: ObservableObject {
                 }
             }
         }
-    }
-    
-    private func preloadLeaderboardData() {
-        // Preload tenant info (including club logos) - more efficient than leaderboard data
-        refreshTenantInfo()
     }
     
     func refreshTenantInfo() {
