@@ -297,9 +297,17 @@ final class AppStore: ObservableObject {
             lastUpdated: Date()
         )
         
+        // Use the parameter tenantSlug as key (what the UI expects)
+        // But also store under response slug if different (for debugging)
         leaderboards[tenantSlug] = leaderboardData
+        if response.tenant.slug != tenantSlug {
+            print("[Store] ⚠️ Tenant slug mismatch: param=\(tenantSlug) response=\(response.tenant.slug)")
+            leaderboards[response.tenant.slug] = leaderboardData
+        }
         print("[Store] ✅ Updated leaderboard for \(tenantSlug): \(leaderboardData.teams.count) teams")
         print("[Store] 📊 Leaderboard data stored with key: \(tenantSlug)")
+        print("[Store] 📊 Response tenant slug: \(response.tenant.slug)")
+        print("[Store] 📊 Parameter tenant slug: \(tenantSlug)")
         print("[Store] 📊 Current leaderboards keys: \(Array(leaderboards.keys))")
     }
 
