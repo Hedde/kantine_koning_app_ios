@@ -3,6 +3,7 @@ import SwiftUI
 struct HomeHostView: View {
     @EnvironmentObject var store: AppStore
     @State private var showSettings = false
+    @State private var showLeaderboard = false
     @State private var selectedTenant: String? = nil
     @State private var selectedTeam: String? = nil
 
@@ -12,21 +13,32 @@ struct HomeHostView: View {
                 // Main Content
                 if showSettings {
                     SettingsViewInternal().environmentObject(store)
+                } else if showLeaderboard {
+                    LeaderboardHostView(
+                        initialTenant: selectedTenant,
+                        initialTeam: selectedTeam
+                    ).environmentObject(store)
                 } else if let tenantSlug = selectedTenant, let teamId = selectedTeam, let tenant = store.model.tenants[tenantSlug] {
                     TeamDienstenView(tenant: tenant, teamId: teamId).environmentObject(store)
                 } else if let tenantSlug = selectedTenant, let tenant = store.model.tenants[tenantSlug] {
                     TeamsView(tenant: tenant,
                               onTeamSelected: { teamId in selectedTeam = teamId },
-                              onBack: { selectedTenant = nil })
+                              onBack: { selectedTenant = nil },
+                              onLeaderboardTap: { 
+                                  showLeaderboard = true 
+                                  showSettings = false
+                              })
                     .environmentObject(store)
                 } else {
-                    ClubsViewInternal(onTenantSelected: { slug in
-                        selectedTenant = slug
-                        // Auto-select team when only one exists
-                        if let tenant = store.model.tenants[slug], tenant.teams.count == 1, let onlyTeam = tenant.teams.first {
-                            selectedTeam = onlyTeam.id
+                    ClubsViewInternal(
+                        onTenantSelected: { slug in
+                            selectedTenant = slug
+                            // Auto-select team when only one exists
+                            if let tenant = store.model.tenants[slug], tenant.teams.count == 1, let onlyTeam = tenant.teams.first {
+                                selectedTeam = onlyTeam.id
+                            }
                         }
-                    })
+                    )
                     .environmentObject(store)
                 }
 
@@ -55,8 +67,18 @@ struct HomeHostView: View {
                         selectedTenant = nil
                         selectedTeam = nil
                         showSettings = false
+                        showLeaderboard = false
                     },
-                    onSettingsAction: { showSettings.toggle() },
+                    onSettingsAction: { 
+                        showSettings.toggle()
+                        showLeaderboard = false
+                    },
+                    onLeaderboardAction: {
+                        if !showLeaderboard {
+                            showLeaderboard = true
+                            showSettings = false
+                        }
+                    },
                     isSettingsActive: showSettings
                 )
                 .background(KKTheme.surface)
@@ -69,25 +91,53 @@ struct HomeHostView: View {
 private struct TopNavigationBar: View {
     let onHomeAction: () -> Void
     let onSettingsAction: () -> Void
+    let onLeaderboardAction: () -> Void
     let isSettingsActive: Bool
     var body: some View {
-        HStack(spacing: 12) {
-            Button(action: onHomeAction) {
-                Image(systemName: "house.fill").font(.title2).foregroundColor(KKTheme.textSecondary)
+        ZStack {
+            // Background
+            KKTheme.surface
+            
+            // Centered logo (always perfectly centered)
+            BrandAssets.logoImage()
+                .resizable()
+                .scaledToFit()
+                .frame(width: 44, height: 44)
+            
+            // Left and right buttons overlay
+            HStack {
+                // Left side
+                Button(action: onHomeAction) {
+                    Image(systemName: "house.fill")
+                        .font(.title2)
+                        .foregroundColor(KKTheme.textSecondary)
+                }
+                
+                Spacer()
+                
+                // Right side
+                HStack(spacing: 12) {
+                    Button(action: onLeaderboardAction) {
+                        Image(systemName: "trophy.fill")
+                            .font(.title2)
+                            .foregroundColor(KKTheme.textSecondary)
+                    }
+                    Button(action: onSettingsAction) {
+                        Image(systemName: isSettingsActive ? "xmark.circle.fill" : "gearshape.fill")
+                            .font(.title2)
+                            .foregroundColor(KKTheme.textSecondary)
+                    }
+                }
             }
-            Spacer()
-            BrandAssets.logoImage().resizable().scaledToFit().frame(width: 44, height: 44)
-            Spacer()
-            Button(action: onSettingsAction) {
-                Image(systemName: isSettingsActive ? "xmark.circle.fill" : "gearshape.fill")
-                    .font(.title2)
-                    .foregroundColor(KKTheme.textSecondary)
-            }
+            .padding(.horizontal, 24)
         }
-        .padding(.horizontal, 24)
-        .padding(.vertical, 16)
-        .background(KKTheme.surface)
-        .overlay(Rectangle().frame(height: 1).foregroundColor(KKTheme.surfaceAlt).padding(.top, 56))
+        .frame(height: 56)
+        .overlay(
+            Rectangle()
+                .frame(height: 1)
+                .foregroundColor(KKTheme.surfaceAlt),
+            alignment: .bottom
+        )
     }
 }
 
@@ -121,6 +171,7 @@ private struct TeamsView: View {
     let tenant: DomainModel.Tenant
     let onTeamSelected: (String) -> Void
     let onBack: () -> Void
+    let onLeaderboardTap: () -> Void
     @EnvironmentObject var store: AppStore
     var body: some View {
         ScrollView {
@@ -137,6 +188,26 @@ private struct TeamsView: View {
                         .foregroundStyle(KKTheme.textSecondary)
                 }
                 .multilineTextAlignment(.center)
+                
+                // Leaderboard button
+                Button(action: onLeaderboardTap) {
+                    HStack {
+                        Image(systemName: "trophy.fill")
+                            .foregroundColor(KKTheme.accent)
+                        Text("Bekijk leaderboard")
+                            .font(KKFont.title(16))
+                            .foregroundStyle(KKTheme.textPrimary)
+                        Spacer()
+                        Image(systemName: "chevron.right")
+                            .foregroundStyle(KKTheme.textSecondary)
+                    }
+                    .padding(.horizontal, 20)
+                    .padding(.vertical, 16)
+                    .background(KKTheme.surfaceAlt)
+                    .cornerRadius(8)
+                }
+                .padding(.horizontal, 12)
+                
                 VStack(spacing: 8) {
                     ForEach(tenant.teams.sorted(by: { $0.name < $1.name }), id: \.id) { team in
                         SwipeableRow(onTap: { onTeamSelected(team.id) }, onDelete: { store.removeTeam(team.id, from: tenant.slug) }) {
@@ -240,9 +311,10 @@ private struct TeamDienstenView: View {
                     .padding(.vertical, 32)
                 } else {
                     VStack(spacing: 12) {
-                        ForEach(diensten) { d in
-                            DienstCardView(d: d, isManager: (tenant.teams.first{ $0.id == teamId }?.role == .manager))
-                        }
+                                        ForEach(diensten) { d in
+                    DienstCardView(d: d, isManager: (tenant.teams.first{ $0.id == teamId }?.role == .manager))
+                        .opacity(d.startTime < Date() ? 0.5 : 1.0)
+                }
                     }
                     .padding(.horizontal, 16)
                 }

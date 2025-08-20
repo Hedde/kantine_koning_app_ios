@@ -437,6 +437,205 @@ final class BackendClient {
         print("[MemberRegister] 🎫 Created member token, calling registerDevice")
         registerDevice(enrollmentToken: token, pushToken: pushToken, completion: completion)
     }
+
+    // MARK: - Leaderboard
+    func fetchLeaderboard(tenant: TenantID, period: String = "season", teamId: String? = nil, completion: @escaping (Result<LeaderboardResponse, Error>) -> Void) {
+        print("[Backend] 📊 Fetching leaderboard for tenant \(tenant) period=\(period) teamId=\(teamId ?? "nil")")
+        
+        var comps = URLComponents(url: baseURL.appendingPathComponent("/api/mobile/v1/leaderboard"), resolvingAgainstBaseURL: false)!
+        var queryItems = [
+            URLQueryItem(name: "tenant", value: tenant),
+            URLQueryItem(name: "period", value: period)
+        ]
+        if let teamId = teamId {
+            queryItems.append(URLQueryItem(name: "team_id", value: teamId))
+        }
+        comps.queryItems = queryItems
+        
+        guard let url = comps.url else { 
+            completion(.failure(NSError(domain: "Backend", code: -3, userInfo: [NSLocalizedDescriptionKey: "Invalid URL"])))
+            return 
+        }
+        
+        var req = URLRequest(url: url)
+        
+        // Add auth token if available
+        if let token = authToken, !token.isEmpty {
+            req.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+            print("[Backend] 🔑 Using authenticated request for leaderboard")
+        }
+        
+        URLSession.shared.dataTask(with: req) { data, response, error in
+            if let error = error { 
+                print("[Backend] ❌ leaderboard network error: \(error)")
+                let userFriendlyError = self.createUserFriendlyError(from: error, context: "leaderboard")
+                completion(.failure(userFriendlyError))
+                return 
+            }
+            
+            guard let http = response as? HTTPURLResponse, let data = data else {
+                let userError = NSError(domain: "Backend", code: -1, userInfo: [NSLocalizedDescriptionKey: "Geen antwoord van server ontvangen"])
+                completion(.failure(userError))
+                return
+            }
+            
+            guard (200..<300).contains(http.statusCode) else {
+                let userFriendlyError = self.createUserFriendlyError(from: http.statusCode, data: data, context: "leaderboard")
+                completion(.failure(userFriendlyError))
+                return
+            }
+            
+            do {
+                let decoder = JSONDecoder()
+                decoder.keyDecodingStrategy = .convertFromSnakeCase
+                let leaderboard = try decoder.decode(LeaderboardResponse.self, from: data)
+                print("[Backend] ✅ Leaderboard fetched: \(leaderboard.teams.count) teams, opt_out=\(leaderboard.tenant.leaderboardOptOut)")
+                completion(.success(leaderboard))
+            } catch {
+                print("[Backend] ❌ leaderboard decode error: \(error)")
+                let userError = NSError(domain: "Backend", code: -2, userInfo: [
+                    NSLocalizedDescriptionKey: "Ongeldig antwoord ontvangen van server voor leaderboard"
+                ])
+                completion(.failure(userError))
+            }
+        }.resume()
+    }
+    
+    func fetchGlobalLeaderboard(tenant: TenantID, period: String = "season", teamId: String? = nil, completion: @escaping (Result<GlobalLeaderboardResponse, Error>) -> Void) {
+        print("[Backend] 🌍 Fetching global leaderboard for tenant \(tenant) period=\(period) teamId=\(teamId ?? "nil")")
+        
+        var comps = URLComponents(url: baseURL.appendingPathComponent("/api/mobile/v1/leaderboard/global"), resolvingAgainstBaseURL: false)!
+        var queryItems = [
+            URLQueryItem(name: "tenant", value: tenant),
+            URLQueryItem(name: "period", value: period)
+        ]
+        if let teamId = teamId {
+            queryItems.append(URLQueryItem(name: "team_id", value: teamId))
+        }
+        comps.queryItems = queryItems
+        
+        guard let url = comps.url else { 
+            completion(.failure(NSError(domain: "Backend", code: -3, userInfo: [NSLocalizedDescriptionKey: "Invalid URL"])))
+            return 
+        }
+        
+        var req = URLRequest(url: url)
+        
+        // Add auth token if available
+        if let token = authToken, !token.isEmpty {
+            req.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+            print("[Backend] 🔑 Using authenticated request for global leaderboard")
+        }
+        
+        URLSession.shared.dataTask(with: req) { data, response, error in
+            if let error = error { 
+                print("[Backend] ❌ global leaderboard network error: \(error)")
+                let userFriendlyError = self.createUserFriendlyError(from: error, context: "globale leaderboard")
+                completion(.failure(userFriendlyError))
+                return 
+            }
+            
+            guard let http = response as? HTTPURLResponse, let data = data else {
+                let userError = NSError(domain: "Backend", code: -1, userInfo: [NSLocalizedDescriptionKey: "Geen antwoord van server ontvangen"])
+                completion(.failure(userError))
+                return
+            }
+            
+            // Handle forbidden (tenant opted out)
+            if http.statusCode == 403 {
+                print("[Backend] ⚠️ Tenant opted out of global leaderboard")
+                completion(.failure(NSError(domain: "Backend", code: 403, userInfo: [NSLocalizedDescriptionKey: "tenant_opted_out"])))
+                return
+            }
+            
+            guard (200..<300).contains(http.statusCode) else {
+                let userFriendlyError = self.createUserFriendlyError(from: http.statusCode, data: data, context: "globale leaderboard")
+                completion(.failure(userFriendlyError))
+                return
+            }
+            
+            do {
+                let decoder = JSONDecoder()
+                decoder.keyDecodingStrategy = .convertFromSnakeCase
+                let leaderboard = try decoder.decode(GlobalLeaderboardResponse.self, from: data)
+                print("[Backend] ✅ Global leaderboard fetched: \(leaderboard.teams.count) teams")
+                completion(.success(leaderboard))
+            } catch {
+                print("[Backend] ❌ global leaderboard decode error: \(error)")
+                let userError = NSError(domain: "Backend", code: -2, userInfo: [
+                    NSLocalizedDescriptionKey: "Ongeldig antwoord ontvangen van server voor globale leaderboard"
+                ])
+                completion(.failure(userError))
+            }
+        }.resume()
+    }
+    
+    // MARK: - Error Handling Helpers
+    private func createUserFriendlyError(from error: Error, context: String) -> NSError {
+        let nsError = error as NSError
+        
+        // Check for common network errors
+        if nsError.domain == NSURLErrorDomain {
+            switch nsError.code {
+            case NSURLErrorNotConnectedToInternet:
+                return NSError(domain: "Backend", code: nsError.code, userInfo: [
+                    NSLocalizedDescriptionKey: "Geen internetverbinding beschikbaar"
+                ])
+            case NSURLErrorTimedOut:
+                return NSError(domain: "Backend", code: nsError.code, userInfo: [
+                    NSLocalizedDescriptionKey: "Verbinding met server is verlopen"
+                ])
+            case NSURLErrorCannotFindHost, NSURLErrorCannotConnectToHost:
+                return NSError(domain: "Backend", code: nsError.code, userInfo: [
+                    NSLocalizedDescriptionKey: "Kan geen verbinding maken met de server"
+                ])
+            case NSURLErrorNetworkConnectionLost:
+                return NSError(domain: "Backend", code: nsError.code, userInfo: [
+                    NSLocalizedDescriptionKey: "Netwerkverbinding is verbroken"
+                ])
+            default:
+                return NSError(domain: "Backend", code: nsError.code, userInfo: [
+                    NSLocalizedDescriptionKey: "Netwerkfout opgetreden bij het laden van \(context)"
+                ])
+            }
+        }
+        
+        // For other errors, provide a generic message
+        return NSError(domain: "Backend", code: nsError.code, userInfo: [
+            NSLocalizedDescriptionKey: "Er is een fout opgetreden bij het laden van \(context)"
+        ])
+    }
+    
+    private func createUserFriendlyError(from statusCode: Int, data: Data, context: String) -> NSError {
+        print("[Backend] ❌ HTTP \(statusCode) for \(context)")
+        
+        // Log the raw response for debugging, but don't show it to the user
+        if let body = String(data: data, encoding: .utf8) {
+            print("[Backend] Response body: \(body)")
+        }
+        
+        let userMessage: String
+        switch statusCode {
+        case 400:
+            userMessage = "Ongeldige aanvraag voor \(context)"
+        case 401:
+            userMessage = "Niet geautoriseerd - probeer opnieuw in te loggen"
+        case 403:
+            userMessage = "Geen toegang tot \(context)"
+        case 404:
+            userMessage = "\(context.capitalized) niet gevonden"
+        case 422:
+            userMessage = "Ongeldige gegevens voor \(context)"
+        case 500...599:
+            userMessage = "Serverfout bij het laden van \(context) - probeer het later opnieuw"
+        default:
+            userMessage = "Onbekende fout (\(statusCode)) bij het laden van \(context)"
+        }
+        
+        return NSError(domain: "Backend", code: statusCode, userInfo: [
+            NSLocalizedDescriptionKey: userMessage
+        ])
+    }
 }
 
 // MARK: - DTOs
@@ -453,6 +652,182 @@ struct DienstDTO: Decodable {
     let aanmeldingen_count: Int?
     let aanmeldingen: [String]?
     let updated_at: Date?
+}
+
+struct LeaderboardResponse: Decodable {
+    struct TenantInfo: Decodable {
+        let slug: String
+        let name: String
+        let leaderboardOptOut: Bool
+        
+        private enum CodingKeys: String, CodingKey {
+            case slug, name
+            case leaderboardOptOut = "leaderboard_opt_out"
+        }
+    }
+    
+    struct ClubInfo: Decodable {
+        let name: String
+        let logoUrl: String?
+        
+        private enum CodingKeys: String, CodingKey {
+            case name
+            case logoUrl = "logo_url"
+        }
+    }
+    
+    struct TeamEntry: Decodable {
+        struct Team: Decodable {
+            let id: String
+            let name: String
+            let code: String?
+            
+            // Custom decoder to handle both String and Int for id
+            init(from decoder: Decoder) throws {
+                let container = try decoder.container(keyedBy: CodingKeys.self)
+                
+                // Try to decode id as String first, then as Int
+                if let idString = try? container.decode(String.self, forKey: .id) {
+                    self.id = idString
+                } else if let idInt = try? container.decode(Int.self, forKey: .id) {
+                    self.id = String(idInt)
+                } else {
+                    throw DecodingError.dataCorrupted(
+                        DecodingError.Context(
+                            codingPath: container.codingPath + [CodingKeys.id],
+                            debugDescription: "Could not decode id as String or Int"
+                        )
+                    )
+                }
+                
+                self.name = try container.decode(String.self, forKey: .name)
+                self.code = try container.decodeIfPresent(String.self, forKey: .code)
+            }
+            
+            private enum CodingKeys: String, CodingKey {
+                case id, name, code
+            }
+        }
+        
+        let rank: Int
+        let team: Team
+        let points: Int
+        let totalHours: Double
+        let recentChange: Int
+        let positionChange: Int
+        let highlighted: Bool
+        
+        // Custom decoder to handle the entire TeamEntry
+        init(from decoder: Decoder) throws {
+            let container = try decoder.container(keyedBy: CodingKeys.self)
+            
+            self.rank = try container.decode(Int.self, forKey: .rank)
+            self.team = try container.decode(Team.self, forKey: .team)
+            self.points = try container.decode(Int.self, forKey: .points)
+            self.totalHours = try container.decode(Double.self, forKey: .totalHours)
+            self.recentChange = try container.decode(Int.self, forKey: .recentChange)
+            self.positionChange = try container.decode(Int.self, forKey: .positionChange)
+            
+            // Handle highlighted field that can be null/nil
+            self.highlighted = try container.decodeIfPresent(Bool.self, forKey: .highlighted) ?? false
+        }
+        
+        private enum CodingKeys: String, CodingKey {
+            case rank, team, points
+            case totalHours = "total_hours"
+            case recentChange = "recent_change" 
+            case positionChange = "position_change"
+            case highlighted
+        }
+    }
+    
+    let tenant: TenantInfo
+    let club: ClubInfo?
+    let period: String
+    let teams: [TeamEntry]
+}
+
+struct GlobalLeaderboardResponse: Decodable {
+    struct TeamEntry: Decodable {
+        struct Team: Decodable {
+            let id: String
+            let name: String
+            let code: String?
+            
+            // Custom decoder to handle both String and Int for id
+            init(from decoder: Decoder) throws {
+                let container = try decoder.container(keyedBy: CodingKeys.self)
+                
+                // Try to decode id as String first, then as Int
+                if let idString = try? container.decode(String.self, forKey: .id) {
+                    self.id = idString
+                } else if let idInt = try? container.decode(Int.self, forKey: .id) {
+                    self.id = String(idInt)
+                } else {
+                    throw DecodingError.dataCorrupted(
+                        DecodingError.Context(
+                            codingPath: container.codingPath + [CodingKeys.id],
+                            debugDescription: "Could not decode id as String or Int"
+                        )
+                    )
+                }
+                
+                self.name = try container.decode(String.self, forKey: .name)
+                self.code = try container.decodeIfPresent(String.self, forKey: .code)
+            }
+            
+            private enum CodingKeys: String, CodingKey {
+                case id, name, code
+            }
+        }
+        
+        struct Club: Decodable {
+            let name: String
+            let slug: String
+            let logoUrl: String?
+            
+            private enum CodingKeys: String, CodingKey {
+                case name, slug
+                case logoUrl = "logo_url"
+            }
+        }
+        
+        let rank: Int
+        let team: Team
+        let club: Club
+        let points: Int
+        let totalHours: Double
+        let recentChange: Int
+        let positionChange: Int
+        let highlighted: Bool
+        
+        // Custom decoder to handle the entire TeamEntry
+        init(from decoder: Decoder) throws {
+            let container = try decoder.container(keyedBy: CodingKeys.self)
+            
+            self.rank = try container.decode(Int.self, forKey: .rank)
+            self.team = try container.decode(Team.self, forKey: .team)
+            self.club = try container.decode(Club.self, forKey: .club)
+            self.points = try container.decode(Int.self, forKey: .points)
+            self.totalHours = try container.decode(Double.self, forKey: .totalHours)
+            self.recentChange = try container.decode(Int.self, forKey: .recentChange)
+            self.positionChange = try container.decode(Int.self, forKey: .positionChange)
+            
+            // Handle highlighted field that can be null/nil
+            self.highlighted = try container.decodeIfPresent(Bool.self, forKey: .highlighted) ?? false
+        }
+        
+        private enum CodingKeys: String, CodingKey {
+            case rank, team, club, points
+            case totalHours = "total_hours"
+            case recentChange = "recent_change"
+            case positionChange = "position_change" 
+            case highlighted
+        }
+    }
+    
+    let period: String
+    let teams: [TeamEntry]
 }
 
 

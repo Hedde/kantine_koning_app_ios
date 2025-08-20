@@ -18,22 +18,26 @@ final class AppStore: ObservableObject {
     @Published var searchResults: [SearchTeam] = []
     @Published var onboardingScan: ScannedTenant?
     @Published var pendingCTA: CTA?
+    @Published var leaderboards: [String: LeaderboardData] = [:]  // tenantSlug -> LeaderboardData
 
     // Services
     private let enrollmentRepository: EnrollmentRepository
     private let dienstRepository: DienstRepository
     private let pushService: PushService
+    private let leaderboardRepository: LeaderboardRepository
 
     private var cancellables: Set<AnyCancellable> = []
 
     init(
         enrollmentRepository: EnrollmentRepository = DefaultEnrollmentRepository(),
         dienstRepository: DienstRepository = DefaultDienstRepository(),
-        pushService: PushService = DefaultPushService()
+        pushService: PushService = DefaultPushService(),
+        leaderboardRepository: LeaderboardRepository = DefaultLeaderboardRepository()
     ) {
         self.enrollmentRepository = enrollmentRepository
         self.dienstRepository = dienstRepository
         self.pushService = pushService
+        self.leaderboardRepository = leaderboardRepository
 
         // Bootstrap
         self.model = enrollmentRepository.loadModel()
@@ -244,6 +248,49 @@ final class AppStore: ObservableObject {
                 }
             }
         }
+    }
+    
+    // MARK: - Leaderboard Management
+    func refreshLeaderboard(for tenantSlug: String, period: String = "season", teamId: String? = nil) {
+        guard let auth = model.primaryAuthToken else { return }
+        leaderboardRepository.fetchLeaderboard(tenant: tenantSlug, period: period, teamId: teamId, auth: auth) { [weak self] result in
+            DispatchQueue.main.async {
+                switch result {
+                case .success(let leaderboard):
+                    self?.updateLeaderboard(leaderboard, for: tenantSlug, period: period)
+                case .failure(let error):
+                    print("[Store] ❌ Failed to refresh leaderboard for \(tenantSlug): \(error)")
+                }
+            }
+        }
+    }
+    
+    private func updateLeaderboard(_ response: LeaderboardResponse, for tenantSlug: String, period: String) {
+        let leaderboardData = LeaderboardData(
+            tenantSlug: tenantSlug,
+            tenantName: response.tenant.name,
+            clubName: response.club?.name,
+            clubLogoUrl: response.club?.logoUrl,
+            period: period,
+            teams: response.teams.map { teamEntry in
+                LeaderboardTeam(
+                    id: teamEntry.team.id,
+                    name: teamEntry.team.name,
+                    code: teamEntry.team.code,
+                    rank: teamEntry.rank,
+                    points: teamEntry.points,
+                    totalHours: teamEntry.totalHours,
+                    recentChange: teamEntry.recentChange,
+                    positionChange: teamEntry.positionChange,
+                    highlighted: teamEntry.highlighted
+                )
+            },
+            leaderboardOptOut: response.tenant.leaderboardOptOut,
+            lastUpdated: Date()
+        )
+        
+        leaderboards[tenantSlug] = leaderboardData
+        print("[Store] ✅ Updated leaderboard for \(tenantSlug): \(leaderboardData.teams.count) teams")
     }
 
     // MARK: - Deep links
