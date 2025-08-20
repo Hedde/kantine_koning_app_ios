@@ -801,8 +801,7 @@ struct LeaderboardResponse: Decodable {
     
     struct ClubInfo: Decodable {
         let name: String
-        let logoUrl: String?
-        // No custom CodingKeys needed - keyDecodingStrategy handles snake_case conversion
+        // logoUrl removed - now handled by /tenants API
     }
     
     struct TeamEntry: Decodable {
@@ -910,8 +909,7 @@ struct GlobalLeaderboardResponse: Decodable {
         struct Club: Decodable {
             let name: String
             let slug: String
-            let logoUrl: String?
-            // No custom CodingKeys needed - keyDecodingStrategy handles snake_case conversion
+            // logoUrl removed - now handled by /tenants API
         }
         
         let rank: Int

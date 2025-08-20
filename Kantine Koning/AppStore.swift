@@ -356,7 +356,7 @@ final class AppStore: ObservableObject {
             tenantSlug: tenantSlug,
             tenantName: response.tenant.name,
             clubName: response.club?.name,
-            clubLogoUrl: response.club?.logoUrl,
+            clubLogoUrl: nil,  // Logo URLs now come from /tenants API
             period: period,
             teams: response.teams.map { teamEntry in
                 LeaderboardTeam(

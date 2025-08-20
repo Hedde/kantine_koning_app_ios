@@ -328,7 +328,7 @@ struct LeaderboardHostView: View {
                                 highlighted: teamEntry.highlighted,
                                 clubName: teamEntry.club.name,
                                 clubSlug: teamEntry.club.slug,
-                                clubLogoUrl: teamEntry.club.logoUrl
+                                clubLogoUrl: nil  // Logo URLs now come from /tenants API
                             )
                         },
                         lastUpdated: Date()
@@ -693,7 +693,7 @@ private struct GlobalTeamRowView: View {
             }
             
             // Club logo
-            AsyncImage(url: team.clubLogoUrl.flatMap(URL.init)) { image in
+            AsyncImage(url: store.tenantInfo[team.clubSlug]?.clubLogoUrl.flatMap(URL.init)) { image in
                 image.resizable().scaledToFit()
             } placeholder: {
                 Image(systemName: "building.2")
