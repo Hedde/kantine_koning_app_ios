@@ -1003,7 +1003,7 @@ private struct EmailNotificationPreferencesView: View {
                 DispatchQueue.main.async {
                     switch result {
                     case .success(let enrollmentStatus):
-                        print("📧 ✅ Loaded enrollment status for \(tenant.name): email=\(enrollmentStatus.emailNotificationsEnabled ?? true), push=\(enrollmentStatus.hasApnsToken ?? false)")
+                        print("📧 ✅ Loaded enrollment status for \(tenant.name): teams=\(enrollmentStatus.teamEmailPreferences?.count ?? 0), push=\(enrollmentStatus.hasApnsToken ?? false)")
                         
                         // Update state based on backend response - now per-team!
                         for team in managerTeams {

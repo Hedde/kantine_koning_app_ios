@@ -33,7 +33,7 @@ extension BackendClient {
             
             do {
                 let enrollmentStatus = try JSONDecoder().decode(EnrollmentStatusDTO.self, from: data)
-                print("[EnrollmentStatus] ✅ Loaded enrollment status: email=\(enrollmentStatus.emailNotificationsEnabled ?? false), push=\(enrollmentStatus.pushEnabled ?? false)")
+                print("[EnrollmentStatus] ✅ Loaded enrollment status: teams=\(enrollmentStatus.teamEmailPreferences?.count ?? 0), push=\(enrollmentStatus.pushEnabled ?? false)")
                 completion(.success(enrollmentStatus))
             } catch {
                 print("[EnrollmentStatus] ❌ JSON decode error: \(error)")
