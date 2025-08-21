@@ -361,11 +361,12 @@ private struct DienstDetail: View {
                         Text(v)
                         Spacer()
                         Button(role: .destructive) { remove(v) } label: { Image(systemName: "trash") }
+                            .disabled(dienst.startTime < Date())
                     }
                 }
                 HStack {
                     TextField("Naam", text: $name)
-                    Button("Voeg toe") { add() }.disabled(name.trimmingCharacters(in: .whitespaces).isEmpty || working)
+                    Button("Voeg toe") { add() }.disabled(name.trimmingCharacters(in: .whitespaces).isEmpty || working || dienst.startTime < Date())
                 }
                 if let e = errorText { Text(e).foregroundColor(.red).font(.footnote) }
             }
@@ -374,6 +375,10 @@ private struct DienstDetail: View {
     }
 
     private func add() {
+        guard dienst.startTime >= Date() else {
+            errorText = "Kan geen vrijwilligers toevoegen aan diensten in het verleden"
+            return
+        }
         working = true
         store.addVolunteer(tenant: dienst.tenantId, dienstId: dienst.id, name: name) { result in
             working = false
@@ -382,6 +387,10 @@ private struct DienstDetail: View {
     }
 
     private func remove(_ v: String) {
+        guard dienst.startTime >= Date() else {
+            errorText = "Kan geen vrijwilligers verwijderen van diensten in het verleden"
+            return
+        }
         working = true
         store.removeVolunteer(tenant: dienst.tenantId, dienstId: dienst.id, name: v) { result in
             working = false
@@ -462,6 +471,7 @@ private struct DienstCardView: View {
                                     Button(action: { removeVolunteer(volunteer) }) {
                                         Image(systemName: "minus.circle.fill").foregroundStyle(Color.red).font(.title3)
                                     }
+                                    .disabled(d.startTime < Date())
                                 }
                             }
                             .padding(.horizontal, 12).padding(.vertical, 8)
@@ -505,12 +515,17 @@ private struct DienstCardView: View {
                             .padding(12).background(Color.white).cornerRadius(8)
                             .overlay(RoundedRectangle(cornerRadius: 8).stroke(Color.gray.opacity(0.3), lineWidth: 1))
                             .font(KKFont.body(16)).foregroundColor(KKTheme.textPrimary)
+                            .disabled(d.startTime < Date())
                     }
-                    .onSubmit { addVolunteer() }
+                    .onSubmit { 
+                        if d.startTime >= Date() {
+                            addVolunteer() 
+                        }
+                    }
                     
                     HStack(spacing: 12) {
                         Button("Annuleren") { showAddVolunteer = false; newVolunteerName = "" }.buttonStyle(KKSecondaryButton())
-                        Button("Toevoegen") { addVolunteer() }.disabled(newVolunteerName.trimmingCharacters(in: .whitespaces).isEmpty).buttonStyle(KKPrimaryButton())
+                        Button("Toevoegen") { addVolunteer() }.disabled(newVolunteerName.trimmingCharacters(in: .whitespaces).isEmpty || d.startTime < Date()).buttonStyle(KKPrimaryButton())
                     }
                     .padding(.top, 8)
                 }
@@ -520,6 +535,7 @@ private struct DienstCardView: View {
                         HStack { Image(systemName: "plus.circle"); Text("Vrijwilliger toevoegen") }
                     }
                     .buttonStyle(KKSecondaryButton())
+                    .disabled(d.startTime < Date())
                 } else {
                     HStack(spacing: 8) {
                         Image(systemName: "lock.fill").font(.caption).foregroundStyle(KKTheme.textSecondary)
@@ -594,6 +610,10 @@ private struct DienstCardView: View {
     private func removeVolunteer(_ name: String) {
         guard isManager else { 
             print("[Volunteer] ❌ Remove denied: not manager")
+            return 
+        }
+        guard d.startTime >= Date() else { 
+            print("[Volunteer] ❌ Cannot remove from past dienst")
             return 
         }
         
