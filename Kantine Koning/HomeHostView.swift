@@ -833,15 +833,26 @@ private struct EmailNotificationPreferencesView: View {
                 .font(KKFont.body(12))
                 .foregroundStyle(KKTheme.textSecondary)
             
+            let hasManagerTeams = store.model.tenants.values.contains { tenant in
+                tenant.teams.contains { $0.role == .manager }
+            }
+            
             if store.model.tenants.isEmpty {
                 Text("Geen teams gevonden. Voeg eerst een team toe om e-mail voorkeuren in te stellen.")
                     .font(KKFont.body(12))
                     .foregroundStyle(KKTheme.textSecondary)
                     .italic()
+            } else if !hasManagerTeams {
+                Text("Geen manager teams gevonden. E-mail voorkeuren zijn alleen beschikbaar voor teams waarbij je manager bent.")
+                    .font(KKFont.body(12))
+                    .foregroundStyle(KKTheme.textSecondary)
+                    .italic()
             } else {
                 VStack(spacing: 8) {
-                    // Group teams by tenant
-                    ForEach(Array(store.model.tenants.values.sorted(by: { $0.name < $1.name })), id: \.slug) { tenant in
+                    // Group teams by tenant - only show tenants with manager teams
+                    ForEach(Array(store.model.tenants.values.filter({ tenant in
+                        tenant.teams.contains { $0.role == .manager }
+                    }).sorted(by: { $0.name < $1.name })), id: \.slug) { tenant in
                         // Tenant header
                         HStack {
                             Text(tenant.name)
@@ -852,11 +863,11 @@ private struct EmailNotificationPreferencesView: View {
                         }
                         .padding(.top, 8)
                         
-                        // Teams for this tenant
-                        ForEach(tenant.teams.sorted(by: { $0.name < $1.name }), id: \.id) { team in
+                        // Teams for this tenant - only show email preferences for manager teams
+                        ForEach(tenant.teams.filter({ $0.role == .manager }).sorted(by: { $0.name < $1.name }), id: \.id) { team in
                             let isAdminDisabled = adminOverrides[team.id, default: false]
                             let hasPushNotifications = pushStatus[team.id, default: false]
-                            let canDisableEmail = hasPushNotifications || team.role != .manager
+                            let canDisableEmail = hasPushNotifications  // Only managers shown, so only check push status
                             
                             HStack(spacing: 12) {
                                 VStack(alignment: .leading, spacing: 2) {
@@ -967,25 +978,60 @@ private struct EmailNotificationPreferencesView: View {
         .kkCard()
         .padding(.horizontal, 24)
         .onAppear {
-            // Initialize preferences (all enabled by default)
-            for tenant in store.model.tenants.values {
-                for team in tenant.teams {
-                    if emailPreferences[team.id] == nil {
-                        emailPreferences[team.id] = true
-                    }
-                    
-                    // Initialize admin override status (simulate - in real app this would come from API)
-                    // For demo: randomly simulate some admin overrides
-                    if adminOverrides[team.id] == nil {
-                        adminOverrides[team.id] = false // Default: admin allows email
-                    }
-                    
-                    // Initialize push notification status (simulate - in real app this would check actual status)
-                    // For demo: managers with device enrollment likely have push, members might not
-                    if pushStatus[team.id] == nil {
-                        pushStatus[team.id] = team.role == .manager // Simulate: managers likely have push
+            loadEmailPreferencesFromBackend()
+        }
+    }
+    
+    private func loadEmailPreferencesFromBackend() {
+        // Load email preferences for all manager teams from backend
+        for tenant in store.model.tenants.values {
+            let managerTeams = tenant.teams.filter({ $0.role == .manager })
+            guard !managerTeams.isEmpty else { continue }
+            
+            // Use tenant-specific auth token for this enrollment
+            guard let authToken = tenant.signedDeviceToken else {
+                print("📧 ❌ No auth token for tenant \(tenant.name)")
+                // Fallback to defaults for this tenant
+                setDefaultsForTenant(tenant, managerTeams: managerTeams)
+                continue
+            }
+            
+            let backend = BackendClient()
+            backend.authToken = authToken
+            
+            backend.fetchEnrollmentStatus { result in
+                DispatchQueue.main.async {
+                    switch result {
+                    case .success(let enrollmentStatus):
+                        print("📧 ✅ Loaded enrollment status for \(tenant.name): email=\(enrollmentStatus.emailNotificationsEnabled ?? true), push=\(enrollmentStatus.hasApnsToken ?? false)")
+                        
+                        // Update state based on backend response
+                        for team in managerTeams {
+                            self.emailPreferences[team.id] = enrollmentStatus.emailNotificationsEnabled ?? true
+                            self.pushStatus[team.id] = (enrollmentStatus.pushEnabled ?? false) && (enrollmentStatus.hasApnsToken ?? false)
+                            self.adminOverrides[team.id] = false // Admin overrides would come from different API
+                        }
+                        
+                    case .failure(let error):
+                        print("📧 ❌ Failed to load enrollment status for \(tenant.name): \(error)")
+                        // Fallback to defaults
+                        self.setDefaultsForTenant(tenant, managerTeams: managerTeams)
                     }
                 }
+            }
+        }
+    }
+    
+    private func setDefaultsForTenant(_ tenant: DomainModel.Tenant, managerTeams: [DomainModel.Team]) {
+        for team in managerTeams {
+            if emailPreferences[team.id] == nil {
+                emailPreferences[team.id] = true // Default: email enabled
+            }
+            if adminOverrides[team.id] == nil {
+                adminOverrides[team.id] = false // Default: admin allows email
+            }
+            if pushStatus[team.id] == nil {
+                pushStatus[team.id] = false // Default: assume no push until proven otherwise
             }
         }
     }
@@ -1011,11 +1057,27 @@ private struct EmailNotificationPreferencesView: View {
                 switch result {
                 case .success:
                     print("📧 ✅ Email preference updated successfully for \(team.name)")
+                    // Reload the actual status from backend to ensure we're in sync
+                    backend.fetchEnrollmentStatus { statusResult in
+                        DispatchQueue.main.async {
+                            switch statusResult {
+                            case .success(let enrollmentStatus):
+                                // Update with actual backend state (may be different due to forced email logic)
+                                withAnimation(.easeInOut(duration: 0.2)) {
+                                    self.emailPreferences[team.id] = enrollmentStatus.emailNotificationsEnabled ?? true
+                                    self.pushStatus[team.id] = (enrollmentStatus.pushEnabled ?? false) && (enrollmentStatus.hasApnsToken ?? false)
+                                }
+                                print("📧 🔄 Synced email preference state from backend: email=\(enrollmentStatus.emailNotificationsEnabled ?? true)")
+                            case .failure(let error):
+                                print("📧 ⚠️ Failed to sync status after update: \(error)")
+                            }
+                        }
+                    }
                 case .failure(let error):
                     print("📧 ❌ Failed to update email preference for \(team.name): \(error)")
                     // Revert UI state on failure
                     withAnimation(.easeInOut(duration: 0.2)) {
-                        emailPreferences[team.id] = !enabled
+                        self.emailPreferences[team.id] = !enabled
                     }
                 }
             }
