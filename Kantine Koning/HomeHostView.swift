@@ -1005,9 +1005,10 @@ private struct EmailNotificationPreferencesView: View {
                     case .success(let enrollmentStatus):
                         print("📧 ✅ Loaded enrollment status for \(tenant.name): email=\(enrollmentStatus.emailNotificationsEnabled ?? true), push=\(enrollmentStatus.hasApnsToken ?? false)")
                         
-                        // Update state based on backend response
+                        // Update state based on backend response - now per-team!
                         for team in managerTeams {
-                            self.emailPreferences[team.id] = enrollmentStatus.emailNotificationsEnabled ?? true
+                            // Use per-team preference if available, fallback to global
+                            self.emailPreferences[team.id] = enrollmentStatus.getEmailPreference(for: team.id)
                             self.pushStatus[team.id] = (enrollmentStatus.pushEnabled ?? false) && (enrollmentStatus.hasApnsToken ?? false)
                             self.adminOverrides[team.id] = false // Admin overrides would come from different API
                         }
@@ -1052,7 +1053,7 @@ private struct EmailNotificationPreferencesView: View {
         let backend = BackendClient()
         backend.authToken = authToken
         
-        backend.updateEmailNotificationPreferences(enabled: enabled) { result in
+        backend.updateEmailNotificationPreferences(enabled: enabled, teamCode: team.id) { result in
             DispatchQueue.main.async {
                 switch result {
                 case .success:
@@ -1064,10 +1065,11 @@ private struct EmailNotificationPreferencesView: View {
                             case .success(let enrollmentStatus):
                                 // Update with actual backend state (may be different due to forced email logic)
                                 withAnimation(.easeInOut(duration: 0.2)) {
-                                    self.emailPreferences[team.id] = enrollmentStatus.emailNotificationsEnabled ?? true
+                                    // Use per-team preference for this specific team
+                                    self.emailPreferences[team.id] = enrollmentStatus.getEmailPreference(for: team.id)
                                     self.pushStatus[team.id] = (enrollmentStatus.pushEnabled ?? false) && (enrollmentStatus.hasApnsToken ?? false)
                                 }
-                                print("📧 🔄 Synced email preference state from backend: email=\(enrollmentStatus.emailNotificationsEnabled ?? true)")
+                                print("📧 🔄 Synced email preference state from backend for \(team.id): email=\(enrollmentStatus.getEmailPreference(for: team.id))")
                             case .failure(let error):
                                 print("📧 ⚠️ Failed to sync status after update: \(error)")
                             }

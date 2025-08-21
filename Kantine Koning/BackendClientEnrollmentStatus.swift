@@ -51,7 +51,7 @@ struct EnrollmentStatusDTO: Codable {
     let teamCodes: [String]
     let role: String
     let status: String
-    let emailNotificationsEnabled: Bool?
+    let teamEmailPreferences: [String: Bool]?
     let pushEnabled: Bool?
     let hasApnsToken: Bool?
     let lastSeenAt: String?
@@ -62,9 +62,20 @@ struct EnrollmentStatusDTO: Codable {
         case tenantName = "tenant_name"
         case teamCodes = "team_codes"
         case role, status
-        case emailNotificationsEnabled = "email_notifications_enabled"
+        case teamEmailPreferences = "team_email_preferences"
         case pushEnabled = "push_enabled"
         case hasApnsToken = "has_apns_token"
         case lastSeenAt = "last_seen_at"
+    }
+    
+    /// Get effective email preference for a specific team
+    func getEmailPreference(for teamCode: String) -> Bool {
+        // Priority: team-specific preference > DEFAULT: true (for safety)
+        if let teamPrefs = teamEmailPreferences,
+           let teamPref = teamPrefs[teamCode] {
+            return teamPref
+        }
+        // Default to email enabled for safety (no fallback to global)
+        return true
     }
 }

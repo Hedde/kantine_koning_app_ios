@@ -2,7 +2,8 @@ import Foundation
 
 // MARK: - Email Notification Preferences
 extension BackendClient {
-    func updateEmailNotificationPreferences(enabled: Bool, completion: @escaping (Result<Void, Error>) -> Void) {
+    /// Update email preferences for a specific team
+    func updateEmailNotificationPreferences(enabled: Bool, teamCode: String, completion: @escaping (Result<Void, Error>) -> Void) {
         guard let authToken = authToken else {
             completion(.failure(NSError(domain: "Backend", code: -1, userInfo: [NSLocalizedDescriptionKey: "No auth token"])))
             return
@@ -13,7 +14,10 @@ extension BackendClient {
         req.setValue("application/json", forHTTPHeaderField: "Content-Type")
         req.setValue("Bearer \(authToken)", forHTTPHeaderField: "Authorization")
         
-        let body: [String: Any] = ["email_notifications_enabled": enabled]
+        let body: [String: Any] = [
+            "email_notifications_enabled": enabled,
+            "team_code": teamCode
+        ]
         req.httpBody = try? JSONSerialization.data(withJSONObject: body)
         
         URLSession.shared.dataTask(with: req) { data, response, error in
@@ -35,7 +39,8 @@ extension BackendClient {
                 return
             }
             
-            print("[EmailPrefs] ✅ Email preferences updated: \(enabled)")
+            let teamInfo = " for team \(teamCode)"
+            print("[EmailPrefs] ✅ Email preferences updated\(teamInfo): \(enabled)")
             completion(.success(()))
         }.resume()
     }
