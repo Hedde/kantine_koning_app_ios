@@ -3,14 +3,14 @@ import UIKit
 
 final class BackendClient {
     let baseURL: URL = {
-        #if DEBUG
-        let defaultURL = "http://localhost:4000"
-        #else
+        // We testen ALTIJD tegen productie (enige server omgeving)
+        // Om push notificaties toch te kunnen testen moet je op productie bij
+        // een gebruiker of test tenant bij gebruikers de enrolled Device op APN
+        // Sandbox zetten.
         let defaultURL = "https://kantinekoning.com"
-        #endif
         let override = Bundle.main.object(forInfoDictionaryKey: "API_BASE_URL") as? String
         let urlString = override ?? defaultURL
-        print("[Backend] 🌐 Using base URL: \(urlString)")
+        Logger.debug("🌐 Using base URL: \(urlString)")
         return URL(string: urlString)!
     }()
 
@@ -27,7 +27,7 @@ final class BackendClient {
             if let error = error { completion(.failure(error)); return }
             guard let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode) else {
                 let body = data.flatMap { String(data: $0, encoding: .utf8) } ?? "<no body>"
-                print("[Enroll] ❌ request HTTP error: \(String(describing: (response as? HTTPURLResponse)?.statusCode)) body=\(body)")
+                Logger.enrollment("❌ request HTTP error: \(String(describing: (response as? HTTPURLResponse)?.statusCode)) body=\(body)")
                 completion(.failure(NSError(domain: "Backend", code: -1, userInfo: [NSLocalizedDescriptionKey: body]))); return
             }
             completion(.success(()))
@@ -42,18 +42,18 @@ final class BackendClient {
         let body: [String: Any] = ["email": email, "tenant_slug": tenantSlug, "team_codes": []]
         req.httpBody = try? JSONSerialization.data(withJSONObject: body)
         URLSession.shared.dataTask(with: req) { data, response, error in
-            if let error = error { print("[Enroll] ❌ network: \(error)"); completion(.failure(error)); return }
+            if let error = error { Logger.enrollment("❌ network: \(error)"); completion(.failure(error)); return }
             guard let http = response as? HTTPURLResponse, let data = data else {
                 completion(.failure(NSError(domain: "Backend", code: -1, userInfo: [NSLocalizedDescriptionKey: "No response"]))); return
             }
             guard (200..<300).contains(http.statusCode) else {
                 let body = String(data: data, encoding: .utf8) ?? "<no body>"
-                print("[Enroll] ❌ fetchAllowedTeams HTTP \(http.statusCode) body=\(body)")
+                Logger.enrollment("❌ fetchAllowedTeams HTTP \(http.statusCode) body=\(body)")
                 completion(.failure(NSError(domain: "Backend", code: http.statusCode, userInfo: [NSLocalizedDescriptionKey: body]))); return
             }
             do {
                 let obj = try JSONSerialization.jsonObject(with: data) as? [String: Any]
-                print("[Enroll] 🔍 Response keys: \(obj?.keys.joined(separator: ", ") ?? "none")")
+                Logger.debug("Response keys: \(obj?.keys.joined(separator: ", ") ?? "none")")
                 
                 if let teams = obj?["teams"] as? [[String: Any]] {
                     let mapped: [TeamDTO] = teams.compactMap { t in
@@ -62,22 +62,22 @@ final class BackendClient {
                         let id = code ?? naam
                         return TeamDTO(id: id, code: code, naam: naam)
                     }
-                    print("[Enroll] ✅ allowed teams count=\(mapped.count)")
+                    Logger.enrollment("✅ allowed teams count=\(mapped.count)")
                     completion(.success(mapped))
                 } else {
-                    print("[Enroll] ⚠️ teams key missing in response, available keys: \(obj?.keys.joined(separator: ", ") ?? "none")")
-                    print("[Enroll] 🔍 Full response: \(String(data: data, encoding: .utf8) ?? "<decode failed>")")
+                    Logger.warning("teams key missing in response, available keys: \(obj?.keys.joined(separator: ", ") ?? "none")")
+                    Logger.debug("Full response: \(String(data: data, encoding: .utf8) ?? "<decode failed>")")
                     completion(.success([]))
                 }
             } catch { 
-                print("[Enroll] ❌ JSON decode error: \(error)")
+                Logger.enrollment("❌ JSON decode error: \(error)")
                 completion(.failure(error)) 
             }
         }.resume()
     }
 
     func registerDevice(enrollmentToken: String, pushToken: String?, completion: @escaping (Result<EnrollmentDelta, Error>) -> Void) {
-        print("[Register] 📡 Registering device with token: \(enrollmentToken.prefix(20))...")
+        Logger.network("Registering device with token: \(enrollmentToken.prefix(20))...")
         var req = URLRequest(url: baseURL.appendingPathComponent("/api/mobile/v1/enrollments/register"))
         req.httpMethod = "POST"
         req.setValue("application/json", forHTTPHeaderField: "Content-Type")
@@ -91,7 +91,7 @@ final class BackendClient {
         let vendorId = UIDevice.current.identifierForVendor?.uuidString ?? ""
         let bundleId = Bundle.main.bundleIdentifier ?? ""
         let hardwareId = "\(vendorId):\(bundleId)"
-        print("[Register] 🔧 Hardware ID: \(hardwareId)")
+        Logger.debug("🔧 Hardware ID: \(hardwareId)")
         var body: [String: Any] = [
             "enrollment_token": enrollmentToken,
             "apns_device_token": pushToken ?? "",
@@ -103,16 +103,16 @@ final class BackendClient {
         if let b = Bundle.main.object(forInfoDictionaryKey: "CFBundleVersion") as? String { body["build_number"] = b }
         req.httpBody = try? JSONSerialization.data(withJSONObject: body)
         URLSession.shared.dataTask(with: req) { data, response, error in
-            if let error = error { print("[Register] ❌ network: \(error)"); completion(.failure(error)); return }
+            if let error = error { Logger.error("network: \(error)"); completion(.failure(error)); return }
             guard let http = response as? HTTPURLResponse, let data = data, (200..<300).contains(http.statusCode) else {
                 let body = data.flatMap { String(data: $0, encoding: .utf8) } ?? "<no body>"
-                print("[Register] ❌ HTTP \(String(describing: (response as? HTTPURLResponse)?.statusCode)) body=\(body)")
+                Logger.error("HTTP \(String(describing: (response as? HTTPURLResponse)?.statusCode)) body=\(body)")
                 completion(.failure(NSError(domain: "Backend", code: -1))); return
             }
             do {
                 let obj = try JSONSerialization.jsonObject(with: data) as? [String: Any]
-                print("[Register] 🔍 Response keys: \(obj?.keys.joined(separator: ", ") ?? "none")")
-                print("[Register] 🔍 Full response: \(String(data: data, encoding: .utf8) ?? "<decode failed>")")
+                Logger.debug("Response keys: \(obj?.keys.joined(separator: ", ") ?? "none")")
+                Logger.debug("Full response: \(String(data: data, encoding: .utf8) ?? "<decode failed>")")
                 
                 let tenantSlug = obj?["tenant_slug"] as? String ?? "tenant_demo"
                 let tenantName = obj?["tenant_name"] as? String ?? "Demo Club"
@@ -122,30 +122,30 @@ final class BackendClient {
                 let role: DomainModel.Role = roleRaw == "member" ? .member : .manager
                 let apiToken = obj?["api_token"] as? String
                 
-                print("[Register] 📋 Parsed: tenant=\(tenantSlug) name=\(tenantName) teams=\(teamCodes) role=\(role) email=\(email ?? "nil")")
+                Logger.debug("Parsed: tenant=\(tenantSlug) name=\(tenantName) teams=\(teamCodes) role=\(role) email=\(email ?? "nil")")
                 
                 self.authToken = apiToken
-                print("[Register] 🔑 Set auth token for role=\(role): \(apiToken?.prefix(20) ?? "nil")")
+                Logger.auth("Set auth token for role=\(role): \(apiToken?.prefix(20) ?? "nil")")
                 let now = Date()
                 
                 // Check if we have team names in response
                 let teams: [DomainModel.Team]
                 if let teamsArray = obj?["teams"] as? [[String: Any]] {
-                    print("[Register] 🏆 Found teams array with \(teamsArray.count) items")
+                    Logger.debug("🏆 Found teams array with \(teamsArray.count) items")
                     teams = teamsArray.compactMap { teamObj in
                         let id = teamObj["id"] as? String ?? teamObj["code"] as? String ?? ""
                         let code = teamObj["code"] as? String
                         let name = teamObj["naam"] as? String ?? teamObj["name"] as? String ?? code ?? id
-                        print("[Register]   → team id=\(id) code=\(code ?? "nil") name=\(name)")
+                        Logger.debug("Team id=\(id) code=\(code ?? "nil") name=\(name)")
                         guard !id.isEmpty else { return nil }
                         return DomainModel.Team(id: id, code: code, name: name, role: role, email: email, enrolledAt: now)
                     }
                 } else {
-                    print("[Register] ⚠️ No teams array in response - backend should include team details")
-                    print("[Register] 💡 Backend fix needed: /enrollments/register should return teams array with names")
+                    Logger.warning("No teams array in response - backend should include team details")
+                    Logger.debug("💡 Backend fix needed: /enrollments/register should return teams array with names")
                     // Create teams with codes as fallback
                     teams = teamCodes.map { code in
-                        print("[Register]   → fallback team code=\(code) (backend should provide name)")
+                        Logger.debug("  → fallback team code=\(code) (backend should provide name)")
                         return DomainModel.Team(id: code, code: code, name: code, role: role, email: email, enrolledAt: now)
                     }
                 }
@@ -155,10 +155,10 @@ final class BackendClient {
                     teams: teams,
                     signedDeviceToken: apiToken
                 )
-                print("[Register] ✅ Created delta with \(delta.teams.count) teams")
+                Logger.success("Created delta with \(delta.teams.count) teams")
                 completion(.success(delta))
             } catch { 
-                print("[Register] ❌ JSON decode error: \(error)")
+                Logger.error("JSON decode error: \(error)")
                 completion(.failure(error)) 
             }
         }.resume()
@@ -181,9 +181,9 @@ final class BackendClient {
     }
 
     func removeTenant(_ tenantSlug: String, completion: @escaping (Result<Void, Error>) -> Void) {
-        print("[Backend] 🗑️ Removing tenant: \(tenantSlug)")
+        Logger.debug("🗑️ Removing tenant: \(tenantSlug)")
         guard let token = authToken else { 
-            print("[Backend] ❌ No auth token for tenant removal")
+            Logger.error("No auth token for tenant removal")
             completion(.failure(NSError(domain: "Backend", code: 401))); return 
         }
         var req = URLRequest(url: baseURL.appendingPathComponent("/api/mobile/v1/enrollments/tenant"))
@@ -192,32 +192,32 @@ final class BackendClient {
         req.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
         req.httpBody = try? JSONSerialization.data(withJSONObject: ["tenant_slug": tenantSlug])
         URLSession.shared.dataTask(with: req) { _, response, error in
-            if let error = error { print("[Backend] ❌ removeTenant network: \(error)"); completion(.failure(error)); return }
+            if let error = error { Logger.error("removeTenant network: \(error)"); completion(.failure(error)); return }
             guard let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode) else {
-                print("[Backend] ❌ removeTenant HTTP \(String(describing: (response as? HTTPURLResponse)?.statusCode))")
+                Logger.error("removeTenant HTTP \(String(describing: (response as? HTTPURLResponse)?.statusCode))")
                 completion(.failure(NSError(domain: "Backend", code: -1))); return
             }
-            print("[Backend] ✅ Tenant \(tenantSlug) removed successfully")
+            Logger.success("Tenant \(tenantSlug) removed successfully")
             completion(.success(()))
         }.resume()
     }
     
     func removeAllEnrollments(completion: @escaping (Result<Void, Error>) -> Void) {
-        print("[Backend] 🗑️ Removing ALL enrollments")
+        Logger.debug("🗑️ Removing ALL enrollments")
         guard let token = authToken else { 
-            print("[Backend] ❌ No auth token for removeAll")
+            Logger.error("No auth token for removeAll")
             completion(.failure(NSError(domain: "Backend", code: 401))); return 
         }
         var req = URLRequest(url: baseURL.appendingPathComponent("/api/mobile/v1/enrollments/all"))
         req.httpMethod = "DELETE"
         req.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
         URLSession.shared.dataTask(with: req) { _, response, error in
-            if let error = error { print("[Backend] ❌ removeAll network: \(error)"); completion(.failure(error)); return }
+            if let error = error { Logger.error("removeAll network: \(error)"); completion(.failure(error)); return }
             guard let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode) else {
-                print("[Backend] ❌ removeAll HTTP \(String(describing: (response as? HTTPURLResponse)?.statusCode))")
+                Logger.error("removeAll HTTP \(String(describing: (response as? HTTPURLResponse)?.statusCode))")
                 completion(.failure(NSError(domain: "Backend", code: -1))); return
             }
-            print("[Backend] ✅ All enrollments removed successfully")
+            Logger.success("All enrollments removed successfully")
             completion(.success(()))
         }.resume()
     }
@@ -252,8 +252,8 @@ final class BackendClient {
 
     // MARK: - Single Tenant Diensten (Per-enrollment)
     func fetchDiensten(tenant: TenantID, completion: @escaping (Result<[DienstDTO], Error>) -> Void) {
-        print("[Backend] 📡 Fetching diensten for tenant \(tenant)")
-        print("[Backend] 🔑 Auth token available: \(authToken?.prefix(20) ?? "nil")")
+        Logger.network("Fetching diensten for tenant \(tenant)")
+        Logger.auth("Auth token available: \(authToken?.prefix(20) ?? "nil")")
         
         var comps = URLComponents(url: baseURL.appendingPathComponent("/api/mobile/v1/diensten"), resolvingAgainstBaseURL: false)!
         comps.queryItems = [
@@ -267,9 +267,9 @@ final class BackendClient {
         // Add auth token - backend will filter by enrolled teams in this specific JWT
         if let token = authToken, !token.isEmpty {
             req.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
-            print("[Backend] 🔑 Using tenant-specific auth token for filtering")
+            Logger.auth("Using tenant-specific auth token for filtering")
         } else {
-            print("[Backend] ⚠️ No auth token - cannot fetch diensten")
+            Logger.warning("No auth token - cannot fetch diensten")
             completion(.failure(NSError(domain: "Backend", code: 401)))
             return
         }
@@ -310,8 +310,8 @@ final class BackendClient {
 
     // MARK: - All Diensten (Multi-tenant)
     func fetchAllDiensten(completion: @escaping (Result<[DienstDTO], Error>) -> Void) {
-        print("[Backend] 📡 Fetching ALL diensten for all enrolled tenants/teams")
-        print("[Backend] 🔑 Auth token available: \(authToken?.prefix(20) ?? "nil")")
+        Logger.network("Fetching ALL diensten for all enrolled tenants/teams")
+        Logger.auth("Auth token available: \(authToken?.prefix(20) ?? "nil")")
         
         var comps = URLComponents(url: baseURL.appendingPathComponent("/api/mobile/v1/diensten"), resolvingAgainstBaseURL: false)!
         comps.queryItems = [
@@ -325,9 +325,9 @@ final class BackendClient {
         // Add auth token - backend will use device_id to find all enrollments
         if let token = authToken, !token.isEmpty {
             req.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
-            print("[Backend] 🔑 Using authenticated request - backend will find all enrolled teams")
+            Logger.auth("Using authenticated request - backend will find all enrolled teams")
         } else {
-            print("[Backend] ⚠️ No auth token - cannot fetch diensten")
+            Logger.warning("No auth token - cannot fetch diensten")
             completion(.failure(NSError(domain: "Backend", code: 401)))
             return
         }
@@ -368,8 +368,8 @@ final class BackendClient {
 
     // MARK: - Volunteers
     func addVolunteer(tenant: TenantID, dienstId: String, name: String, completion: @escaping (Result<DienstDTO, Error>) -> Void) {
-        print("[Backend] 📡 Adding volunteer '\(name)' to dienst \(dienstId) in tenant \(tenant)")
-        print("[Backend] 🔑 Auth token available: \(authToken?.prefix(20) ?? "nil")")
+        Logger.network("Adding volunteer '\(name)' to dienst \(dienstId) in tenant \(tenant)")
+        Logger.auth("Auth token available: \(authToken?.prefix(20) ?? "nil")")
         
         var comps = URLComponents(url: baseURL.appendingPathComponent("/api/mobile/v1/diensten/\(dienstId)/volunteer"), resolvingAgainstBaseURL: false)!
         comps.queryItems = [URLQueryItem(name: "tenant", value: tenant)]
@@ -378,7 +378,7 @@ final class BackendClient {
         req.setValue("application/json", forHTTPHeaderField: "Content-Type")
         
         guard let token = authToken, !token.isEmpty else {
-            print("[Backend] ❌ No auth token for volunteer add")
+            Logger.error("No auth token for volunteer add")
             completion(.failure(NSError(domain: "Backend", code: 401, userInfo: [NSLocalizedDescriptionKey: "No authentication token available"])))
             return
         }
@@ -387,13 +387,13 @@ final class BackendClient {
         req.httpBody = try? JSONSerialization.data(withJSONObject: ["naam": name])
         URLSession.shared.dataTask(with: req) { data, response, error in
             if let error = error { 
-                print("[Backend] ❌ addVolunteer network error: \(error)")
+                Logger.error("addVolunteer network error: \(error)")
                 completion(.failure(error)); return 
             }
             guard let http = response as? HTTPURLResponse, let data = data, (200..<300).contains(http.statusCode) else {
                 let body = data.flatMap { String(data: $0, encoding: .utf8) } ?? "<no body>"
                 let statusCode = (response as? HTTPURLResponse)?.statusCode ?? -1
-                print("[Backend] ❌ addVolunteer HTTP \(statusCode) body=\(body)")
+                Logger.error("addVolunteer HTTP \(statusCode) body=\(body)")
                 completion(.failure(NSError(domain: "Backend", code: statusCode, userInfo: [NSLocalizedDescriptionKey: body]))); return
             }
             do {
@@ -414,8 +414,8 @@ final class BackendClient {
     }
 
     func removeVolunteer(tenant: TenantID, dienstId: String, name: String, completion: @escaping (Result<DienstDTO, Error>) -> Void) {
-        print("[Backend] 📡 Removing volunteer '\(name)' from dienst \(dienstId) in tenant \(tenant)")
-        print("[Backend] 🔑 Auth token available: \(authToken?.prefix(20) ?? "nil")")
+        Logger.network("Removing volunteer '\(name)' from dienst \(dienstId) in tenant \(tenant)")
+        Logger.auth("Auth token available: \(authToken?.prefix(20) ?? "nil")")
         
         var comps = URLComponents(url: baseURL.appendingPathComponent("/api/mobile/v1/diensten/\(dienstId)/volunteer"), resolvingAgainstBaseURL: false)!
         comps.queryItems = [URLQueryItem(name: "tenant", value: tenant), URLQueryItem(name: "naam", value: name)]
@@ -423,7 +423,7 @@ final class BackendClient {
         req.httpMethod = "DELETE"
         
         guard let token = authToken, !token.isEmpty else {
-            print("[Backend] ❌ No auth token for volunteer remove")
+            Logger.error("No auth token for volunteer remove")
             completion(.failure(NSError(domain: "Backend", code: 401, userInfo: [NSLocalizedDescriptionKey: "No authentication token available"])))
             return
         }
@@ -489,7 +489,7 @@ final class BackendClient {
 
     // MARK: - Member Enrollment (no email)
     func registerMemberDevice(tenantSlug: String, tenantName: String, teamIds: [String], pushToken: String?, completion: @escaping (Result<EnrollmentDelta, Error>) -> Void) {
-        print("[MemberRegister] 📡 Registering member device for tenant=\(tenantSlug) teams=\(teamIds)")
+        Logger.network("Registering member device for tenant=\(tenantSlug) teams=\(teamIds)")
         
         // Create a member enrollment token and register via the same endpoint
         let exp = Int(Date().addingTimeInterval(10 * 60).timeIntervalSince1970)
@@ -510,7 +510,7 @@ final class BackendClient {
             return
         }
         
-        print("[MemberRegister] 🎫 Created member token, calling registerDevice")
+        Logger.debug("🎫 Created member token, calling registerDevice")
         registerDevice(enrollmentToken: token, pushToken: pushToken, completion: completion)
     }
 
@@ -543,7 +543,7 @@ final class BackendClient {
 
     // MARK: - Leaderboard
     func fetchLeaderboard(tenant: TenantID, period: String = "season", teamId: String? = nil, completion: @escaping (Result<LeaderboardResponse, Error>) -> Void) {
-        print("[Backend] 📊 Fetching leaderboard for tenant \(tenant) period=\(period) teamId=\(teamId ?? "nil")")
+        Logger.leaderboard("Fetching leaderboard for tenant \(tenant) period=\(period) teamId=\(teamId ?? "nil")")
         
         var comps = URLComponents(url: baseURL.appendingPathComponent("/api/mobile/v1/leaderboard"), resolvingAgainstBaseURL: false)!
         var queryItems = [
@@ -565,12 +565,12 @@ final class BackendClient {
         // Add auth token if available
         if let token = authToken, !token.isEmpty {
             req.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
-            print("[Backend] 🔑 Using authenticated request for leaderboard")
+            Logger.auth("Using authenticated request for leaderboard")
         }
         
         URLSession.shared.dataTask(with: req) { data, response, error in
             if let error = error { 
-                print("[Backend] ❌ leaderboard network error: \(error)")
+                Logger.error("leaderboard network error: \(error)")
                 let userFriendlyError = self.createUserFriendlyError(from: error, context: "leaderboard")
                 completion(.failure(userFriendlyError))
                 return 
@@ -591,20 +591,20 @@ final class BackendClient {
             do {
                 // Log the raw response for debugging
                 if let responseString = String(data: data, encoding: .utf8) {
-                    print("[Backend] 📄 Raw leaderboard response: \(responseString)")
+                    Logger.debug("📄 Raw leaderboard response: \(responseString)")
                 }
                 
                 let decoder = JSONDecoder()
                 decoder.keyDecodingStrategy = .convertFromSnakeCase
                 let leaderboard = try decoder.decode(LeaderboardResponse.self, from: data)
-                print("[Backend] ✅ Leaderboard fetched: \(leaderboard.teams.count) teams, opt_out=\(leaderboard.tenant.leaderboardOptOut)")
+                Logger.success("Leaderboard fetched: \(leaderboard.teams.count) teams, opt_out=\(leaderboard.tenant.leaderboardOptOut)")
                 completion(.success(leaderboard))
             } catch {
-                print("[Backend] ❌ leaderboard decode error: \(error)")
+                Logger.error("leaderboard decode error: \(error)")
                 
                 // Log more detailed error info
                 if let responseString = String(data: data, encoding: .utf8) {
-                    print("[Backend] 📄 Failed response body: \(responseString)")
+                    Logger.debug("📄 Failed response body: \(responseString)")
                 }
                 
                 let userError = NSError(domain: "Backend", code: -2, userInfo: [
@@ -616,7 +616,7 @@ final class BackendClient {
     }
     
     func fetchGlobalLeaderboard(tenant: TenantID, period: String = "season", teamId: String? = nil, completion: @escaping (Result<GlobalLeaderboardResponse, Error>) -> Void) {
-        print("[Backend] 🌍 Fetching global leaderboard for tenant \(tenant) period=\(period) teamId=\(teamId ?? "nil")")
+        Logger.leaderboard("Fetching global leaderboard for tenant \(tenant) period=\(period) teamId=\(teamId ?? "nil")")
         
         var comps = URLComponents(url: baseURL.appendingPathComponent("/api/mobile/v1/leaderboard/global"), resolvingAgainstBaseURL: false)!
         var queryItems = [
@@ -638,12 +638,12 @@ final class BackendClient {
         // Add auth token if available
         if let token = authToken, !token.isEmpty {
             req.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
-            print("[Backend] 🔑 Using authenticated request for global leaderboard")
+            Logger.auth("Using authenticated request for global leaderboard")
         }
         
         URLSession.shared.dataTask(with: req) { data, response, error in
             if let error = error { 
-                print("[Backend] ❌ global leaderboard network error: \(error)")
+                Logger.error("global leaderboard network error: \(error)")
                 let userFriendlyError = self.createUserFriendlyError(from: error, context: "globale leaderboard")
                 completion(.failure(userFriendlyError))
                 return 
@@ -657,7 +657,7 @@ final class BackendClient {
             
             // Handle forbidden (tenant opted out)
             if http.statusCode == 403 {
-                print("[Backend] ⚠️ Tenant opted out of global leaderboard")
+                Logger.warning("Tenant opted out of global leaderboard")
                 completion(.failure(NSError(domain: "Backend", code: 403, userInfo: [NSLocalizedDescriptionKey: "tenant_opted_out"])))
                 return
             }
@@ -672,10 +672,10 @@ final class BackendClient {
                 let decoder = JSONDecoder()
                 decoder.keyDecodingStrategy = .convertFromSnakeCase
                 let leaderboard = try decoder.decode(GlobalLeaderboardResponse.self, from: data)
-                print("[Backend] ✅ Global leaderboard fetched: \(leaderboard.teams.count) teams")
+                Logger.success("Global leaderboard fetched: \(leaderboard.teams.count) teams")
                 completion(.success(leaderboard))
             } catch {
-                print("[Backend] ❌ global leaderboard decode error: \(error)")
+                Logger.error("global leaderboard decode error: \(error)")
                 let userError = NSError(domain: "Backend", code: -2, userInfo: [
                     NSLocalizedDescriptionKey: "Ongeldig antwoord ontvangen van server voor globale leaderboard"
                 ])
@@ -721,11 +721,11 @@ final class BackendClient {
     }
     
     private func createUserFriendlyError(from statusCode: Int, data: Data, context: String) -> NSError {
-        print("[Backend] ❌ HTTP \(statusCode) for \(context)")
+        Logger.error("HTTP \(statusCode) for \(context)")
         
         // Log the raw response for debugging, but don't show it to the user
         if let body = String(data: data, encoding: .utf8) {
-            print("[Backend] Response body: \(body)")
+            Logger.debug("Response body: \(body)")
         }
         
         let userMessage: String
@@ -753,8 +753,8 @@ final class BackendClient {
 }
 
 // MARK: - DTOs
-struct DienstDTO: Decodable {
-    struct TeamRef: Decodable { let id: String; let code: String?; let naam: String; let pk: String? }
+struct DienstDTO: Codable {
+    struct TeamRef: Codable { let id: String; let code: String?; let naam: String; let pk: String? }
     let id: String
     let tenant_id: String
     let team: TeamRef?
@@ -768,9 +768,9 @@ struct DienstDTO: Decodable {
     let updated_at: Date?
 }
 
-struct TenantInfoResponse: Decodable {
-    struct TenantData: Decodable {
-        struct TeamData: Decodable {
+struct TenantInfoResponse: Codable {
+    struct TenantData: Codable {
+        struct TeamData: Codable {
             let id: String
             let code: String
             let name: String
@@ -791,21 +791,21 @@ struct TenantInfoResponse: Decodable {
     let tenants: [TenantData]
 }
 
-struct LeaderboardResponse: Decodable {
-    struct TenantInfo: Decodable {
+struct LeaderboardResponse: Codable {
+    struct TenantInfo: Codable {
         let slug: String
         let name: String
         let leaderboardOptOut: Bool
         // No custom CodingKeys needed - keyDecodingStrategy handles snake_case conversion
     }
     
-    struct ClubInfo: Decodable {
+    struct ClubInfo: Codable {
         let name: String
         // logoUrl removed - now handled by /tenants API
     }
     
-    struct TeamEntry: Decodable {
-        struct Team: Decodable {
+    struct TeamEntry: Codable {
+        struct Team: Codable {
             let id: String
             let name: String
             let code: String?
@@ -872,9 +872,9 @@ struct LeaderboardResponse: Decodable {
     let teams: [TeamEntry]
 }
 
-struct GlobalLeaderboardResponse: Decodable {
-    struct TeamEntry: Decodable {
-        struct Team: Decodable {
+struct GlobalLeaderboardResponse: Codable {
+    struct TeamEntry: Codable {
+        struct Team: Codable {
             let id: String
             let name: String
             let code: String?
@@ -906,7 +906,7 @@ struct GlobalLeaderboardResponse: Decodable {
             }
         }
         
-        struct Club: Decodable {
+        struct Club: Codable {
             let name: String
             let slug: String
             // logoUrl removed - now handled by /tenants API

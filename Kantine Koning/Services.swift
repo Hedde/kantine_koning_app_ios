@@ -23,7 +23,7 @@ final class DefaultPushService: PushService {
         guard let auth = auth, !auth.isEmpty else { return }
         backend.authToken = auth
         backend.updateAPNsToken(token) { result in
-            if case .failure(let err) = result { print("APNs upload failed: \(err)") }
+            if case .failure(let err) = result { Logger.debug("APNs upload failed: \(err)") }
         }
     }
     

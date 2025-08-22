@@ -172,10 +172,10 @@ struct OnboardingHostView: View {
 
     private func registerMember() {
         guard !selectedMemberTeams.isEmpty else { return }
-        print("[Member] 🎯 Registering member with teams: \(Array(selectedMemberTeams))")
+        Logger.debug("Registering member with teams: \(Array(selectedMemberTeams))")
         // Use team codes, not IDs for backend
         let teamCodes = store.searchResults.filter { selectedMemberTeams.contains($0.id) }.compactMap { $0.code ?? $0.id }
-        print("[Member] 📋 Team codes to register: \(teamCodes)")
+        Logger.debug("📋 Team codes to register: \(teamCodes)")
         store.registerMember(tenantSlug: tenant, tenantName: store.onboardingScan?.name ?? tenant, teamIds: teamCodes) { result in
             if case .failure(let err) = result { errorText = ErrorTranslations.translate(err) }
         }
@@ -208,7 +208,7 @@ private extension OnboardingHostView {
     }
 
     func startScanning() {
-        print("[Onboarding] 📷 Starting scanner - clearing all cached state")
+        Logger.debug("📷 Starting scanner - clearing all cached state")
         // Always clear all onboarding state for fresh start
         store.onboardingScan = nil
         store.searchResults = []
@@ -220,11 +220,11 @@ private extension OnboardingHostView {
         searchQuery = ""
         email = ""
         errorText = nil
-        print("[Onboarding] ✅ All onboarding state cleared for fresh scan")
+        Logger.success("All onboarding state cleared for fresh scan")
     }
 
     func handleScanned(_ code: String) {
-        print("[QR] 📦 Raw payload=\(code)")
+        Logger.qr("📦 Raw payload=\(code)")
         scannedOnce = true
         scanning = false
         // Clear all state for fresh enrollment flow
@@ -239,12 +239,12 @@ private extension OnboardingHostView {
         //  - kantinekoning://tenant?slug=&name=
         //  - kantinekoning://invite?tenant=&tenant_name=
         if let url = URL(string: code), url.scheme == "kantinekoning" {
-            print("[QR] 🎯 Direct scheme host=\(url.host ?? "nil") path=\(url.path)")
+            Logger.qr("Direct scheme host=\(url.host ?? "nil") path=\(url.path)")
             let comps = URLComponents(url: url, resolvingAgainstBaseURL: false)
             if url.host == "tenant",
                let slug = comps?.queryItems?.first(where: { $0.name == "slug" })?.value,
                let name = comps?.queryItems?.first(where: { $0.name == "name" })?.value {
-                print("[QR] ✅ Parsed direct slug=\(slug) name=\(name)")
+                Logger.qr("✅ Parsed direct slug=\(slug) name=\(name)")
                 tenant = slug
                 store.handleQRScan(slug: slug, name: name)
                 return
@@ -255,13 +255,13 @@ private extension OnboardingHostView {
                 // Replace '+' with space, then percent-decode
                 name = name.replacingOccurrences(of: "+", with: " ")
                 let decodedName = name.removingPercentEncoding ?? name
-                print("[QR] ✅ Parsed invite slug=\(slug) name=\(decodedName)")
+                Logger.qr("✅ Parsed invite slug=\(slug) name=\(decodedName)")
                 tenant = slug
                 store.handleQRScan(slug: slug, name: decodedName)
                 return
             }
             if let items = comps?.queryItems {
-                print("[QR] ℹ️ Direct query items: \(items.map{ "\($0.name)=\($0.value ?? "nil")" }.joined(separator: ", "))")
+                Logger.qr("Direct query items: \(items.map{ "\($0.name)=\($0.value ?? "nil")" }.joined(separator: ", "))")
             }
         }
         // Fallback: handle possible nested URL parameters (compat with QR server)
@@ -274,12 +274,12 @@ private extension OnboardingHostView {
            innerComps.host == "tenant",
            let slug = innerComps.queryItems?.first(where: { $0.name == "slug" })?.value,
            let name = innerComps.queryItems?.first(where: { $0.name == "name" })?.value {
-            print("[QR] ✅ Parsed nested slug=\(slug) name=\(name)")
+            Logger.qr("✅ Parsed nested slug=\(slug) name=\(name)")
             tenant = slug
             store.handleQRScan(slug: slug, name: name)
             return
         }
-        print("[QR] ❌ Could not parse QR payload")
+        Logger.qr("❌ Could not parse QR payload")
     }
 }
 

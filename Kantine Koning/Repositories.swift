@@ -60,7 +60,7 @@ final class DefaultEnrollmentRepository: EnrollmentRepository {
     }
     
     func removeAllEnrollments(completion: @escaping (Result<Void, Error>) -> Void) {
-        print("[Repo] 📡 Repository calling backend.removeAllEnrollments")
+        Logger.network("Repository calling backend.removeAllEnrollments")
         backend.removeAllEnrollments(completion: completion)
     }
 
@@ -96,7 +96,8 @@ final class DefaultDienstRepository: DienstRepository {
         var collected: [Dienst] = []
         var firstError: Error?
         
-        print("[Dienst] 🔄 Fetching diensten for \(model.tenants.count) tenants with separate auth tokens")
+        Logger.section("DIENSTEN REFRESH")
+        Logger.debug("Fetching diensten for \(model.tenants.count) tenants with separate auth tokens")
         
         for tenant in model.tenants.values {
             group.enter()
@@ -105,32 +106,16 @@ final class DefaultDienstRepository: DienstRepository {
             let tenantBackend = BackendClient()
             tenantBackend.authToken = tenant.signedDeviceToken
             
-            print("[Dienst] 📡 Fetching for tenant \(tenant.slug) with token \(tenant.signedDeviceToken?.prefix(20) ?? "nil")")
+            Logger.network("Fetching diensten for tenant \(tenant.slug) with token \(tenant.signedDeviceToken?.prefix(20) ?? "nil")")
             
             tenantBackend.fetchDiensten(tenant: tenant.slug) { result in
                 switch result {
                 case .success(let items):
-                    print("[Dienst] 📦 Fetched \(items.count) diensten for tenant \(tenant.slug)")
-                    let mapped = items.map { dto in
-                        print("[Dienst]   → dienst id=\(dto.id) team_id=\(dto.team?.id ?? "nil") team_code=\(dto.team?.code ?? "nil") team_naam=\(dto.team?.naam ?? "nil")")
-                        let dienst = Dienst(
-                            id: dto.id,
-                            tenantId: dto.tenant_id,
-                            teamId: dto.team?.code ?? dto.team?.id, // Use team code as teamId for matching
-                            startTime: dto.start_tijd,
-                            endTime: dto.eind_tijd,
-                            status: dto.status,
-                            locationName: dto.locatie_naam,
-                            volunteers: dto.aanmeldingen,
-                            updatedAt: dto.updated_at,
-                            minimumBemanning: dto.minimum_bemanning
-                        )
-                        print("[Dienst]   → mapped teamId=\(dienst.teamId ?? "nil") for matching")
-                        return dienst
-                    }
+                    Logger.success("Fetched \(items.count) diensten for tenant \(tenant.slug)")
+                    let mapped = items.map(self.mapDTOToDienst)
                     collected.append(contentsOf: mapped)
                 case .failure(let err):
-                    print("[Dienst] ❌ Failed to fetch diensten for tenant \(tenant.slug): \(err)")
+                    Logger.error("Failed to fetch diensten for tenant \(tenant.slug): \(err)")
                     if firstError == nil { firstError = err }
                 }
                 group.leave()
@@ -140,7 +125,7 @@ final class DefaultDienstRepository: DienstRepository {
         group.notify(queue: .global()) {
             if let err = firstError { completion(.failure(err)); return }
             
-            print("[Dienst] 📊 Collected \(collected.count) diensten from all tenants")
+            Logger.debug("Collected \(collected.count) diensten from all tenants")
             
             // Dedup by id; keep newest by updatedAt then startTime
             var byId: [String: Dienst] = [:]
@@ -160,9 +145,49 @@ final class DefaultDienstRepository: DienstRepository {
             let deduped = Array(byId.values)
             let future = deduped.filter { $0.startTime >= Date() }.sorted { $0.startTime < $1.startTime }
             let past = deduped.filter { $0.startTime < Date() }.sorted { $0.startTime > $1.startTime }
-            print("[Dienst] ✅ Final result: \(deduped.count) diensten (\(future.count) future, \(past.count) past)")
+            Logger.success("Final result: \(deduped.count) diensten (\(future.count) future, \(past.count) past)")
             completion(.success(future + past))
         }
+    }
+    
+    // MARK: - Helper Methods
+    
+    private func deduplicateAndSort(_ diensten: [Dienst]) -> [Dienst] {
+        // Dedup by id; keep newest by updatedAt then startTime
+        var byId: [String: Dienst] = [:]
+        for d in diensten { 
+            if let existing = byId[d.id] {
+                let choose: Bool
+                if let existingUpdated = existing.updatedAt, let dUpdated = d.updatedAt {
+                    choose = dUpdated > existingUpdated
+                } else {
+                    choose = d.startTime > existing.startTime
+                }
+                if choose { byId[d.id] = d }
+            } else {
+                byId[d.id] = d
+            }
+        }
+        
+        let deduped = Array(byId.values)
+        let future = deduped.filter { $0.startTime >= Date() }.sorted { $0.startTime < $1.startTime }
+        let past = deduped.filter { $0.startTime < Date() }.sorted { $0.startTime > $1.startTime }
+        return future + past
+    }
+    
+    private func mapDTOToDienst(_ dto: DienstDTO) -> Dienst {
+        return Dienst(
+            id: dto.id,
+            tenantId: dto.tenant_id,
+            teamId: dto.team?.code ?? dto.team?.id,
+            startTime: dto.start_tijd,
+            endTime: dto.eind_tijd,
+            status: dto.status,
+            locationName: dto.locatie_naam,
+            volunteers: dto.aanmeldingen,
+            updatedAt: dto.updated_at,
+            minimumBemanning: dto.minimum_bemanning
+        )
     }
 
     func addVolunteer(tenant: TenantID, dienstId: String, name: String, completion: @escaping (Result<Dienst, Error>) -> Void) {

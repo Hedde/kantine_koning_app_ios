@@ -55,14 +55,14 @@ final class ScannerViewController: UIViewController {
         guard let videoDevice = AVCaptureDevice.default(for: .video),
               let videoInput = try? AVCaptureDeviceInput(device: videoDevice),
               session.canAddInput(videoInput) else {
-            print("[QR] ❌ Could not create video input or add to session")
+            Logger.qr("❌ Could not create video input or add to session")
             return
         }
         session.addInput(videoInput)
 
         let metadataOutput = AVCaptureMetadataOutput()
         guard session.canAddOutput(metadataOutput) else {
-            print("[QR] ❌ Cannot add metadata output")
+            Logger.qr("❌ Cannot add metadata output")
             return
         }
         session.addOutput(metadataOutput)
@@ -76,7 +76,7 @@ final class ScannerViewController: UIViewController {
 
         self.captureSession = session
         self.previewLayer = preview
-        print("[QR] ✅ Camera configured. Ready to start")
+        Logger.qr("✅ Camera configured. Ready to start")
     }
 
     override func viewDidLayoutSubviews() {
@@ -88,12 +88,12 @@ final class ScannerViewController: UIViewController {
         guard let session = captureSession else { return }
         if active {
             if !session.isRunning {
-                print("[QR] ▶️ Starting session")
+                Logger.qr("▶️ Starting session")
                 session.startRunning()
             }
         } else {
             if session.isRunning {
-                print("[QR] ⏹️ Stopping session")
+                Logger.qr("⏹️ Stopping session")
                 session.stopRunning()
             }
         }

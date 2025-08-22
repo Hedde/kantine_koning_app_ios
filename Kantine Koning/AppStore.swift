@@ -21,6 +21,10 @@ final class AppStore: ObservableObject {
     @Published var leaderboards: [String: LeaderboardData] = [:]  // tenantSlug -> LeaderboardData
     @Published var globalLeaderboard: GlobalLeaderboardData?
     @Published var tenantInfo: [String: TenantInfo] = [:] // tenantSlug -> TenantInfo (club logos etc.)
+    
+    // Network connectivity
+    @Published var isOnline: Bool = true
+    let networkMonitor = NetworkMonitor.shared
 
     // Services
     private let enrollmentRepository: EnrollmentRepository
@@ -32,9 +36,9 @@ final class AppStore: ObservableObject {
 
     init(
         enrollmentRepository: EnrollmentRepository = DefaultEnrollmentRepository(),
-        dienstRepository: DienstRepository = DefaultDienstRepository(),
+        dienstRepository: DienstRepository = CachedDienstRepository(),
         pushService: PushService = DefaultPushService(),
-        leaderboardRepository: LeaderboardRepository = DefaultLeaderboardRepository()
+        leaderboardRepository: LeaderboardRepository = CachedLeaderboardRepository()
     ) {
         self.enrollmentRepository = enrollmentRepository
         self.dienstRepository = dienstRepository
@@ -42,9 +46,49 @@ final class AppStore: ObservableObject {
         self.leaderboardRepository = leaderboardRepository
 
         // Bootstrap
+        Logger.section("APP BOOTSTRAP")
+        Logger.bootstrap("Initializing AppStore with repositories")
+        Logger.bootstrap("Build configuration: \(Logger.buildInfo)")
+        Logger.bootstrap("Logging enabled: \(Logger.isLoggingEnabled)")
+        
+        // Initialize error handler
+        _ = ErrorHandler.shared
+        
+        // Setup network monitoring
+        setupNetworkMonitoring()
+        
         self.model = enrollmentRepository.loadModel()
+        Logger.bootstrap("Loaded domain model: \(model.tenants.count) tenants")
+        
         self.appPhase = model.isEnrolled ? .registered : .onboarding
-        if model.isEnrolled { refreshDiensten() }
+        Logger.bootstrap("App phase: \(appPhase)")
+        
+        // Setup cache cleanup
+        CacheManager.shared.cleanupExpiredEntries()
+        Logger.bootstrap("Cache cleanup completed")
+        
+        if model.isEnrolled { 
+            Logger.bootstrap("User enrolled - refreshing diensten")
+            refreshDiensten() 
+        } else {
+            Logger.bootstrap("User not enrolled - showing onboarding")
+        }
+    }
+    
+    // MARK: - Network Monitoring
+    
+    private func setupNetworkMonitoring() {
+        networkMonitor.$isConnected
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] isConnected in
+                self?.isOnline = isConnected
+                Logger.network("Network state: \(isConnected ? "Online" : "Offline")")
+                
+                if !isConnected {
+                    Logger.warning("App is offline - some features will be disabled")
+                }
+            }
+            .store(in: &cancellables)
     }
 
     // MARK: - Intent
@@ -58,13 +102,13 @@ final class AppStore: ObservableObject {
         // Register APNs token once with any available enrollment token
         // Backend will update all enrollments for this device
         if let anyAuthToken = model.tenants.values.first?.signedDeviceToken {
-            print("[AppStore] 📱 Registering APNs token with backend using any available auth token")
+            Logger.push("Registering APNs token with backend using any available auth token")
             pushService.updateAPNs(token: token, auth: anyAuthToken)
         } else {
-            print("[AppStore] ⚠️ No auth tokens available for APNs registration")
+            Logger.push("No auth tokens available for APNs registration")
         }
     }
-    func handlePushRegistrationFailure(_ error: Error) { print("APNs failure: \(error)") }
+    func handlePushRegistrationFailure(_ error: Error) { Logger.error("APNs failure: \(error)") }
     func handleNotification(userInfo: [AnyHashable: Any]) { /* map to actions if needed */ }
 
     func configurePushNotifications() {
@@ -72,43 +116,43 @@ final class AppStore: ObservableObject {
     }
 
     func startNewEnrollment() { 
-        print("[Onboarding] 🔄 Starting fresh enrollment flow")
+        Logger.enrollment("Starting fresh enrollment flow")
         // Clear all onboarding state for clean start
         onboardingScan = nil
         searchResults = []
         appPhase = .onboarding
-        print("[Onboarding] ✅ Onboarding state cleared")
+        Logger.enrollment("Onboarding state cleared")
     }
     func resetAll() {
-        print("[Reset] 🗑️ Starting full app reset...")
-        print("[Reset] 📊 Current model has \(model.tenants.count) tenants")
+        Logger.info("Starting full app reset...")
+        Logger.debug("Current model has \(model.tenants.count) tenants")
         
         // Call backend to remove all enrollments using any available token
         if let anyToken = model.tenants.values.first?.signedDeviceToken {
-            print("[Reset] 📡 Calling backend removeAllEnrollments with token: \(anyToken.prefix(20))...")
+            Logger.network("Calling backend removeAllEnrollments with token: \(anyToken.prefix(20))...")
             enrollmentRepository.removeAllEnrollments { [weak self] result in
-                print("[Reset] 📥 Backend removeAll completed with result: \(result)")
+                Logger.network("Backend removeAll completed with result: \(result)")
                 DispatchQueue.main.async {
                     switch result {
                     case .success:
-                        print("[Reset] ✅ Backend reset successful")
+                        Logger.success("Backend reset successful")
                     case .failure(let error):
-                        print("[Reset] ❌ Backend reset failed: \(error)")
+                        Logger.error("Backend reset failed: \(error)")
                     }
                     // Always clear local state regardless
                     self?.clearLocalState()
                 }
             }
         } else {
-            print("[Reset] ⚠️ No auth token for backend reset, clearing local only")
+            Logger.warning("No auth token for backend reset, clearing local only")
             clearLocalState()
         }
     }
     
     
     private func clearLocalState() {
-        print("[Reset] 🧹 Clearing local state...")
-        print("[Reset] 📊 Before clear: \(model.tenants.count) tenants, \(upcoming.count) diensten")
+        Logger.debug("Clearing local state...")
+        Logger.debug("Before clear: \(model.tenants.count) tenants, \(upcoming.count) diensten")
         
         // Clear local state (auth tokens are now handled per-operation)
         
@@ -117,11 +161,11 @@ final class AppStore: ObservableObject {
         searchResults = []
         onboardingScan = nil
         pushToken = nil
-        print("[Reset] 📊 After clear: \(model.tenants.count) tenants, \(upcoming.count) diensten")
-        print("[Reset] 🎯 Setting appPhase to .onboarding")
+        Logger.debug("After clear: \(model.tenants.count) tenants, \(upcoming.count) diensten")
+        Logger.debug("Setting appPhase to .onboarding")
         appPhase = .onboarding
         enrollmentRepository.persist(model: model)
-        print("[Reset] ✅ Local reset complete - should now see onboarding")
+        Logger.success("Local reset complete - should now see onboarding")
     }
 
     // QR handling: a simplified representation of scanned tenant
@@ -133,18 +177,18 @@ final class AppStore: ObservableObject {
     func submitEmail(_ email: String, for tenant: TenantID, selectedTeamCodes: [TeamID], completion: @escaping (Result<Void, Error>) -> Void) {
         // Old flow: if no team codes yet, first fetch allowed teams for selection
         if selectedTeamCodes.isEmpty {
-            print("[Enroll] 🔎 fetching allowed teams for email=\(email) tenant=\(tenant)")
+            Logger.enrollment("🔎 fetching allowed teams for email=\(email) tenant=\(tenant)")
             enrollmentRepository.fetchAllowedTeams(email: email, tenant: tenant) { [weak self] result in
                 DispatchQueue.main.async {
                     switch result {
                     case .success(let teams):
-                        print("[Enroll] ✅ allowed teams count=\(teams.count)")
+                        Logger.enrollment("✅ allowed teams count=\(teams.count)")
                         // In a full flow, we would present team selection here.
                         // For now, keep state for UI to show selection in onboarding.
                         self?.searchResults = teams
                         completion(.success(()))
                     case .failure(let err):
-                        print("[Enroll] ❌ fetch allowed teams: \(err)")
+                        Logger.enrollment("❌ fetch allowed teams: \(err)")
                         completion(.failure(err))
                     }
                 }
@@ -189,7 +233,7 @@ final class AppStore: ObservableObject {
                     self.refreshDiensten()
                     // Register push token with backend (once, using any available auth token)
                     if let token = self.pushToken, let anyAuthToken = self.model.tenants.values.first?.signedDeviceToken {
-                        print("[AppStore] 📱 Re-registering APNs token after enrollment completion")
+                        Logger.push("Re-registering APNs token after enrollment completion")
                         self.pushService.updateAPNs(token: token, auth: anyAuthToken)
                     }
                     completion(.success(()))
@@ -200,71 +244,72 @@ final class AppStore: ObservableObject {
     }
 
     func removeTenant(_ tenant: TenantID) {
-        print("[AppStore] 🗑️ Removing tenant: \(tenant)")
+        Logger.debug("🗑️ Removing tenant: \(tenant)")
         
         // Get the specific tenant's token before removing it from the model
         let tenantToken = model.tenants[tenant]?.signedDeviceToken
-        print("[AppStore] 🔍 Tenant-specific auth token available: \(tenantToken != nil)")
+        Logger.debug("Tenant-specific auth token available: \(tenantToken != nil)")
         
         // Always update local state first for immediate UI feedback
         let updatedModel = model.removingTenant(tenant)
         model = updatedModel
         enrollmentRepository.persist(model: model)
-        print("[AppStore] ✅ Local tenant removal complete")
+        Logger.success("Local tenant removal complete")
         
         // Try backend removal if we have the tenant's auth token
         if let token = tenantToken {
             // Create a temporary backend client with the specific tenant's token
             let tempBackend = BackendClient()
             tempBackend.authToken = token
-            print("[AppStore] 🔑 Using tenant-specific token for removal")
+            Logger.auth("Using tenant-specific token for removal")
             
             tempBackend.removeTenant(tenant) { result in
-                print("[AppStore] 📡 Backend tenant removal result: \(result)")
+                Logger.network("Backend tenant removal result: \(result)")
                 // Local state already updated, so no need to update again
             }
         } else {
-            print("[AppStore] ⚠️ No tenant-specific auth token - member enrollment, local removal only")
+            Logger.warning("No tenant-specific auth token - member enrollment, local removal only")
         }
     }
 
     func removeTeam(_ team: TeamID, from tenant: TenantID) {
-        print("[AppStore] 🗑️ Removing team: \(team) from tenant: \(tenant)")
+        Logger.debug("🗑️ Removing team: \(team) from tenant: \(tenant)")
         
         // Get the specific token for this team/tenant before removing it from the model
         let authToken = model.authTokenForTeam(team, in: tenant)
-        print("[AppStore] 🔍 Team-specific auth token available: \(authToken != nil)")
+        Logger.debug("Team-specific auth token available: \(authToken != nil)")
         
         // Always update local state first for immediate UI feedback
         let updatedModel = model.removingTeam(team, from: tenant)
         model = updatedModel
         enrollmentRepository.persist(model: model)
-        print("[AppStore] ✅ Local team removal complete")
+        Logger.success("Local team removal complete")
         
         // Try backend removal if we have the team's auth token
         if let token = authToken {
             // Create a temporary backend client with the specific token
             let tempBackend = BackendClient()
             tempBackend.authToken = token
-            print("[AppStore] 🔑 Using enrollment-specific token for team removal")
+            Logger.auth("Using enrollment-specific token for team removal")
             
             tempBackend.removeTeams([team]) { result in
-                print("[AppStore] 📡 Backend team removal result: \(result)")
+                Logger.network("Backend team removal result: \(result)")
                 // Local state already updated, so no need to update again
             }
         } else {
-            print("[AppStore] ⚠️ No enrollment-specific auth token - member enrollment, local removal only")
+            Logger.warning("No enrollment-specific auth token - member enrollment, local removal only")
         }
     }
 
     func refreshDiensten() {
         guard model.isEnrolled else { return }
-        print("[AppStore] 🔄 Refreshing diensten for \(model.tenants.count) tenants")
+        
+        let startTime = Date()
+        Logger.section("REFRESH DIENSTEN")
+        Logger.debug("Refreshing diensten for \(model.tenants.count) tenants")
+        
         for (slug, tenant) in model.tenants {
-            print("[AppStore]   → tenant \(slug): \(tenant.teams.count) teams")
-            for team in tenant.teams {
-                print("[AppStore]     → team id=\(team.id) code=\(team.code ?? "nil") name=\(team.name)")
-            }
+            Logger.debug("  → tenant \(slug): \(tenant.teams.count) teams")
         }
         
         // Fetch tenant info for club logos (background fetch)
@@ -273,18 +318,32 @@ final class AppStore: ObservableObject {
         // Fetch diensten using enrollment-specific tokens (handled in repository)
         dienstRepository.fetchUpcoming(for: model) { [weak self] result in
             DispatchQueue.main.async {
+                let duration = Date().timeIntervalSince(startTime)
                 if case .success(let items) = result { 
-                    print("[AppStore] ✅ Received \(items.count) diensten")
+                    Logger.success("Received \(items.count) diensten")
+                    Logger.performanceMeasure("Refresh Diensten", duration: duration, additionalInfo: "\(items.count) items")
                     self?.upcoming = items 
+                } else {
+                    Logger.performanceMeasure("Refresh Diensten (Failed)", duration: duration)
                 }
             }
         }
     }
     
     func refreshTenantInfo() {
-        // Use any available token to fetch tenant info for all enrollments
+        // Check cache first
+        let cacheKey = CacheManager.CacheKey.allTenantInfo
+        let cachedResult = CacheManager.shared.getCached(TenantInfoResponse.self, forKey: cacheKey)
+        
+        // Use cached data immediately if available
+        if let cachedResponse = cachedResult.data {
+            Logger.debug("Using cached tenant info for \(cachedResponse.tenants.count) tenants")
+            updateTenantInfoFromResponse(cachedResponse)
+        }
+        
+        // Always fetch fresh data (background refresh if cached data exists)
         guard let anyToken = model.tenants.values.first?.signedDeviceToken else {
-            print("[AppStore] ⚠️ No auth token available for tenant info")
+            Logger.warning("No auth token available for tenant info")
             return
         }
         
@@ -295,41 +354,50 @@ final class AppStore: ObservableObject {
             DispatchQueue.main.async {
                 switch result {
                 case .success(let response):
-                    print("[AppStore] ✅ Received tenant info for \(response.tenants.count) tenants")
-                    var newTenantInfo: [String: TenantInfo] = [:]
+                    Logger.success("Received fresh tenant info for \(response.tenants.count) tenants")
                     
-                    for tenantData in response.tenants {
-                        let teams = tenantData.teams.map { teamData in
-                            TenantInfo.TeamInfo(
-                                id: teamData.id,
-                                code: teamData.code,
-                                name: teamData.name,
-                                role: teamData.role
-                            )
-                        }
-                        
-                        newTenantInfo[tenantData.slug] = TenantInfo(
-                            slug: tenantData.slug,
-                            name: tenantData.name,
-                            clubLogoUrl: tenantData.clubLogoUrl,
-                            teams: teams
-                        )
-                    }
+                    // Cache with long TTL (tenant info doesn't change often)
+                    CacheManager.shared.cache(response, forKey: cacheKey, ttl: 3600) // 1 hour
                     
-                    self?.tenantInfo = newTenantInfo
+                    self?.updateTenantInfoFromResponse(response)
                     
                 case .failure(let error):
-                    print("[AppStore] ❌ Failed to fetch tenant info: \(error)")
+                    Logger.error("Failed to fetch tenant info: \(error)")
+                    // Don't override cached data on error
                 }
             }
         }
     }
     
+    private func updateTenantInfoFromResponse(_ response: TenantInfoResponse) {
+        var newTenantInfo: [String: TenantInfo] = [:]
+        
+        for tenantData in response.tenants {
+            let teams = tenantData.teams.map { teamData in
+                TenantInfo.TeamInfo(
+                    id: teamData.id,
+                    code: teamData.code,
+                    name: teamData.name,
+                    role: teamData.role
+                )
+            }
+            
+            newTenantInfo[tenantData.slug] = TenantInfo(
+                slug: tenantData.slug,
+                name: tenantData.name,
+                clubLogoUrl: tenantData.clubLogoUrl,
+                teams: teams
+            )
+        }
+        
+        tenantInfo = newTenantInfo
+    }
+    
     // MARK: - Leaderboard Management
     func refreshLeaderboard(for tenantSlug: String, period: String = "season", teamId: String? = nil) {
-        print("[Store] 🔄 Refreshing leaderboard for tenant=\(tenantSlug) period=\(period) teamId=\(teamId ?? "nil")")
+        Logger.leaderboard("Refreshing leaderboard for tenant=\(tenantSlug) period=\(period) teamId=\(teamId ?? "nil")")
         guard let auth = model.tenants[tenantSlug]?.signedDeviceToken else { 
-            print("[Store] ❌ No auth token for tenant \(tenantSlug) leaderboard refresh")
+            Logger.error("No auth token for tenant \(tenantSlug) leaderboard refresh")
             return 
         }
         
@@ -337,11 +405,11 @@ final class AppStore: ObservableObject {
             DispatchQueue.main.async {
                 switch result {
                 case .success(let leaderboard):
-                    print("[Store] ✅ Leaderboard fetch success, updating store")
+                    Logger.success("Leaderboard fetch success, updating store")
                     self?.updateLeaderboard(leaderboard, for: tenantSlug, period: period)
                 case .failure(let error):
-                    print("[Store] ❌ Failed to refresh leaderboard for \(tenantSlug): \(error)")
-                    print("[Store] ❌ Error details: \(error.localizedDescription)")
+                    Logger.error("Failed to refresh leaderboard for \(tenantSlug): \(error)")
+                    Logger.error("Error details: \(error.localizedDescription)")
                 }
             }
         }
@@ -375,14 +443,14 @@ final class AppStore: ObservableObject {
         // But also store under response slug if different (for debugging)
         leaderboards[tenantSlug] = leaderboardData
         if response.tenant.slug != tenantSlug {
-            print("[Store] ⚠️ Tenant slug mismatch: param=\(tenantSlug) response=\(response.tenant.slug)")
+            Logger.warning("Tenant slug mismatch: param=\(tenantSlug) response=\(response.tenant.slug)")
             leaderboards[response.tenant.slug] = leaderboardData
         }
-        print("[Store] ✅ Updated leaderboard for \(tenantSlug): \(leaderboardData.teams.count) teams")
-        print("[Store] 📊 Leaderboard data stored with key: \(tenantSlug)")
-        print("[Store] 📊 Response tenant slug: \(response.tenant.slug)")
-        print("[Store] 📊 Parameter tenant slug: \(tenantSlug)")
-        print("[Store] 📊 Current leaderboards keys: \(Array(leaderboards.keys))")
+        Logger.success("Updated leaderboard for \(tenantSlug): \(leaderboardData.teams.count) teams")
+        Logger.debug("Leaderboard data stored with key: \(tenantSlug)")
+        Logger.debug("Response tenant slug: \(response.tenant.slug)")
+        Logger.debug("Parameter tenant slug: \(tenantSlug)")
+        Logger.debug("Current leaderboards keys: \(Array(leaderboards.keys))")
     }
 
     // MARK: - Deep links
@@ -432,19 +500,19 @@ extension AppStore {
     }
 
     func addVolunteer(tenant: TenantID, dienstId: String, name: String, completion: @escaping (Result<Void, Error>) -> Void) {
-        print("[AppStore] 📡 Adding volunteer: finding best auth token")
+        Logger.network("Adding volunteer: finding best auth token")
         
         // Find the dienst to determine which team it belongs to
         guard let dienst = upcoming.first(where: { $0.id == dienstId }),
               let dienstTeamId = dienst.teamId else {
-            print("[AppStore] ❌ Dienst \(dienstId) or team not found")
+            Logger.error("Dienst \(dienstId) or team not found")
             completion(.failure(NSError(domain: "AppStore", code: 404, userInfo: [NSLocalizedDescriptionKey: "Dienst not found"])))
             return
         }
         
         // Find tenant and check if we have manager access for this team
         guard let tenantData = model.tenants[tenant] else {
-            print("[AppStore] ❌ Tenant \(tenant) not found")
+            Logger.error("Tenant \(tenant) not found")
             completion(.failure(NSError(domain: "AppStore", code: 404, userInfo: [NSLocalizedDescriptionKey: "Tenant not found"])))
             return
         }
@@ -455,19 +523,19 @@ extension AppStore {
         }
         
         guard hasManagerAccess else {
-            print("[AppStore] ❌ No manager access for team \(dienstTeamId)")
+            Logger.error("No manager access for team \(dienstTeamId)")
             completion(.failure(NSError(domain: "AppStore", code: 403, userInfo: [NSLocalizedDescriptionKey: "No manager access for this team"])))
             return
         }
         
         // Use specific token for this team (from enrollment)
         guard let authToken = model.authTokenForTeam(dienstTeamId, in: tenant) else {
-            print("[AppStore] ❌ No auth token for team \(dienstTeamId) in tenant \(tenant)")
+            Logger.error("No auth token for team \(dienstTeamId) in tenant \(tenant)")
             completion(.failure(NSError(domain: "AppStore", code: 401, userInfo: [NSLocalizedDescriptionKey: "No auth token for this team"])))
             return
         }
         
-        print("[AppStore] 🔑 Using enrollment-specific token for team \(dienstTeamId): \(authToken.prefix(20))...")
+        Logger.auth("Using enrollment-specific token for team \(dienstTeamId): \(authToken.prefix(20))...")
         
         let backend = BackendClient()
         backend.authToken = authToken
@@ -500,19 +568,19 @@ extension AppStore {
     }
 
     func removeVolunteer(tenant: TenantID, dienstId: String, name: String, completion: @escaping (Result<Void, Error>) -> Void) {
-        print("[AppStore] 📡 Removing volunteer: finding best auth token")
+        Logger.network("Removing volunteer: finding best auth token")
         
         // Find the dienst to determine which team it belongs to
         guard let dienst = upcoming.first(where: { $0.id == dienstId }),
               let dienstTeamId = dienst.teamId else {
-            print("[AppStore] ❌ Dienst \(dienstId) or team not found")
+            Logger.error("Dienst \(dienstId) or team not found")
             completion(.failure(NSError(domain: "AppStore", code: 404, userInfo: [NSLocalizedDescriptionKey: "Dienst not found"])))
             return
         }
         
         // Find tenant and check if we have manager access for this team
         guard let tenantData = model.tenants[tenant] else {
-            print("[AppStore] ❌ Tenant \(tenant) not found")
+            Logger.error("Tenant \(tenant) not found")
             completion(.failure(NSError(domain: "AppStore", code: 404, userInfo: [NSLocalizedDescriptionKey: "Tenant not found"])))
             return
         }
@@ -523,19 +591,19 @@ extension AppStore {
         }
         
         guard hasManagerAccess else {
-            print("[AppStore] ❌ No manager access for team \(dienstTeamId)")
+            Logger.error("No manager access for team \(dienstTeamId)")
             completion(.failure(NSError(domain: "AppStore", code: 403, userInfo: [NSLocalizedDescriptionKey: "No manager access for this team"])))
             return
         }
         
         // Use specific token for this team (from enrollment)
         guard let authToken = model.authTokenForTeam(dienstTeamId, in: tenant) else {
-            print("[AppStore] ❌ No auth token for team \(dienstTeamId) in tenant \(tenant)")
+            Logger.error("No auth token for team \(dienstTeamId) in tenant \(tenant)")
             completion(.failure(NSError(domain: "AppStore", code: 401, userInfo: [NSLocalizedDescriptionKey: "No auth token for this team"])))
             return
         }
         
-        print("[AppStore] 🔑 Using enrollment-specific token for team \(dienstTeamId): \(authToken.prefix(20))...")
+        Logger.auth("Using enrollment-specific token for team \(dienstTeamId): \(authToken.prefix(20))...")
         
         let backend = BackendClient()
         backend.authToken = authToken

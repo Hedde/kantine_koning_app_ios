@@ -14,7 +14,7 @@ extension BackendClient {
         
         URLSession.shared.dataTask(with: req) { data, response, error in
             if let error = error {
-                print("[EnrollmentStatus] ❌ Network error: \(error)")
+                Logger.enrollment("❌ Network error: \(error)")
                 completion(.failure(error))
                 return
             }
@@ -26,17 +26,17 @@ extension BackendClient {
             
             guard (200..<300).contains(http.statusCode) else {
                 let body = String(data: data, encoding: .utf8) ?? "<no body>"
-                print("[EnrollmentStatus] ❌ HTTP error \(http.statusCode): \(body)")
+                Logger.enrollment("❌ HTTP error \(http.statusCode): \(body)")
                 completion(.failure(NSError(domain: "Backend", code: http.statusCode, userInfo: [NSLocalizedDescriptionKey: body])))
                 return
             }
             
             do {
                 let enrollmentStatus = try JSONDecoder().decode(EnrollmentStatusDTO.self, from: data)
-                print("[EnrollmentStatus] ✅ Loaded enrollment status: teams=\(enrollmentStatus.teamEmailPreferences?.count ?? 0), push=\(enrollmentStatus.pushEnabled ?? false)")
+                Logger.enrollment("✅ Loaded enrollment status: teams=\(enrollmentStatus.teamEmailPreferences?.count ?? 0), push=\(enrollmentStatus.pushEnabled ?? false)")
                 completion(.success(enrollmentStatus))
             } catch {
-                print("[EnrollmentStatus] ❌ JSON decode error: \(error)")
+                Logger.enrollment("❌ JSON decode error: \(error)")
                 completion(.failure(error))
             }
         }.resume()

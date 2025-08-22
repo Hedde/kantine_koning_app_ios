@@ -263,7 +263,6 @@
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
 				DEVELOPMENT_TEAM = LFN4DX6B98;
-				ENABLE_LOGGING = YES;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_KEY_CFBundleDisplayName = "Kantine Koning";
@@ -280,7 +279,6 @@
 					"@executable_path/Frameworks",
 				);
 				MARKETING_VERSION = 1.0.9;
-				ONLY_ACTIVE_ARCH = YES;
 				PRODUCT_BUNDLE_IDENTIFIER = "hvdh.Kantine-Koning";
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SWIFT_EMIT_LOC_STRINGS = YES;
@@ -298,7 +296,6 @@
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
 				DEVELOPMENT_TEAM = LFN4DX6B98;
-				ENABLE_LOGGING = NO;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_KEY_CFBundleDisplayName = "Kantine Koning";
@@ -315,10 +312,8 @@
 					"@executable_path/Frameworks",
 				);
 				MARKETING_VERSION = 1.0.9;
-				ONLY_ACTIVE_ARCH = NO;
 				PRODUCT_BUNDLE_IDENTIFIER = "hvdh.Kantine-Koning";
 				PRODUCT_NAME = "$(TARGET_NAME)";
-				SWIFT_ACTIVE_COMPILATION_CONDITIONS = "$(inherited) ENABLE_LOGGING";
 				SWIFT_EMIT_LOC_STRINGS = YES;
 				SWIFT_VERSION = 5.0;
 				TARGETED_DEVICE_FAMILY = "1,2";
@@ -335,7 +330,7 @@
 				FCC66F792E50D45600CA6189 /* Release */,
 			);
 			defaultConfigurationIsVisible = 0;
-			defaultConfigurationName = Debug;
+			defaultConfigurationName = Release;
 		};
 		FCC66F7A2E50D45600CA6189 /* Build configuration list for PBXNativeTarget "Kantine Koning" */ = {
 			isa = XCConfigurationList;
@@ -344,7 +339,7 @@
 				FCC66F7C2E50D45600CA6189 /* Release */,
 			);
 			defaultConfigurationIsVisible = 0;
-			defaultConfigurationName = Debug;
+			defaultConfigurationName = Release;
 		};
 /* End XCConfigurationList section */
 	};

@@ -53,14 +53,14 @@ struct DomainModel: Codable, Equatable {
     var primaryAuthToken: String? {
         // Prefer any manager tenant token, fallback to any token (including member tokens for push/read operations)
         if let t = tenants.values.first(where: { $0.teams.contains(where: { $0.role == .manager }) }), let token = t.signedDeviceToken { 
-            print("[Model] 🔑 Using manager token for auth")
+            Logger.auth("Using manager token for auth")
             return token 
         }
         if let token = tenants.values.compactMap({ $0.signedDeviceToken }).first {
-            print("[Model] 🔑 Using member token for auth")
+            Logger.auth("Using member token for auth")
             return token
         }
-        print("[Model] ⚠️ No auth token available")
+        Logger.warning("No auth token available")
         return nil
     }
     
@@ -80,20 +80,20 @@ struct DomainModel: Codable, Equatable {
         var tenant = tenants[delta.tenant.slug] ?? Tenant(slug: delta.tenant.slug, name: delta.tenant.name, teams: [], signedDeviceToken: nil)
         tenant.signedDeviceToken = delta.signedDeviceToken ?? tenant.signedDeviceToken
 
-        print("[Model] 📊 Applying delta to tenant \(delta.tenant.slug)")
-        print("[Model] 📊 Existing teams: \(tenant.teams.count)")
+        Logger.debug("Applying delta to tenant \(delta.tenant.slug)")
+        Logger.debug("Existing teams: \(tenant.teams.count)")
         for team in tenant.teams {
-            print("[Model]   → existing: id=\(team.id) code=\(team.code ?? "nil") name=\(team.name)")
+            Logger.debug("Existing team: id=\(team.id) code=\(team.code ?? "nil") name=\(team.name)")
         }
-        print("[Model] 📊 Incoming teams: \(delta.teams.count)")
+        Logger.debug("Incoming teams: \(delta.teams.count)")
         for team in delta.teams {
-            print("[Model]   → incoming: id=\(team.id) code=\(team.code ?? "nil") name=\(team.name)")
+            Logger.debug("Incoming team: id=\(team.id) code=\(team.code ?? "nil") name=\(team.name)")
         }
 
         // De-duplicate teams across tenants for same team id within this tenant
         let existingIds = Set(tenant.teams.map { $0.id })
         let incoming = delta.teams.filter { !existingIds.contains($0.id) }
-        print("[Model] 📊 After dedup: \(incoming.count) teams to add")
+        Logger.debug("After dedup: \(incoming.count) teams to add")
         tenant.teams.append(contentsOf: incoming)
         
         // Create enrollment record to track this specific token/team combination
@@ -113,10 +113,10 @@ struct DomainModel: Codable, Equatable {
         copy.tenants[tenant.slug] = tenant
         copy.updatedAt = now
         
-        print("[Model] 📊 Final tenant teams: \(tenant.teams.count)")
-        print("[Model] 📊 Created enrollment \(enrollmentId) with \(delta.teams.count) teams")
+        Logger.debug("Final tenant teams: \(tenant.teams.count)")
+        Logger.debug("Created enrollment \(enrollmentId) with \(delta.teams.count) teams")
         for team in tenant.teams {
-            print("[Model]   → final: id=\(team.id) code=\(team.code ?? "nil") name=\(team.name)")
+            Logger.debug("Final team: id=\(team.id) code=\(team.code ?? "nil") name=\(team.name)")
         }
         
         return copy

@@ -146,7 +146,7 @@ struct LeaderboardHostView: View {
                         // Header with club info
                         VStack(spacing: 16) {
                             // Club logo
-                            AsyncImage(url: store.tenantInfo[tenant.slug]?.clubLogoUrl.flatMap(URL.init)) { image in
+                            CachedAsyncImage(url: store.tenantInfo[tenant.slug]?.clubLogoUrl.flatMap(URL.init)) { image in
                                 image.resizable().scaledToFit()
                             } placeholder: {
                                 Image(systemName: "building.2.fill")
@@ -215,13 +215,13 @@ struct LeaderboardHostView: View {
                                 let enrolledTeamCodes = Set(tenant.teams.map { $0.id })  // These are actually codes
                                 let leaderboardTeamIds = leaderboardData.teams.map { $0.id }
                                 
-                                print("[LeaderboardView] 🎯 Enrolled team codes: \(enrolledTeamCodes)")
-                                print("[LeaderboardView] 📊 Leaderboard team IDs: \(leaderboardTeamIds)")
+                                Logger.debug("Enrolled team codes: \(enrolledTeamCodes)")
+                                Logger.debug("Leaderboard team IDs: \(leaderboardTeamIds)")
                                 
                                 // Debug: show team mapping from leaderboard response
                                 for team in leaderboardData.teams {
                                     if enrolledTeamCodes.contains(team.code ?? "") {
-                                        print("[LeaderboardView] 🔗 HIGHLIGHTED: \(team.name) (code: \(team.code ?? "nil")) rank \(team.rank)")
+                                        Logger.leaderboard("HIGHLIGHTED: \(team.name) (code: \(team.code ?? "nil")) rank \(team.rank)")
                                     }
                                 }
                             }
@@ -275,15 +275,15 @@ struct LeaderboardHostView: View {
         
         // Check if data loaded successfully after a short delay
         DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
-            print("[LeaderboardView] 🔍 Checking if data loaded for tenant: \(tenantSlug)")
-            print("[LeaderboardView] 🔍 Available leaderboards: \(Array(store.leaderboards.keys))")
+            Logger.debug("Checking if data loaded for tenant: \(tenantSlug)")
+            Logger.debug("Available leaderboards: \(Array(store.leaderboards.keys))")
             
             if let leaderboard = store.leaderboards[tenantSlug] {
-                print("[LeaderboardView] ✅ Found leaderboard data with \(leaderboard.teams.count) teams")
+                Logger.success("Found leaderboard data with \(leaderboard.teams.count) teams")
                 isLoading = false
                 errorMessage = nil
             } else {
-                print("[LeaderboardView] ❌ No leaderboard data found")
+                Logger.error("No leaderboard data found")
                 isLoading = false
                 errorMessage = "Kon leaderboard niet laden"
             }
@@ -334,14 +334,14 @@ struct LeaderboardHostView: View {
                         },
                         lastUpdated: Date()
                     )
-                    print("[Leaderboard] ✅ Loaded global leaderboard: \(leaderboard.teams.count) teams")
+                    Logger.success("Loaded global leaderboard: \(leaderboard.teams.count) teams")
                 case .failure(let error):
                     if (error as NSError).code == 403 {
                         errorMessage = "Deze vereniging heeft zich afgemeld voor de globale leaderboard."
                     } else {
                         errorMessage = self.formatErrorMessage(error, context: "globale leaderboard")
                     }
-                    print("[Leaderboard] ❌ Failed to load global leaderboard: \(error)")
+                    Logger.error("Failed to load global leaderboard: \(error)")
                 }
             }
         }
@@ -435,7 +435,7 @@ private struct LeaderboardMenuView: View {
                         Button(action: { onTenantSelected(tenant.slug) }) {
                             HStack(spacing: 16) {
                                 // Club logo
-                                AsyncImage(url: store.tenantInfo[tenant.slug]?.clubLogoUrl.flatMap(URL.init)) { image in
+                                CachedAsyncImage(url: store.tenantInfo[tenant.slug]?.clubLogoUrl.flatMap(URL.init)) { image in
                                     image.resizable().scaledToFit()
                                 } placeholder: {
                                     Image(systemName: "building.2.fill")
@@ -706,7 +706,7 @@ private struct GlobalTeamRowView: View {
             }
             
             // Club logo
-            AsyncImage(url: tenantInfo[team.clubSlug]?.clubLogoUrl.flatMap(URL.init)) { image in
+            CachedAsyncImage(url: tenantInfo[team.clubSlug]?.clubLogoUrl.flatMap(URL.init)) { image in
                 image.resizable().scaledToFit()
             } placeholder: {
                 Image(systemName: "building.2")

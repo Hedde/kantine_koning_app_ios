@@ -35,6 +35,8 @@ Home → Verenigingen → Teams → Diensten
 - `AppStore` (ObservableObject) beheert appfasen: launching, onboarding, enrollmentPending, registered
 - `DomainModel` met `Tenant`, `Team`, rollen (`manager`/`member`), persist via `UserDefaults` (`kk_domain_model`)
 - Repositories: `EnrollmentRepository` en `DienstRepository` → `BackendClient` voor HTTP-calls
+- **Caching Layer**: `CacheManager` + `CachedRepositories` voor offline-first ervaring
+- **Logging System**: `Logger` met debug/release flags voor productie-klare logging
 - `BackendClient` base URL:
   - Debug: `http://localhost:4000`
   - Release: `https://kantinekoning.com`
@@ -179,11 +181,147 @@ backend.fetchDiensten(tenant: "agovv")  // Works - juiste teams in JWT
 print("Tenant \(tenant.slug): token=\(tenant.signedDeviceToken?.prefix(20))")
 ```
 
+## 🗄️ Caching Systeem
+
+### Offline-First Architectuur
+De app gebruikt een intelligente caching laag voor optimale gebruikerservaring:
+
+- **Directe weergave**: Cached data wordt onmiddellijk getoond
+- **Achtergrond refresh**: Fresh data wordt parallel opgehaald
+- **Graceful degradation**: Bij netwerkfouten blijft cached data beschikbaar
+
+### CacheManager Features
+```swift
+// Data caching met TTL
+CacheManager.shared.cache(response, forKey: "diensten_vvwilhelmus", ttl: 300)
+
+// Image caching voor tenant logo's
+CacheManager.shared.cacheImage(image, forURL: logoURL)
+
+// Smart retrieval: fresh, stale, of miss
+let result = CacheManager.shared.getCached(DienstDTO.self, forKey: key)
+```
+
+### Cache Configuratie
+- **Data TTL**: 5 minuten (diensten), 1 uur (tenant info)
+- **Image TTL**: 24 uur
+- **Storage**: Memory + Disk (100MB limiet)
+- **Cleanup**: Automatisch bij app start
+
+### CachedAsyncImage
+Drop-in replacement voor `AsyncImage` met caching:
+```swift
+CachedAsyncImage(url: logoURL) { image in
+    image.resizable().scaledToFit()
+} placeholder: {
+    Image(systemName: "building.2.fill")
+}
+```
+
+## 📋 Logging Systeem
+
+### Production-Ready Logging
+Centraal logging systeem met debug/release onderscheid:
+
+```swift
+// Debug builds: Alle logs zichtbaar
+Logger.volunteer("Adding volunteer to dienst")
+Logger.network("API call completed") 
+Logger.error("Critical failure") // Altijd gelogd
+
+// Production builds: Alleen errors via os_log
+```
+
+### Log Categorieën
+- `Logger.debug()` - Alleen debug builds
+- `Logger.info()` - Beide builds
+- `Logger.warning()` - Beide builds  
+- `Logger.error()` - Altijd gelogd
+- `Logger.success()` - Alleen debug builds
+- Domain-specific: `volunteer()`, `network()`, `auth()`, `email()`, `push()`, `leaderboard()`, `qr()`, `enrollment()`
+
+### Build Configuratie
+```swift
+#if DEBUG
+    // Debug builds: Alle logs via print() naar Xcode console
+    return true
+#elseif ENABLE_LOGGING
+    // Release builds met ENABLE_LOGGING flag: Volledige logging
+    return true
+#else
+    // Production builds: Alleen errors + runtime toggle
+    return loggingConfig.isLoggingEnabled
+#endif
+```
+
+### 🔧 Logging Configuratie Opties
+
+**1. Debug Builds** (automatisch)
+- Alle logging altijd enabled
+- Volledige console output
+- Structured debug logging
+
+**2. Release Builds met Logging** (via build flag)
+```bash
+# In Xcode: Scheme → Edit Scheme → Build Configuration → Release
+# Of via command line:
+xcodebuild -configuration Release -scheme "Kantine Koning"
+```
+
+**3. Production Builds** (runtime toggle)
+- Logging uitgeschakeld by default
+- In-app toggle in Settings voor debugging
+- Persistent via UserDefaults
+
+**4. Build Info Check**
+```swift
+Logger.buildInfo  // "Debug Build" / "Release Build (Logging Enabled)" / "Production Build"
+Logger.isLoggingEnabled  // true/false
+```
+
+### Structured Debug Logging
+Voor development debugging met visuele scheiding:
+
+```swift
+// Section separators voor grote operaties
+Logger.section("APP BOOTSTRAP")
+Logger.bootstrap("Initializing AppStore")
+
+// HTTP request/response logging met timing
+Logger.httpRequest(method: "GET", url: url, headers: headers)
+Logger.httpResponse(statusCode: 200, url: url, responseTime: 0.5)
+
+// User interaction tracking
+Logger.userInteraction("Tap", target: "Settings Button", context: ["state": "open"])
+
+// Performance monitoring
+Logger.performanceMeasure("Refresh Diensten", duration: 1.2, additionalInfo: "50 items")
+
+// View lifecycle
+Logger.viewLifecycle("HomeHostView", event: "onAppear", details: "tenants: 3")
+```
+
+### Global Error Handling
+iOS best practices voor exception handling:
+
+```swift
+// Automatische error categorisatie
+error.handle(context: "Network request", showToUser: true)
+
+// Custom app errors
+throw AppError.networkUnavailable
+throw AppError.validationFailed("Invalid email")
+
+// Global uncaught exception handler
+// Logs crashes in debug, reports to service in production
+```
+
 ## Troubleshooting / Bekende beperkingen
 - Max 5 teams per gebruiker (enforced bij enrollment en member-registratie)
 - Vrijwilliger toevoegen kan alleen voor toekomstige diensten en enkel als manager
 - "Alles resetten" wist lokaal en probeert backend-opschoning indien auth-token aanwezig
 - **Multi-tenant**: Gebruik ALTIJD enrollment-specifieke JWT tokens via `model.authTokenForTeam()` of `tenant.signedDeviceToken`, NIET `primaryAuthToken`
+- **Cache invalidatie**: Bij kritieke data-wijzigingen kan cache handmatig gewist worden via `CacheManager.shared.clearCache()`
 
 ---
 

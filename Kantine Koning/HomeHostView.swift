@@ -62,19 +62,28 @@ struct HomeHostView: View {
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
             .background(KKTheme.surface.ignoresSafeArea())
-            .safeAreaInset(edge: .top) {
+            .onAppear {
+                Logger.viewLifecycle("HomeHostView", event: "onAppear", details: "tenants: \(store.model.tenants.count)")
+            }
+            .onDisappear {
+                Logger.viewLifecycle("HomeHostView", event: "onDisappear")
+            }
+                            .safeAreaInset(edge: .top) {
                 TopNavigationBar(
                     onHomeAction: {
+                        Logger.userInteraction("Tap", target: "Home Button")
                         selectedTenant = nil
                         selectedTeam = nil
                         showSettings = false
                         showLeaderboard = false
                     },
                     onSettingsAction: { 
+                        Logger.userInteraction("Tap", target: "Settings Button", context: ["current_state": showSettings ? "open" : "closed"])
                         showSettings.toggle()
                         showLeaderboard = false
                     },
                     onLeaderboardAction: {
+                        Logger.userInteraction("Tap", target: "Leaderboard Button", context: ["current_state": showLeaderboard ? "open" : "closed"])
                         if !showLeaderboard {
                             showLeaderboard = true
                             showSettings = false
@@ -209,7 +218,7 @@ private struct TeamsView: View {
                         SwipeableRow(onTap: { onTeamSelected(team.id) }, onDelete: { store.removeTeam(team.id, from: tenant.slug) }) {
                             HStack(spacing: 16) {
                                 // Club logo (same for all teams in this tenant)
-                                AsyncImage(url: store.tenantInfo[tenant.slug]?.clubLogoUrl.flatMap(URL.init)) { image in
+                                CachedAsyncImage(url: store.tenantInfo[tenant.slug]?.clubLogoUrl.flatMap(URL.init)) { image in
                                     image.resizable().scaledToFit()
                                 } placeholder: {
                                     Image(systemName: "building.2.fill")
@@ -579,16 +588,18 @@ private struct DienstCardView: View {
     
     private func addVolunteer() {
         let name = newVolunteerName.trimmingCharacters(in: .whitespaces)
+        Logger.userInteraction("Add Volunteer", target: "DienstCard", context: ["name": name, "dienst_id": d.id])
+        
         guard isManager, !name.isEmpty, name.count <= 15, !volunteers.contains(name) else { 
-            print("[Volunteer] ❌ Add validation failed: manager=\(isManager) name='\(name)' exists=\(volunteers.contains(name))")
+            Logger.volunteer("Add validation failed: manager=\(isManager) name='\(name)' exists=\(volunteers.contains(name))")
             return 
         }
         guard d.startTime >= Date() else { 
-            print("[Volunteer] ❌ Cannot add to past dienst")
+            Logger.volunteer("Cannot add to past dienst")
             return 
         }
         
-        print("[Volunteer] 📡 Adding volunteer '\(name)' to dienst \(d.id)")
+        Logger.volunteer("Adding volunteer '\(name)' to dienst \(d.id)")
         newVolunteerName = ""
         showAddVolunteer = false
         
@@ -596,11 +607,11 @@ private struct DienstCardView: View {
         store.addVolunteer(tenant: d.tenantId, dienstId: d.id, name: name) { result in
             switch result {
             case .success:
-                print("[Volunteer] ✅ Successfully added volunteer via API")
+                Logger.volunteer("Successfully added volunteer via API")
                 volunteers.append(name)
                 if isFullyStaffed { triggerCelebration() }
             case .failure(let err):
-                print("[Volunteer] ❌ Failed to add volunteer: \(err)")
+                Logger.volunteer("Failed to add volunteer: \(err)")
                 // Revert UI state on failure
                 showAddVolunteer = true
                 newVolunteerName = name
@@ -608,25 +619,27 @@ private struct DienstCardView: View {
         }
     }
     private func removeVolunteer(_ name: String) {
+        Logger.userInteraction("Remove Volunteer", target: "DienstCard", context: ["name": name, "dienst_id": d.id])
+        
         guard isManager else { 
-            print("[Volunteer] ❌ Remove denied: not manager")
+            Logger.volunteer("Remove denied: not manager")
             return 
         }
         guard d.startTime >= Date() else { 
-            print("[Volunteer] ❌ Cannot remove from past dienst")
+            Logger.volunteer("Cannot remove from past dienst")
             return 
         }
         
-        print("[Volunteer] 📡 Removing volunteer '\(name)' from dienst \(d.id)")
+        Logger.volunteer("Removing volunteer '\(name)' from dienst \(d.id)")
         
         // Call backend API instead of local update
         store.removeVolunteer(tenant: d.tenantId, dienstId: d.id, name: name) { result in
             switch result {
             case .success:
-                print("[Volunteer] ✅ Successfully removed volunteer via API")
+                Logger.volunteer("Successfully removed volunteer via API")
                 volunteers.removeAll { $0 == name }
             case .failure(let err):
-                print("[Volunteer] ❌ Failed to remove volunteer: \(err)")
+                Logger.volunteer("Failed to remove volunteer: \(err)")
             }
         }
     }
@@ -663,7 +676,7 @@ private struct ClubsViewInternal: View {
                         SwipeableRow(onTap: { onTenantSelected(tenant.slug) }, onDelete: { store.removeTenant(tenant.slug) }) {
                             HStack(spacing: 16) {
                                 // Club logo (from tenant info)
-                                AsyncImage(url: store.tenantInfo[tenant.slug]?.clubLogoUrl.flatMap(URL.init)) { image in
+                                CachedAsyncImage(url: store.tenantInfo[tenant.slug]?.clubLogoUrl.flatMap(URL.init)) { image in
                                     image.resizable().scaledToFit()
                                 } placeholder: {
                                     Image(systemName: "building.2.fill")
@@ -816,12 +829,20 @@ private struct SettingsViewInternal: View {
                 .kkCard()
                 .padding(.horizontal, 24)
                 
+
                 // About: small centered text
-                Text("Kantine Koning – versie \(appVersion) (\(appBuild))")
-                    .font(KKFont.body(12))
-                    .foregroundStyle(KKTheme.textSecondary)
-                    .multilineTextAlignment(.center)
-                    .padding(.horizontal, 24)
+                VStack(spacing: 4) {
+                    Text("Kantine Koning – versie \(appVersion) (\(appBuild))")
+                        .font(KKFont.body(12))
+                        .foregroundStyle(KKTheme.textSecondary)
+                        .multilineTextAlignment(.center)
+                    
+                    Text(Logger.buildInfo)
+                        .font(KKFont.body(10))
+                        .foregroundStyle(KKTheme.textSecondary.opacity(0.7))
+                        .multilineTextAlignment(.center)
+                }
+                .padding(.horizontal, 24)
                 
                 Spacer(minLength: 24)
             }
@@ -939,6 +960,12 @@ private struct EmailNotificationPreferencesView: View {
                                         return emailPreferences[team.id, default: true] 
                                     },
                                     set: { newValue in
+                                        // Prevent changes when offline
+                                        if !store.isOnline {
+                                            Logger.warning("Email preference change blocked - app is offline")
+                                            return
+                                        }
+                                        
                                         // Prevent disabling email if no push notifications for managers
                                         if !newValue && !canDisableEmail {
                                             // Show warning - can't disable email without push notifications
@@ -953,13 +980,23 @@ private struct EmailNotificationPreferencesView: View {
                                     }
                                 ))
                                 .toggleStyle(SwitchToggleStyle(tint: KKTheme.accent))
-                                .disabled(isAdminDisabled)
-                                .opacity(isAdminDisabled ? 0.5 : 1.0)
+                                .disabled(isAdminDisabled || !store.isOnline)
+                                .opacity((isAdminDisabled || !store.isOnline) ? 0.5 : 1.0)
                             }
                             .padding(.vertical, 4)
                         }
                     }
                 }
+                
+                // Network status indicator
+                HStack(spacing: 8) {
+                    Text(store.networkMonitor.statusEmoji)
+                        .font(.title2)
+                    Text(store.networkMonitor.statusDescription)
+                        .font(KKFont.body(12))
+                        .foregroundStyle(store.isOnline ? KKTheme.textSecondary : Color.orange)
+                }
+                .padding(.top, 8)
                 
                 // Info text
                 VStack(alignment: .leading, spacing: 4) {
@@ -984,6 +1021,13 @@ private struct EmailNotificationPreferencesView: View {
                             .font(KKFont.body(9))
                             .foregroundStyle(Color.orange)
                             .fixedSize(horizontal: false, vertical: true)
+                        
+                        if !store.isOnline {
+                            Text("🌐 Offline: E-mail voorkeuren kunnen niet worden gewijzigd zonder internetverbinding.")
+                                .font(KKFont.body(9))
+                                .foregroundStyle(Color.red)
+                                .fixedSize(horizontal: false, vertical: true)
+                        }
                     }
                     .frame(maxWidth: .infinity, alignment: .leading)
                 }
@@ -1010,7 +1054,7 @@ private struct EmailNotificationPreferencesView: View {
             
             // Use tenant-specific auth token for this enrollment
             guard let authToken = tenant.signedDeviceToken else {
-                print("📧 ❌ No auth token for tenant \(tenant.name)")
+                Logger.email("No auth token for tenant \(tenant.name)")
                 // Fallback to defaults for this tenant
                 setDefaultsForTenant(tenant, managerTeams: managerTeams)
                 continue
@@ -1023,7 +1067,7 @@ private struct EmailNotificationPreferencesView: View {
                 DispatchQueue.main.async {
                     switch result {
                     case .success(let enrollmentStatus):
-                        print("📧 ✅ Loaded enrollment status for \(tenant.name): teams=\(enrollmentStatus.teamEmailPreferences?.count ?? 0), push=\(enrollmentStatus.hasApnsToken ?? false)")
+                        Logger.email("Loaded enrollment status for \(tenant.name): teams=\(enrollmentStatus.teamEmailPreferences?.count ?? 0), push=\(enrollmentStatus.hasApnsToken ?? false)")
                         
                         // Update state based on backend response - now per-team!
                         for team in managerTeams {
@@ -1034,7 +1078,7 @@ private struct EmailNotificationPreferencesView: View {
                         }
                         
                     case .failure(let error):
-                        print("📧 ❌ Failed to load enrollment status for \(tenant.name): \(error)")
+                        Logger.email("Failed to load enrollment status for \(tenant.name): \(error)")
                         // Fallback to defaults
                         self.setDefaultsForTenant(tenant, managerTeams: managerTeams)
                     }
@@ -1058,11 +1102,11 @@ private struct EmailNotificationPreferencesView: View {
     }
     
     private func updateEmailPreference(for team: DomainModel.Team, in tenant: DomainModel.Tenant, enabled: Bool) {
-        print("📧 Email notifications for \(team.name) (\(tenant.name)): \(enabled ? "enabled" : "disabled")")
+        Logger.email("Email notifications for \(team.name) (\(tenant.name)): \(enabled ? "enabled" : "disabled")")
         
         // Use tenant-specific auth token for this enrollment
         guard let authToken = tenant.signedDeviceToken else {
-            print("📧 ❌ No auth token for tenant \(tenant.name)")
+            Logger.email("No auth token for tenant \(tenant.name)")
             // Revert UI state
             withAnimation(.easeInOut(duration: 0.2)) {
                 emailPreferences[team.id] = !enabled
@@ -1077,7 +1121,7 @@ private struct EmailNotificationPreferencesView: View {
             DispatchQueue.main.async {
                 switch result {
                 case .success:
-                    print("📧 ✅ Email preference updated successfully for \(team.name)")
+                    Logger.email("Email preference updated successfully for \(team.name)")
                     // Reload the actual status from backend to ensure we're in sync
                     backend.fetchEnrollmentStatus { statusResult in
                         DispatchQueue.main.async {
@@ -1089,14 +1133,14 @@ private struct EmailNotificationPreferencesView: View {
                                     self.emailPreferences[team.id] = enrollmentStatus.getEmailPreference(for: team.code ?? team.id)
                                     self.pushStatus[team.id] = (enrollmentStatus.pushEnabled ?? false) && (enrollmentStatus.hasApnsToken ?? false)
                                 }
-                                print("📧 🔄 Synced email preference state from backend for \(team.code ?? team.id): email=\(enrollmentStatus.getEmailPreference(for: team.code ?? team.id))")
+                                Logger.email("Synced email preference state from backend for \(team.code ?? team.id): email=\(enrollmentStatus.getEmailPreference(for: team.code ?? team.id))")
                             case .failure(let error):
-                                print("📧 ⚠️ Failed to sync status after update: \(error)")
+                                Logger.email("Failed to sync status after update: \(error)")
                             }
                         }
                     }
                 case .failure(let error):
-                    print("📧 ❌ Failed to update email preference for \(team.name): \(error)")
+                    Logger.email("Failed to update email preference for \(team.name): \(error)")
                     // Revert UI state on failure
                     withAnimation(.easeInOut(duration: 0.2)) {
                         self.emailPreferences[team.id] = !enabled

@@ -22,7 +22,7 @@ extension BackendClient {
         
         URLSession.shared.dataTask(with: req) { data, response, error in
             if let error = error {
-                print("[EmailPrefs] ❌ Network error: \(error)")
+                Logger.error("Network error: \(error)")
                 completion(.failure(error))
                 return
             }
@@ -34,13 +34,13 @@ extension BackendClient {
             
             guard (200..<300).contains(http.statusCode) else {
                 let body = String(data: data, encoding: .utf8) ?? "<no body>"
-                print("[EmailPrefs] ❌ HTTP error \(http.statusCode): \(body)")
+                Logger.error("HTTP error \(http.statusCode): \(body)")
                 completion(.failure(NSError(domain: "Backend", code: http.statusCode, userInfo: [NSLocalizedDescriptionKey: body])))
                 return
             }
             
             let teamInfo = " for team \(teamCode)"
-            print("[EmailPrefs] ✅ Email preferences updated\(teamInfo): \(enabled)")
+            Logger.success("Email preferences updated\(teamInfo): \(enabled)")
             completion(.success(()))
         }.resume()
     }
