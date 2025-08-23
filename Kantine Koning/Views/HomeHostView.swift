@@ -297,7 +297,7 @@ private struct TeamDienstenView: View {
             VStack(spacing: 24) {
                 Spacer(minLength: 24)
                 VStack(spacing: 8) {
-                    Text(tenant.teams.first(where: { $0.id == teamId })?.name.uppercased() ?? "TEAM")
+                    Text(findTeamName(teamId: teamId, in: tenant).uppercased())
                         .font(KKFont.heading(24))
                         .fontWeight(.regular)
                         .kerning(-1.0)
@@ -346,6 +346,32 @@ private struct TeamDienstenView: View {
         let future = filtered.filter { $0.startTime >= now }.sorted { $0.startTime < $1.startTime }
         let past = filtered.filter { $0.startTime < now }.sorted { $0.startTime > $1.startTime }
         return future + past
+    }
+    
+    private func findTeamName(teamId: String, in tenant: DomainModel.Tenant) -> String {
+        // First try to find by ID
+        if let team = tenant.teams.first(where: { $0.id == teamId }) {
+            Logger.debug("🎯 Found team by ID: \(team.name) (id=\(team.id))")
+            return team.name
+        }
+        
+        // Fallback: try to find by code
+        if let team = tenant.teams.first(where: { $0.code == teamId }) {
+            Logger.debug("🎯 Found team by code: \(team.name) (code=\(team.code ?? "nil"))")
+            return team.name
+        }
+        
+        // Last resort: partial match on ID or code containing the teamId
+        if let team = tenant.teams.first(where: { 
+            $0.id.contains(teamId) || ($0.code?.contains(teamId) ?? false)
+        }) {
+            Logger.debug("🎯 Found team by partial match: \(team.name)")
+            return team.name
+        }
+        
+        Logger.warning("❌ Team not found: teamId=\(teamId) in tenant \(tenant.name)")
+        Logger.debug("Available teams: \(tenant.teams.map { "id=\($0.id) code=\($0.code ?? "nil") name=\($0.name)" }.joined(separator: ", "))")
+        return "TEAM (\(teamId))"
     }
 }
 

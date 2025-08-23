@@ -268,6 +268,7 @@
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_KEY_CFBundleDisplayName = "Kantine Koning";
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.sports";
+				ITSAppUsesNonExemptEncryption = NO;
 				INFOPLIST_KEY_NSCameraUsageDescription = "We gebruiken de camera om Kantine Koning QR-codes te scannen voor aanmelding en teamselectie.";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
@@ -303,6 +304,7 @@
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_KEY_CFBundleDisplayName = "Kantine Koning";
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.sports";
+				ITSAppUsesNonExemptEncryption = NO;
 				INFOPLIST_KEY_NSCameraUsageDescription = "We gebruiken de camera om Kantine Koning QR-codes te scannen voor aanmelding en teamselectie.";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;

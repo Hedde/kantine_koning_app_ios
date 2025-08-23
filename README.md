@@ -390,6 +390,21 @@ throw AppError.validationFailed("Invalid email")
 - **Multi-tenant**: Gebruik ALTIJD enrollment-specifieke JWT tokens via `model.authTokenForTeam()` of `tenant.signedDeviceToken`, NIET `primaryAuthToken`
 - **Cache invalidatie**: Bij kritieke data-wijzigingen kan cache handmatig gewist worden via `CacheManager.shared.clearCache()`
 
+## 🔐 Export Compliance
+
+Voor App Store submission is encryption compliance geconfigureerd:
+
+```xml
+<!-- In project.pbxproj build settings -->
+ITSAppUsesNonExemptEncryption = NO;
+```
+
+**Betekenis:**
+- ✅ **NO**: App gebruikt alleen standaard iOS encryptie (HTTPS, Keychain, etc.)
+- ❌ **YES**: App implementeert custom encryption algoritmes
+
+**Resultaat:** Geen export compliance vragen meer bij App Store Connect uploads.
+
 ---
 
 Made with ❤️ for Dutch sports clubs
