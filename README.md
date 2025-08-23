@@ -260,23 +260,58 @@ Logger.error("Critical failure") // Altijd gelogd
 
 ### Scheme Configuratie Overzicht
 
-| **Scheme** | **Build Config** | **Logging** | **APNS Environment** | **Gebruik** |
-|------------|------------------|-------------|---------------------|-------------|
-| **Release Testing** | Debug | ✅ **AAN** (`ENABLE_LOGGING=YES`, `DEBUG` flag) | **Sandbox** | Development & testing met volledige logs |
-| **Release** | Release | ❌ **UIT** (`ENABLE_LOGGING=NO`, geen flags) | **Production** | Production deployment |
+| **Scheme** | **Build Config** | **Logging** | **APNS Environment** | **Build Environment** | **Gebruik** |
+|------------|------------------|-------------|---------------------|---------------------|-------------|
+| **Release Testing** | Debug | ✅ **AAN** (`ENABLE_LOGGING=YES`, `DEBUG` flag) | **Sandbox** | `"development"` | Development & testing met volledige logs |
+| **Release** | Release | ❌ **UIT** (`ENABLE_LOGGING=NO`, geen flags) | **Production** | `"production"` | Production deployment |
+
+### 🚨 KRITIEK: Scheme vs Build Environment Mapping
+
+**iOS App Entitlements:**
+- **Release Testing** scheme → `Debug` build → `aps-environment: development` → Server detecteert **sandbox**
+- **Release** scheme → `Release` build → `aps-environment: production` → Server detecteert **production**
+
+**Backend Auto-Detection Logic:**
+```elixir
+case device.build_environment do
+  env when env in ["development", "debug"] -> "sandbox"   # APNs Sandbox
+  _ -> "production"                                       # APNs Production
+end
+```
 
 ### Build Environment Detection
 
 ```swift
 private func getBuildEnvironment() -> String {
     #if DEBUG
-    return "development (sandbox)"        // Release Testing scheme
+    return "development"                 // Release Testing scheme → Sandbox APNS
     #elseif ENABLE_LOGGING
-    return "testing (sandbox)"           // Niet gebruikt
+    return "testing"                     // Niet gebruikt
     #else
-    return "production"                  // Release scheme
+    return "production"                  // Release scheme → Production APNS
     #endif
 }
+```
+
+### 🔍 APNS Environment Troubleshooting
+
+**Environment Mismatch Detectie:**
+```swift
+// Check in device enrollment API response
+let buildEnv = device.buildEnvironment
+let apnsEnv = buildEnv == "development" ? "sandbox" : "production"
+Logger.push("Device build: \(buildEnv) → APNS: \(apnsEnv)")
+```
+
+**Server-side Verification:**
+```elixir
+# Check in IEx console
+device = Repo.get_by(DeviceEnrollment, team_manager_email: "user@example.com")
+detected_env = case device.build_environment do
+  env when env in ["development", "debug"] -> "sandbox"
+  _ -> "production"
+end
+IO.puts("Device build: #{device.build_environment} → APNS: #{detected_env}")
 ```
 
 ### APNS Token Logging
@@ -286,13 +321,14 @@ Met de uitgebreide APNS logging zie je nu bij elke token update:
 ```
 🔄 APNS Token Update Request
   → Token: abcd1234567890...
-  → Build Environment: development (sandbox)
+  → Build Environment: development
+  → Detected APNS Environment: sandbox
   → Is New Token: true
   → Time Since Last Update: 3600.0s
   → Has Auth: true
   → Using auth token: xyz987654321...
 ✅ APNS token update SUCCESS (took 0.45s)
-  → Environment: development (sandbox)
+  → Final Environment: sandbox
   → Token cached for future comparisons
 ```
 
@@ -302,12 +338,14 @@ Met de uitgebreide APNS logging zie je nu bij elke token update:
 - Gebruik **Release Testing** scheme voor dagelijkse development en testing
 - Volledige logging en debug informatie
 - Test tegen APNs Sandbox environment
+- `build_environment: "development"` wordt naar server gestuurd
 - Optimized build maar met alle debugging mogelijkheden
 
 **Voor Production:**
-- Gebruik **Release** scheme voor App Store builds
+- Gebruik **Release** scheme voor App Store builds  
 - Geen logging overhead voor performance
 - Production APNs environment
+- `build_environment: "production"` wordt naar server gestuurd
 
 ### Backend Environment Mapping
 
@@ -325,9 +363,48 @@ let buildEnvironment: String = {
 }()
 ```
 
+**Server Environment Detection:**
+```elixir
+def determine_apns_environment(device_enrollment) do
+  case System.get_env("APNS_FORCE_ENV") do
+    env when env in ["sandbox", "production"] -> env
+    _ ->
+      if device_enrollment.is_test_user do
+        "sandbox"
+      else
+        case device_enrollment.build_environment do
+          env when env in ["development", "debug"] -> "sandbox"
+          _ -> "production"  # production, release, appstore, or nil
+        end
+      end
+  end
+end
+```
+
 Dit zorgt ervoor dat:
-- **Release Testing** → APNs Sandbox gebruikt
-- **Release** → APNs Production gebruikt
+- **Release Testing** → `build_environment: "development"` → APNs Sandbox
+- **Release** → `build_environment: "production"` → APNs Production
+
+### 🚨 Common Configuration Mistakes
+
+**❌ Environment Mismatch:**
+- App gebouwd met **Release** scheme (production entitlements)
+- Server heeft `APNS_ENV=sandbox` environment variable
+- **Resultaat**: APNS timeouts - sandbox credentials proberen production tokens
+
+**✅ Correct Configuration:**
+- App: **Release** scheme → `build_environment: "production"`
+- Server: **Geen** `APNS_ENV` environment variable (auto-detection)
+- **Resultaat**: Server gebruikt production APNS voor production device
+
+**🔧 Quick Fix Commands:**
+```bash
+# Remove environment override (AANBEVOLEN)
+fly secrets unset APNS_ENV -a kantine-koning
+
+# Or set explicit environment
+fly secrets set APNS_ENV=production -a kantine-koning
+```
 
 ### 🔧 Logging Configuratie Opties
 
@@ -386,11 +463,74 @@ throw AppError.validationFailed("Invalid email")
 ```
 
 ## Troubleshooting / Bekende beperkingen
+
+### 📱 Push Notification Issues
+
+**Push notifications niet ontvangen:**
+
+1. **Check Build Scheme:**
+   ```swift
+   // In app logs
+   Logger.push("Build environment: \(getBuildEnvironment())")
+   // Should be "development" for testing, "production" for App Store
+   ```
+
+2. **Verify Entitlements:**
+   - **Release Testing** scheme → `aps-environment: development` 
+   - **Release** scheme → `aps-environment: production`
+
+3. **Check Server Environment:**
+   ```bash
+   # Check backend APNS configuration
+   fly ssh console -a kantine-koning
+   # In IEx:
+   IO.puts("APNS_ENV: #{System.get_env("APNS_ENV")}")
+   # Should be nil (auto-detection) or match app environment
+   ```
+
+4. **Environment Mismatch Fix:**
+   ```bash
+   # Remove server environment override (RECOMMENDED)
+   fly secrets unset APNS_ENV -a kantine-koning
+   
+   # This enables auto-detection based on device.build_environment
+   ```
+
+5. **Test Push Manually:**
+   ```elixir
+   # In production IEx console
+   alias KantineKoning.{Devices.DeviceEnrollment, Repo}
+   device = Repo.get_by(DeviceEnrollment, team_manager_email: "your@email.com")
+   KantineKoning.Notifications.APNS.send_alert_to_device(device, "Test", "Manual test")
+   ```
+
+### 🔧 Build Configuration Issues
+
+**Wrong APNS environment detected:**
+- **Problem**: App built with Release scheme but server uses sandbox
+- **Solution**: Ensure no `APNS_ENV` environment variable on server (use auto-detection)
+- **Verify**: Device enrollment should have `build_environment: "production"` for Release builds
+
+**Logging not working in Release builds:**
+- **Expected**: Release scheme has logging disabled for performance
+- **Debug**: Use Release Testing scheme for development with full logging
+
+### 🌐 Multi-Tenant Issues
+
 - Max 5 teams per gebruiker (enforced bij enrollment en member-registratie)
 - Vrijwilliger toevoegen kan alleen voor toekomstige diensten en enkel als manager
 - "Alles resetten" wist lokaal en probeert backend-opschoning indien auth-token aanwezig
 - **Multi-tenant**: Gebruik ALTIJD enrollment-specifieke JWT tokens via `model.authTokenForTeam()` of `tenant.signedDeviceToken`, NIET `primaryAuthToken`
 - **Data synchronisatie**: Bij netwerkproblemen kan `refreshDiensten()` handmatig aangeroepen worden om data bij te werken
+
+### 🚨 Common Configuration Mistakes
+
+| **Issue** | **Symptoms** | **Fix** |
+|-----------|--------------|---------|
+| Environment mismatch | Push timeouts, no notifications | `fly secrets unset APNS_ENV` |
+| Wrong build scheme | Unexpected APNS environment | Use Release for production, Release Testing for development |
+| Invalid device token | APNS 400 errors | Re-enroll device, check token format |
+| Expired JWT | API 401 errors | Device re-enrollment needed |
 
 ## 🔐 Export Compliance
 
