@@ -99,13 +99,39 @@ final class CachedDienstRepository: DienstRepository {
     }
     
     func addVolunteer(tenant: TenantID, dienstId: String, name: String, completion: @escaping (Result<Dienst, Error>) -> Void) {
-        backend.addVolunteer(tenant: tenant, dienstId: dienstId, name: name) { result in
+        backend.addVolunteer(tenant: tenant, dienstId: dienstId, name: name) { [weak self] result in
+            // Invalidate cache on successful volunteer update
+            if case .success = result {
+                let cacheKey = CacheManager.CacheKey.diensten(tenantSlug: tenant)
+                CacheManager.shared.invalidateCache(forKey: cacheKey)
+                Logger.debug("🗑️ Cache invalidated for tenant \(tenant) after volunteer add")
+            }
+            
+            guard let self = self else {
+                Logger.error("CachedDienstRepository deallocated during volunteer add")
+                completion(.failure(NSError(domain: "CachedRepository", code: -1, userInfo: [NSLocalizedDescriptionKey: "Repository deallocated"])))
+                return
+            }
+            
             completion(result.map(self.mapDTOToDienst))
         }
     }
     
     func removeVolunteer(tenant: TenantID, dienstId: String, name: String, completion: @escaping (Result<Dienst, Error>) -> Void) {
-        backend.removeVolunteer(tenant: tenant, dienstId: dienstId, name: name) { result in
+        backend.removeVolunteer(tenant: tenant, dienstId: dienstId, name: name) { [weak self] result in
+            // Invalidate cache on successful volunteer update
+            if case .success = result {
+                let cacheKey = CacheManager.CacheKey.diensten(tenantSlug: tenant)
+                CacheManager.shared.invalidateCache(forKey: cacheKey)
+                Logger.debug("🗑️ Cache invalidated for tenant \(tenant) after volunteer remove")
+            }
+            
+            guard let self = self else {
+                Logger.error("CachedDienstRepository deallocated during volunteer remove")
+                completion(.failure(NSError(domain: "CachedRepository", code: -1, userInfo: [NSLocalizedDescriptionKey: "Repository deallocated"])))
+                return
+            }
+            
             completion(result.map(self.mapDTOToDienst))
         }
     }

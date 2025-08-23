@@ -188,6 +188,20 @@ final class CacheManager {
     
     // MARK: - Cache Management
     
+    /// Invalidate specific cache entry
+    func invalidateCache(forKey key: String) {
+        // Remove from memory cache
+        memoryCache.removeObject(forKey: NSString(string: key))
+        
+        // Remove from disk cache
+        cacheQueue.async { [weak self] in
+            guard let self = self else { return }
+            let fileURL = self.diskCacheURL.appendingPathComponent(key.sha256)
+            try? FileManager.default.removeItem(at: fileURL)
+            Logger.debug("Cache invalidated for key: \(key)")
+        }
+    }
+    
     /// Clear all cached data
     func clearCache() {
         memoryCache.removeAllObjects()
