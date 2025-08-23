@@ -559,8 +559,6 @@ extension AppStore {
                         )
                         self?.upcoming[index] = updatedDienst
                     }
-                    // Force refresh to ensure UI consistency after volunteer add
-                    self?.refreshDiensten()
                     completion(.success(()))
                 case .failure(let err):
                     completion(.failure(err))
@@ -629,8 +627,6 @@ extension AppStore {
                         )
                         self?.upcoming[index] = updatedDienst
                     }
-                    // Force refresh to ensure UI consistency after volunteer remove
-                    self?.refreshDiensten()
                     completion(.success(()))
                 case .failure(let err):
                     completion(.failure(err))
