@@ -548,7 +548,7 @@ extension AppStore {
                         let updatedDienst = Dienst(
                             id: updated.id,
                             tenantId: updated.tenant_id,
-                            teamId: updated.team?.code ?? updated.team?.id,
+                            teamId: updated.team?.id,
                             startTime: updated.start_tijd,
                             endTime: updated.eind_tijd,
                             status: updated.status,
@@ -616,7 +616,7 @@ extension AppStore {
                         let updatedDienst = Dienst(
                             id: updated.id,
                             tenantId: updated.tenant_id,
-                            teamId: updated.team?.code ?? updated.team?.id,
+                            teamId: updated.team?.id,
                             startTime: updated.start_tijd,
                             endTime: updated.eind_tijd,
                             status: updated.status,

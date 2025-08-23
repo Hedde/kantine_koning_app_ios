@@ -168,7 +168,7 @@ final class CachedDienstRepository: DienstRepository {
         return Dienst(
             id: dto.id,
             tenantId: dto.tenant_id,
-            teamId: dto.team?.code ?? dto.team?.id,
+            teamId: dto.team?.id,
             startTime: dto.start_tijd,
             endTime: dto.eind_tijd,
             status: dto.status,
