@@ -254,28 +254,95 @@ Logger.error("Critical failure") // Altijd gelogd
 #endif
 ```
 
-### 🔧 Logging Configuratie Opties
+## 🏗️ Build Schemes & Configuratie
 
-**1. Debug Builds** (automatisch)
-- Alle logging altijd enabled
-- Volledige console output
-- Structured debug logging
+### Scheme Configuratie Overzicht
 
-**2. Release Builds met Logging** (via build flag)
-```bash
-# In Xcode: Scheme → Edit Scheme → Build Configuration → Release
-# Of via command line:
-xcodebuild -configuration Release -scheme "Kantine Koning"
+| **Scheme** | **Build Config** | **Logging** | **APNS Environment** | **Gebruik** |
+|------------|------------------|-------------|---------------------|-------------|
+| **Release Testing** | Debug | ✅ **AAN** (`ENABLE_LOGGING=YES`, `DEBUG` flag) | **Sandbox** | Development & testing met volledige logs |
+| **Release** | Release | ❌ **UIT** (`ENABLE_LOGGING=NO`, geen flags) | **Production** | Production deployment |
+
+### Build Environment Detection
+
+```swift
+private func getBuildEnvironment() -> String {
+    #if DEBUG
+    return "development (sandbox)"        // Release Testing scheme
+    #elseif ENABLE_LOGGING
+    return "testing (sandbox)"           // Niet gebruikt
+    #else
+    return "production"                  // Release scheme
+    #endif
+}
 ```
 
-**3. Production Builds** (runtime toggle)
-- Logging uitgeschakeld by default
-- In-app toggle in Settings voor debugging
-- Persistent via UserDefaults
+### APNS Token Logging
 
-**4. Build Info Check**
+Met de uitgebreide APNS logging zie je nu bij elke token update:
+
+```
+🔄 APNS Token Update Request
+  → Token: abcd1234567890...
+  → Build Environment: development (sandbox)
+  → Is New Token: true
+  → Time Since Last Update: 3600.0s
+  → Has Auth: true
+  → Using auth token: xyz987654321...
+✅ APNS token update SUCCESS (took 0.45s)
+  → Environment: development (sandbox)
+  → Token cached for future comparisons
+```
+
+### Scheme Usage Guidelines
+
+**Voor Development & Testing:**
+- Gebruik **Release Testing** scheme voor dagelijkse development en testing
+- Volledige logging en debug informatie
+- Test tegen APNs Sandbox environment
+- Optimized build maar met alle debugging mogelijkheden
+
+**Voor Production:**
+- Gebruik **Release** scheme voor App Store builds
+- Geen logging overhead voor performance
+- Production APNs environment
+
+### Backend Environment Mapping
+
+De app detecteert automatisch de juiste backend environment:
+
 ```swift
-Logger.buildInfo  // "Debug Build" / "Release Build (Logging Enabled)" / "Production Build"
+let buildEnvironment: String = {
+    #if DEBUG
+    return "development"  // → APNs Sandbox (Release Testing scheme)
+    #elseif ENABLE_LOGGING  
+    return "development"  // → Niet gebruikt
+    #else
+    return "production"   // → APNs Production (Release scheme)
+    #endif
+}()
+```
+
+Dit zorgt ervoor dat:
+- **Release Testing** → APNs Sandbox gebruikt
+- **Release** → APNs Production gebruikt
+
+### 🔧 Logging Configuratie Opties
+
+**1. Release Testing Scheme**
+- Alle logging altijd enabled
+- Volledige console output 
+- Structured debug logging
+- APNs Sandbox environment
+
+**2. Release Scheme**
+- Logging uitgeschakeld voor performance
+- Alleen critical errors gelogd
+- APNs Production environment
+
+**3. Build Info Check**
+```swift
+Logger.buildInfo  // "Release Testing Build" / "Production Build"
 Logger.isLoggingEnabled  // true/false
 ```
 

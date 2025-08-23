@@ -84,8 +84,10 @@ final class BackendClient {
         let buildEnvironment: String = {
             #if DEBUG
             return "development"
+            #elseif ENABLE_LOGGING
+            return "development"  // Release Testing = Sandbox APNs
             #else
-            return "production"
+            return "production"   // Release = Production APNs
             #endif
         }()
         let vendorId = UIDevice.current.identifierForVendor?.uuidString ?? ""
@@ -233,8 +235,10 @@ final class BackendClient {
         let buildEnvironment: String = {
             #if DEBUG
             return "development"
+            #elseif ENABLE_LOGGING
+            return "development"  // Release Testing = Sandbox APNs
             #else
-            return "production"
+            return "production"   // Release = Production APNs
             #endif
         }()
         var body: [String: Any] = ["apns_device_token": apns, "build_environment": buildEnvironment]

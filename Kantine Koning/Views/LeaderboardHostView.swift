@@ -264,34 +264,60 @@ struct LeaderboardHostView: View {
             // Show menu if no tenant initially selected and not showing info
             showingMenu = (initialTenant == nil && !showingInfo)
         }
+        .onChange(of: store.leaderboards) { _, _ in
+            // Auto-disable loading when new leaderboard data arrives
+            if isLoading, selectedTenant != nil, selectedTenant != "global" {
+                if let tenantSlug = selectedTenant, store.leaderboards[tenantSlug] != nil {
+                    Logger.debug("Leaderboard data arrived for \(tenantSlug) - disabling loading state")
+                    isLoading = false
+                    errorMessage = nil
+                }
+            }
+        }
+        .onChange(of: store.globalLeaderboard) { _, _ in
+            // Auto-disable loading when global leaderboard data arrives
+            if isLoading, selectedTenant == "global", store.globalLeaderboard != nil {
+                Logger.debug("Global leaderboard data arrived - disabling loading state")
+                isLoading = false
+                errorMessage = nil
+            }
+        }
     }
     
     private func loadLeaderboard(for tenantSlug: String) {
-        isLoading = true
+        // Only show loading if we don't have cached data
+        if store.leaderboards[tenantSlug] == nil {
+            isLoading = true
+            Logger.debug("No cached leaderboard for \(tenantSlug) - showing loading state")
+        } else {
+            Logger.debug("Using cached leaderboard for \(tenantSlug) while refreshing")
+        }
         errorMessage = nil
         
-        // Use AppStore for consistent data management
+        // Start refresh (will use cached data immediately if available)
         store.refreshLeaderboard(for: tenantSlug, period: selectedPeriod.rawValue, teamId: selectedTeam)
         
-        // Check if data loaded successfully after a short delay
-        DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
-            Logger.debug("Checking if data loaded for tenant: \(tenantSlug)")
-            Logger.debug("Available leaderboards: \(Array(store.leaderboards.keys))")
-            
-            if let leaderboard = store.leaderboards[tenantSlug] {
-                Logger.success("Found leaderboard data with \(leaderboard.teams.count) teams")
-                isLoading = false
-                errorMessage = nil
-            } else {
-                Logger.error("No leaderboard data found")
-                isLoading = false
-                errorMessage = "Kon leaderboard niet laden"
+        // Monitor for updates (the @Published store.leaderboards will trigger UI updates)
+        // Set a fallback timeout only if we started in loading state
+        if isLoading {
+            DispatchQueue.main.asyncAfter(deadline: .now() + 5.0) {
+                if self.isLoading && self.store.leaderboards[tenantSlug] == nil {
+                    Logger.error("Leaderboard load timeout for \(tenantSlug)")
+                    self.isLoading = false
+                    self.errorMessage = "Kon leaderboard niet laden"
+                }
             }
         }
     }
     
     private func loadGlobalLeaderboard() {
-        isLoading = true
+        // Only show loading if we don't have cached data
+        if store.globalLeaderboard == nil {
+            isLoading = true
+            Logger.debug("No cached global leaderboard - showing loading state")
+        } else {
+            Logger.debug("Using cached global leaderboard while refreshing")
+        }
         errorMessage = nil
         
         // Use first tenant for authentication
@@ -311,10 +337,12 @@ struct LeaderboardHostView: View {
             teamId: selectedTeam
         ) { result in
             DispatchQueue.main.async {
-                isLoading = false
+                if self.isLoading {
+                    self.isLoading = false
+                }
                 switch result {
                 case .success(let leaderboard):
-                    store.globalLeaderboard = GlobalLeaderboardData(
+                    self.store.globalLeaderboard = GlobalLeaderboardData(
                         period: leaderboard.period,
                         teams: leaderboard.teams.map { teamEntry in
                             GlobalLeaderboardTeam(
@@ -337,9 +365,9 @@ struct LeaderboardHostView: View {
                     Logger.success("Loaded global leaderboard: \(leaderboard.teams.count) teams")
                 case .failure(let error):
                     if (error as NSError).code == 403 {
-                        errorMessage = "Deze vereniging heeft zich afgemeld voor de globale leaderboard."
+                        self.errorMessage = "Deze vereniging heeft zich afgemeld voor de globale leaderboard."
                     } else {
-                        errorMessage = self.formatErrorMessage(error, context: "globale leaderboard")
+                        self.errorMessage = self.formatErrorMessage(error, context: "globale leaderboard")
                     }
                     Logger.error("Failed to load global leaderboard: \(error)")
                 }

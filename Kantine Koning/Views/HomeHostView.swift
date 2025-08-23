@@ -988,16 +988,7 @@ private struct EmailNotificationPreferencesView: View {
                     }
                 }
                 
-                // Network status indicator
-                HStack(spacing: 8) {
-                    Text(store.networkMonitor.statusEmoji)
-                        .font(.title2)
-                    Text(store.networkMonitor.statusDescription)
-                        .font(KKFont.body(12))
-                        .foregroundStyle(store.isOnline ? KKTheme.textSecondary : Color.orange)
-                }
-                .padding(.top, 8)
-                
+
                 // Info text
                 VStack(alignment: .leading, spacing: 4) {
                     HStack(spacing: 6) {
@@ -1012,14 +1003,9 @@ private struct EmailNotificationPreferencesView: View {
                     }
                     
                     VStack(alignment: .leading, spacing: 4) {
-                        Text("Schakel e-mail meldingen uit als je liever alleen push-meldingen ontvangt in de app.")
+                        Text("Schakel e-mail meldingen uit als je liever alleen push-meldingen ontvangt in de app. Teammanagers kunnen email alleen uitschakelen als push-meldingen werken. Anders blijft email geforceerd aan voor je veiligheid.")
                             .font(KKFont.body(10))
                             .foregroundStyle(KKTheme.textSecondary)
-                            .fixedSize(horizontal: false, vertical: true)
-                        
-                        Text("⚠️ Teammanagers kunnen email alleen uitschakelen als push-meldingen werken. Anders blijft email geforceerd aan voor je veiligheid.")
-                            .font(KKFont.body(9))
-                            .foregroundStyle(Color.orange)
                             .fixedSize(horizontal: false, vertical: true)
                         
                         if !store.isOnline {
