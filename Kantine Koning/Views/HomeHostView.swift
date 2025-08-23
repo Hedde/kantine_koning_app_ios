@@ -443,7 +443,8 @@ private struct DienstDetail: View {
 private struct DienstCardView: View {
     let d: Dienst
     let isManager: Bool
-    @State private var volunteers: [String] = []
+    // Computed property instead of @State to always reflect current dienst data
+    private var volunteers: [String] { d.volunteers ?? [] }
     @State private var showAddVolunteer = false
     @State private var newVolunteerName = ""
     @State private var showCelebration = false
@@ -588,7 +589,7 @@ private struct DienstCardView: View {
         .background(KKTheme.surfaceAlt)
         .cornerRadius(12)
         .overlay(ConfettiView(trigger: confettiTrigger).allowsHitTesting(false))
-        .onAppear { volunteers = d.volunteers ?? [] }
+
     }
     
     private var dateText: String {
@@ -639,7 +640,7 @@ private struct DienstCardView: View {
             switch result {
             case .success:
                 Logger.volunteer("Successfully added volunteer via API")
-                volunteers.append(name)
+                // Note: volunteers will be updated when diensten refresh after cache invalidation
                 if isFullyStaffed { triggerCelebration() }
             case .failure(let err):
                 Logger.volunteer("Failed to add volunteer: \(err)")
@@ -668,7 +669,7 @@ private struct DienstCardView: View {
             switch result {
             case .success:
                 Logger.volunteer("Successfully removed volunteer via API")
-                volunteers.removeAll { $0 == name }
+                // Note: volunteers will be updated when diensten refresh after cache invalidation
             case .failure(let err):
                 Logger.volunteer("Failed to remove volunteer: \(err)")
             }
