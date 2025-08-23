@@ -349,15 +349,17 @@ private struct TeamDienstenView: View {
     }
     
     private func findTeamName(teamId: String, in tenant: DomainModel.Tenant) -> String {
+        Logger.debug("🔍 Looking for team with teamId: '\(teamId)' in tenant '\(tenant.name)'")
+        
         // First try to find by ID
         if let team = tenant.teams.first(where: { $0.id == teamId }) {
-            Logger.debug("🎯 Found team by ID: \(team.name) (id=\(team.id))")
+            Logger.debug("🎯 Found team by ID: '\(team.name)' (id='\(team.id)' code='\(team.code ?? "nil")')")
             return team.name
         }
         
         // Fallback: try to find by code
         if let team = tenant.teams.first(where: { $0.code == teamId }) {
-            Logger.debug("🎯 Found team by code: \(team.name) (code=\(team.code ?? "nil"))")
+            Logger.debug("🎯 Found team by CODE: '\(team.name)' (id='\(team.id)' code='\(team.code ?? "nil")')")
             return team.name
         }
         
@@ -365,12 +367,15 @@ private struct TeamDienstenView: View {
         if let team = tenant.teams.first(where: { 
             $0.id.contains(teamId) || ($0.code?.contains(teamId) ?? false)
         }) {
-            Logger.debug("🎯 Found team by partial match: \(team.name)")
+            Logger.debug("🎯 Found team by PARTIAL match: '\(team.name)' (id='\(team.id)' code='\(team.code ?? "nil")')")
             return team.name
         }
         
-        Logger.warning("❌ Team not found: teamId=\(teamId) in tenant \(tenant.name)")
-        Logger.debug("Available teams: \(tenant.teams.map { "id=\($0.id) code=\($0.code ?? "nil") name=\($0.name)" }.joined(separator: ", "))")
+        Logger.warning("❌ Team NOT FOUND: teamId='\(teamId)' in tenant '\(tenant.name)'")
+        Logger.debug("📋 Available teams in '\(tenant.name)':")
+        for team in tenant.teams {
+            Logger.debug("  - id='\(team.id)' code='\(team.code ?? "nil")' name='\(team.name)'")
+        }
         return "TEAM (\(teamId))"
     }
 }

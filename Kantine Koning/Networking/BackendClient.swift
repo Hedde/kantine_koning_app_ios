@@ -114,7 +114,8 @@ final class BackendClient {
             do {
                 let obj = try JSONSerialization.jsonObject(with: data) as? [String: Any]
                 Logger.debug("Response keys: \(obj?.keys.joined(separator: ", ") ?? "none")")
-                Logger.debug("Full response: \(String(data: data, encoding: .utf8) ?? "<decode failed>")")
+                Logger.debug("📄 FULL ENROLLMENT RESPONSE:")
+                Logger.debug("\(String(data: data, encoding: .utf8) ?? "<decode failed>")")
                 
                 let tenantSlug = obj?["tenant_slug"] as? String ?? "tenant_demo"
                 let tenantName = obj?["tenant_name"] as? String ?? "Demo Club"
@@ -138,7 +139,8 @@ final class BackendClient {
                         let id = teamObj["id"] as? String ?? teamObj["code"] as? String ?? ""
                         let code = teamObj["code"] as? String
                         let name = teamObj["naam"] as? String ?? teamObj["name"] as? String ?? code ?? id
-                        Logger.debug("Team id=\(id) code=\(code ?? "nil") name=\(name)")
+                        Logger.debug("📝 PARSING Team: id='\(id)' code='\(code ?? "nil")' name='\(name)'")
+                        Logger.debug("📝 RAW teamObj: \(teamObj)")
                         guard !id.isEmpty else { return nil }
                         return DomainModel.Team(id: id, code: code, name: name, role: role, email: email, enrolledAt: now)
                     }
