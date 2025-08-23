@@ -35,7 +35,7 @@ Home → Verenigingen → Teams → Diensten
 - `AppStore` (ObservableObject) beheert appfasen: launching, onboarding, enrollmentPending, registered
 - `DomainModel` met `Tenant`, `Team`, rollen (`manager`/`member`), persist via `UserDefaults` (`kk_domain_model`)
 - Repositories: `EnrollmentRepository` en `DienstRepository` → `BackendClient` voor HTTP-calls
-- **Caching Layer**: `CacheManager` + `CachedRepositories` voor offline-first ervaring
+- **Data-Driven Architecture**: `AppStore.upcoming` als single source of truth voor diensten
 - **Logging System**: `Logger` met debug/release flags voor productie-klare logging
 - `BackendClient` base URL:
   - Debug: `http://localhost:4000`
@@ -181,35 +181,37 @@ backend.fetchDiensten(tenant: "agovv")  // Works - juiste teams in JWT
 print("Tenant \(tenant.slug): token=\(tenant.signedDeviceToken?.prefix(20))")
 ```
 
-## 🗄️ Caching Systeem
+## 🗄️ Data-Driven Architectuur
 
-### Offline-First Architectuur
-De app gebruikt een intelligente caching laag voor optimale gebruikerservaring:
+### Single Source of Truth
+De app gebruikt een vereenvoudigde data-driven benadering voor optimale consistentie:
 
-- **Directe weergave**: Cached data wordt onmiddellijk getoond
-- **Achtergrond refresh**: Fresh data wordt parallel opgehaald
-- **Graceful degradation**: Bij netwerkfouten blijft cached data beschikbaar
+- **Centraal data model**: `AppStore.upcoming` bevat alle diensten data
+- **Automatische UI updates**: SwiftUI's `@Published` zorgt voor reactive updates
+- **Direct API updates**: Volunteer operaties → API call → refresh data model → UI update
+- **Push notification sync**: Ontvangen push → `refreshDiensten()` → bijgewerkte UI
 
-### CacheManager Features
+### Data Flow
 ```swift
-// Data caching met TTL
-CacheManager.shared.cache(response, forKey: "diensten_vvwilhelmus", ttl: 300)
+// Volunteer toevoegen/verwijderen
+store.addVolunteer(tenant: tenant, dienstId: id, name: name) { result in
+    // API success → refreshDiensten() → fresh data → UI update
+}
 
-// Image caching voor tenant logo's
-CacheManager.shared.cacheImage(image, forURL: logoURL)
-
-// Smart retrieval: fresh, stale, of miss
-let result = CacheManager.shared.getCached(DienstDTO.self, forKey: key)
+// UI components gebruiken dynamic lookups
+private var dienst: Dienst? {
+    store.upcoming.first { $0.id == dienstId }  // Altijd actuele data
+}
 ```
 
-### Cache Configuratie
-- **Data TTL**: 5 minuten (diensten), 1 uur (tenant info)
-- **Image TTL**: 24 uur
-- **Storage**: Memory + Disk (100MB limiet)
-- **Cleanup**: Automatisch bij app start
+### Voordelen van Data-Driven Approach
+- **Geen cache invalidation**: Single source of truth elimineert synchronisatie problemen
+- **Automatische consistency**: Wijzigingen propageren direct naar alle UI componenten
+- **Eenvoudige debugging**: Duidelijke data flow zonder cache complexity
+- **Performance**: Data blijft in geheugen na eerste load (gratis caching)
 
 ### CachedAsyncImage
-Drop-in replacement voor `AsyncImage` met caching:
+Eenvoudige AsyncImage replacement met in-memory caching:
 ```swift
 CachedAsyncImage(url: logoURL) { image in
     image.resizable().scaledToFit()
@@ -388,7 +390,7 @@ throw AppError.validationFailed("Invalid email")
 - Vrijwilliger toevoegen kan alleen voor toekomstige diensten en enkel als manager
 - "Alles resetten" wist lokaal en probeert backend-opschoning indien auth-token aanwezig
 - **Multi-tenant**: Gebruik ALTIJD enrollment-specifieke JWT tokens via `model.authTokenForTeam()` of `tenant.signedDeviceToken`, NIET `primaryAuthToken`
-- **Cache invalidatie**: Bij kritieke data-wijzigingen kan cache handmatig gewist worden via `CacheManager.shared.clearCache()`
+- **Data synchronisatie**: Bij netwerkproblemen kan `refreshDiensten()` handmatig aangeroepen worden om data bij te werken
 
 ## 🔐 Export Compliance
 

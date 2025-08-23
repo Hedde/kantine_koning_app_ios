@@ -1,7 +1,25 @@
 import SwiftUI
 
-/// Drop-in replacement for AsyncImage that provides intelligent caching
-/// Shows cached images immediately while loading fresh ones in background
+/// Simple image cache that can be used by any view
+private class ImageCache {
+    static let shared = ImageCache()
+    private let cache = NSCache<NSString, UIImage>()
+    
+    private init() {
+        cache.countLimit = 100 // Limit to 100 images
+    }
+    
+    func image(for url: URL) -> UIImage? {
+        cache.object(forKey: NSString(string: url.absoluteString))
+    }
+    
+    func setImage(_ image: UIImage, for url: URL) {
+        cache.setObject(image, forKey: NSString(string: url.absoluteString))
+    }
+}
+
+/// Simple AsyncImage replacement with basic in-memory caching
+/// Loads images on demand without complex cache management
 struct CachedAsyncImage<Content: View, Placeholder: View>: View {
     let url: URL?
     let content: (Image) -> Content
@@ -42,16 +60,15 @@ struct CachedAsyncImage<Content: View, Placeholder: View>: View {
             return
         }
         
-        // Check cache first
-        if let cachedImage = CacheManager.shared.getCachedImage(forURL: url) {
+        // Check simple in-memory cache first
+        if let cachedImage = ImageCache.shared.image(for: url) {
             Logger.debug("Using cached image for: \(url)")
             image = cachedImage
-            // Still load fresh image in background if cache is stale
-            loadFreshImageInBackground()
-        } else {
-            // No cached image, load from network
-            loadFreshImage()
+            return
         }
+        
+        // Load from network
+        loadFreshImage()
     }
     
     private func loadFreshImage() {
@@ -67,33 +84,14 @@ struct CachedAsyncImage<Content: View, Placeholder: View>: View {
                 if let data = data, let loadedImage = UIImage(data: data) {
                     Logger.success("Image loaded successfully")
                     image = loadedImage
-                    CacheManager.shared.cacheImage(loadedImage, forURL: url)
+                    
+                    // Cache in memory
+                    ImageCache.shared.setImage(loadedImage, for: url)
                 } else if let error = error {
                     Logger.error("Failed to load image: \(error.localizedDescription)")
                 }
             }
         }.resume()
-    }
-    
-    private func loadFreshImageInBackground() {
-        guard let url = url else { return }
-        
-        // Load fresh image in background without affecting UI
-        DispatchQueue.global(qos: .background).async {
-            URLSession.shared.dataTask(with: url) { data, response, error in
-                if let data = data, let loadedImage = UIImage(data: data) {
-                    Logger.debug("Background image refresh completed")
-                    CacheManager.shared.cacheImage(loadedImage, forURL: url)
-                    
-                    // Update UI if the image is different
-                    DispatchQueue.main.async {
-                        if image?.pngData() != loadedImage.pngData() {
-                            image = loadedImage
-                        }
-                    }
-                }
-            }.resume()
-        }
     }
 }
 

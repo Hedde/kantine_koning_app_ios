@@ -327,7 +327,7 @@ private struct TeamDienstenView: View {
                 } else {
                     VStack(spacing: 12) {
                                         ForEach(diensten) { d in
-                    DienstCardView(d: d, isManager: (tenant.teams.first{ $0.id == teamId }?.role == .manager))
+                    DienstCardView(dienstId: d.id, isManager: (tenant.teams.first{ $0.id == teamId }?.role == .manager))
                         .opacity(d.startTime < Date() ? 0.5 : 1.0)
                 }
                     }
@@ -441,15 +441,46 @@ private struct DienstDetail: View {
 
 // MARK: - Dienst Card View (exact old design colors/fonts)
 private struct DienstCardView: View {
-    let d: Dienst
+    let dienstId: String
     let isManager: Bool
-    // Computed property instead of @State to always reflect current dienst data
-    private var volunteers: [String] { d.volunteers ?? [] }
+    @EnvironmentObject var store: AppStore
+    
+    // Dynamic lookup to always get fresh data from store
+    private var d: Dienst? {
+        store.upcoming.first { $0.id == dienstId }
+    }
+    
+    // Computed property to always reflect current dienst data
+    private var volunteers: [String] { d?.volunteers ?? [] }
+    @State private var showAddVolunteer = false
+    @State private var newVolunteerName = ""
+    @State private var showCelebration = false
+    @State private var confettiTrigger = 0
+    
+    var body: some View {
+        Group {
+            if let dienst = d {
+                DienstCardContent(dienst: dienst, isManager: isManager, dienstId: dienstId)
+            } else {
+                EmptyView() // Dienst not found in store
+            }
+        }
+    }
+}
+
+// MARK: - Dienst Card Content (separated for easier state management)
+private struct DienstCardContent: View {
+    let dienst: Dienst
+    let isManager: Bool
+    let dienstId: String
     @State private var showAddVolunteer = false
     @State private var newVolunteerName = ""
     @State private var showCelebration = false
     @State private var confettiTrigger = 0
     @EnvironmentObject var store: AppStore
+    
+    // Computed property to always reflect current dienst data
+    private var volunteers: [String] { dienst.volunteers ?? [] }
     
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
@@ -512,7 +543,7 @@ private struct DienstCardView: View {
                                     Button(action: { removeVolunteer(volunteer) }) {
                                         Image(systemName: "minus.circle.fill").foregroundStyle(Color.red).font(.title3)
                                     }
-                                    .disabled(d.startTime < Date())
+                                    .disabled(dienst.startTime < Date())
                                 }
                             }
                             .padding(.horizontal, 12).padding(.vertical, 8)
@@ -556,17 +587,17 @@ private struct DienstCardView: View {
                             .padding(12).background(Color.white).cornerRadius(8)
                             .overlay(RoundedRectangle(cornerRadius: 8).stroke(Color.gray.opacity(0.3), lineWidth: 1))
                             .font(KKFont.body(16)).foregroundColor(KKTheme.textPrimary)
-                            .disabled(d.startTime < Date())
+                            .disabled(dienst.startTime < Date())
                     }
                     .onSubmit { 
-                        if d.startTime >= Date() {
+                        if dienst.startTime >= Date() {
                             addVolunteer() 
                         }
                     }
                     
                     HStack(spacing: 12) {
                         Button("Annuleren") { showAddVolunteer = false; newVolunteerName = "" }.buttonStyle(KKSecondaryButton())
-                        Button("Toevoegen") { addVolunteer() }.disabled(newVolunteerName.trimmingCharacters(in: .whitespaces).isEmpty || d.startTime < Date()).buttonStyle(KKPrimaryButton())
+                        Button("Toevoegen") { addVolunteer() }.disabled(newVolunteerName.trimmingCharacters(in: .whitespaces).isEmpty || dienst.startTime < Date()).buttonStyle(KKPrimaryButton())
                     }
                     .padding(.top, 8)
                 }
@@ -576,7 +607,7 @@ private struct DienstCardView: View {
                         HStack { Image(systemName: "plus.circle"); Text("Vrijwilliger toevoegen") }
                     }
                     .buttonStyle(KKSecondaryButton())
-                    .disabled(d.startTime < Date())
+                    .disabled(dienst.startTime < Date())
                 } else {
                     HStack(spacing: 8) {
                         Image(systemName: "lock.fill").font(.caption).foregroundStyle(KKTheme.textSecondary)
@@ -596,12 +627,12 @@ private struct DienstCardView: View {
         let formatter = DateFormatter()
         formatter.locale = Locale(identifier: "nl_NL")
         formatter.dateFormat = "d MMMM"
-        return formatter.string(from: d.startTime)
+        return formatter.string(from: dienst.startTime)
     }
-    private var locationText: String { d.locationName?.isEmpty == false ? d.locationName! : "Kantine" }
+    private var locationText: String { dienst.locationName?.isEmpty == false ? dienst.locationName! : "Kantine" }
     private var timeRangeText: String {
-        let start = d.startTime.formatted(date: .omitted, time: .shortened)
-        let end = d.endTime.formatted(date: .omitted, time: .shortened)
+        let start = dienst.startTime.formatted(date: .omitted, time: .shortened)
+        let end = dienst.endTime.formatted(date: .omitted, time: .shortened)
         let duration = durationText
         return "\(start) - \(end) (\(duration))"
     }
@@ -611,32 +642,32 @@ private struct DienstCardView: View {
         return Color.green
     }
     private var isFullyStaffed: Bool { volunteers.count >= minimumBemanning }
-    private var minimumBemanning: Int { d.minimumBemanning }
+    private var minimumBemanning: Int { dienst.minimumBemanning }
     private var durationText: String {
-        let minutes = Int(d.endTime.timeIntervalSince(d.startTime) / 60)
+        let minutes = Int(dienst.endTime.timeIntervalSince(dienst.startTime) / 60)
         let h = minutes / 60, m = minutes % 60
         return h > 0 ? "\(h)h\(m > 0 ? " \(m)m" : "")" : "\(m)m"
     }
     
     private func addVolunteer() {
         let name = newVolunteerName.trimmingCharacters(in: .whitespaces)
-        Logger.userInteraction("Add Volunteer", target: "DienstCard", context: ["name": name, "dienst_id": d.id])
+        Logger.userInteraction("Add Volunteer", target: "DienstCard", context: ["name": name, "dienst_id": dienst.id])
         
         guard isManager, !name.isEmpty, name.count <= 15, !volunteers.contains(name) else { 
             Logger.volunteer("Add validation failed: manager=\(isManager) name='\(name)' exists=\(volunteers.contains(name))")
             return 
         }
-        guard d.startTime >= Date() else { 
+        guard dienst.startTime >= Date() else { 
             Logger.volunteer("Cannot add to past dienst")
             return 
         }
         
-        Logger.volunteer("Adding volunteer '\(name)' to dienst \(d.id)")
+        Logger.volunteer("Adding volunteer '\(name)' to dienst \(dienst.id)")
         newVolunteerName = ""
         showAddVolunteer = false
         
         // Call backend API instead of local update
-        store.addVolunteer(tenant: d.tenantId, dienstId: d.id, name: name) { result in
+        store.addVolunteer(tenant: dienst.tenantId, dienstId: dienst.id, name: name) { result in
             switch result {
             case .success:
                 Logger.volunteer("Successfully added volunteer via API")
@@ -651,21 +682,21 @@ private struct DienstCardView: View {
         }
     }
     private func removeVolunteer(_ name: String) {
-        Logger.userInteraction("Remove Volunteer", target: "DienstCard", context: ["name": name, "dienst_id": d.id])
+        Logger.userInteraction("Remove Volunteer", target: "DienstCard", context: ["name": name, "dienst_id": dienst.id])
         
         guard isManager else { 
             Logger.volunteer("Remove denied: not manager")
             return 
         }
-        guard d.startTime >= Date() else { 
+        guard dienst.startTime >= Date() else { 
             Logger.volunteer("Cannot remove from past dienst")
             return 
         }
         
-        Logger.volunteer("Removing volunteer '\(name)' from dienst \(d.id)")
+        Logger.volunteer("Removing volunteer '\(name)' from dienst \(dienst.id)")
         
         // Call backend API instead of local update
-        store.removeVolunteer(tenant: d.tenantId, dienstId: d.id, name: name) { result in
+        store.removeVolunteer(tenant: dienst.tenantId, dienstId: dienst.id, name: name) { result in
             switch result {
             case .success:
                 Logger.volunteer("Successfully removed volunteer via API")

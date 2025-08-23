@@ -36,9 +36,9 @@ final class AppStore: ObservableObject {
 
     init(
         enrollmentRepository: EnrollmentRepository = DefaultEnrollmentRepository(),
-        dienstRepository: DienstRepository = CachedDienstRepository(),
+        dienstRepository: DienstRepository = DefaultDienstRepository(),
         pushService: PushService = DefaultPushService(),
-        leaderboardRepository: LeaderboardRepository = CachedLeaderboardRepository()
+        leaderboardRepository: LeaderboardRepository = DefaultLeaderboardRepository()
     ) {
         self.enrollmentRepository = enrollmentRepository
         self.dienstRepository = dienstRepository
@@ -63,9 +63,8 @@ final class AppStore: ObservableObject {
         self.appPhase = model.isEnrolled ? .registered : .onboarding
         Logger.bootstrap("App phase: \(appPhase)")
         
-        // Setup cache cleanup
-        CacheManager.shared.cleanupExpiredEntries()
-        Logger.bootstrap("Cache cleanup completed")
+        // No cache system - using direct data model as single source of truth
+        Logger.bootstrap("Using data-driven architecture")
         
         if model.isEnrolled { 
             Logger.bootstrap("User enrolled - refreshing diensten")
@@ -331,17 +330,6 @@ final class AppStore: ObservableObject {
     }
     
     func refreshTenantInfo() {
-        // Check cache first
-        let cacheKey = CacheManager.CacheKey.allTenantInfo
-        let cachedResult = CacheManager.shared.getCached(TenantInfoResponse.self, forKey: cacheKey)
-        
-        // Use cached data immediately if available
-        if let cachedResponse = cachedResult.data {
-            Logger.debug("Using cached tenant info for \(cachedResponse.tenants.count) tenants")
-            updateTenantInfoFromResponse(cachedResponse)
-        }
-        
-        // Always fetch fresh data (background refresh if cached data exists)
         guard let anyToken = model.tenants.values.first?.signedDeviceToken else {
             Logger.warning("No auth token available for tenant info")
             return
@@ -354,16 +342,11 @@ final class AppStore: ObservableObject {
             DispatchQueue.main.async {
                 switch result {
                 case .success(let response):
-                    Logger.success("Received fresh tenant info for \(response.tenants.count) tenants")
-                    
-                    // Cache with long TTL (tenant info doesn't change often)
-                    CacheManager.shared.cache(response, forKey: cacheKey, ttl: 3600) // 1 hour
-                    
+                    Logger.success("Received tenant info for \(response.tenants.count) tenants")
                     self?.updateTenantInfoFromResponse(response)
                     
                 case .failure(let error):
                     Logger.error("Failed to fetch tenant info: \(error)")
-                    // Don't override cached data on error
                 }
             }
         }
@@ -537,30 +520,19 @@ extension AppStore {
         
         Logger.auth("Using enrollment-specific token for team \(dienstTeamId): \(authToken.prefix(20))...")
         
+        // Use direct backend call with proper auth token, then refresh data model
         let backend = BackendClient()
         backend.authToken = authToken
         backend.addVolunteer(tenant: tenant, dienstId: dienstId, name: name) { [weak self] result in
             DispatchQueue.main.async {
                 switch result {
-                case .success(let updated):
-                    // Update the dienst in our local list
-                    if let index = self?.upcoming.firstIndex(where: { $0.id == dienstId }) {
-                        let updatedDienst = Dienst(
-                            id: updated.id,
-                            tenantId: updated.tenant_id,
-                            teamId: updated.team?.id,
-                            startTime: updated.start_tijd,
-                            endTime: updated.eind_tijd,
-                            status: updated.status,
-                            locationName: updated.locatie_naam,
-                            volunteers: updated.aanmeldingen,
-                            updatedAt: updated.updated_at,
-                            minimumBemanning: updated.minimum_bemanning
-                        )
-                        self?.upcoming[index] = updatedDienst
-                    }
+                case .success(_):
+                    Logger.volunteer("✅ Successfully added volunteer via API - refreshing data")
+                    // Refresh the entire data model to get updated state
+                    self?.refreshDiensten()
                     completion(.success(()))
                 case .failure(let err):
+                    Logger.volunteer("❌ Failed to add volunteer: \(err)")
                     completion(.failure(err))
                 }
             }
@@ -605,30 +577,19 @@ extension AppStore {
         
         Logger.auth("Using enrollment-specific token for team \(dienstTeamId): \(authToken.prefix(20))...")
         
+        // Use direct backend call with proper auth token, then refresh data model
         let backend = BackendClient()
         backend.authToken = authToken
         backend.removeVolunteer(tenant: tenant, dienstId: dienstId, name: name) { [weak self] result in
             DispatchQueue.main.async {
                 switch result {
-                case .success(let updated):
-                    // Update the dienst in our local list
-                    if let index = self?.upcoming.firstIndex(where: { $0.id == dienstId }) {
-                        let updatedDienst = Dienst(
-                            id: updated.id,
-                            tenantId: updated.tenant_id,
-                            teamId: updated.team?.id,
-                            startTime: updated.start_tijd,
-                            endTime: updated.eind_tijd,
-                            status: updated.status,
-                            locationName: updated.locatie_naam,
-                            volunteers: updated.aanmeldingen,
-                            updatedAt: updated.updated_at,
-                            minimumBemanning: updated.minimum_bemanning
-                        )
-                        self?.upcoming[index] = updatedDienst
-                    }
+                case .success(_):
+                    Logger.volunteer("✅ Successfully removed volunteer via API - refreshing data")
+                    // Refresh the entire data model to get updated state
+                    self?.refreshDiensten()
                     completion(.success(()))
                 case .failure(let err):
+                    Logger.volunteer("❌ Failed to remove volunteer: \(err)")
                     completion(.failure(err))
                 }
             }
