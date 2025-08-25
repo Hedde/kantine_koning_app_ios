@@ -421,22 +421,6 @@ private struct MemberSearchSection: View {
                     )
                 }
                 
-                // Show info if teams were filtered out
-                let filteredCount = results.count - filteredResults.count
-                if filteredCount > 0 {
-                    HStack {
-                        Image(systemName: "info.circle")
-                            .foregroundStyle(KKTheme.accent)
-                        Text("\(filteredCount) team\(filteredCount == 1 ? "" : "s") verborgen (al geregistreerd als manager)")
-                            .font(KKFont.body(11))
-                            .foregroundStyle(KKTheme.textSecondary)
-                    }
-                    .padding(.horizontal, 12)
-                    .padding(.vertical, 6)
-                    .background(KKTheme.accent.opacity(0.05))
-                    .cornerRadius(6)
-                }
-                
                 // Show message when there are more results
                 if hasMoreResults {
                     HStack {
@@ -506,9 +490,12 @@ private extension OnboardingHostView {
         }
     }
     func enrolledTeamIdsForTenant(_ tenantId: TenantID) -> Set<TeamID> {
-        // Use current model enrollment to gray out already followed teams
-        let ids = store.model.tenants[tenantId]?.teams.map { $0.id } ?? []
-        return Set(ids)
+        // Use current model enrollment to gray out already followed teams AS MANAGER
+        // (members can upgrade to manager for same teams)
+        let managerIds = store.model.tenants[tenantId]?.teams
+            .filter { $0.role == .manager }
+            .map { $0.id } ?? []
+        return Set(managerIds)
     }
 }
 private struct HeaderHero: View {
