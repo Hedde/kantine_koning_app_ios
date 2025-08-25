@@ -365,6 +365,7 @@ private struct ManagerVerifySection: View {
 }
 
 private struct MemberSearchSection: View {
+    @EnvironmentObject var store: AppStore
     let tenant: TenantID
     @Binding var searchQuery: String
     let results: [SearchTeam]
@@ -373,11 +374,25 @@ private struct MemberSearchSection: View {
     let onSubmit: () -> Void
     
     private let maxDisplayedResults = 3
+    
+    // Filter out teams that are already enrolled as manager for this tenant
+    private var filteredResults: [SearchTeam] {
+        let existingManagerTeams = store.model.tenants[tenant]?.teams
+            .filter { $0.role == .manager }
+            .map { $0.id } ?? []
+        
+        return results.filter { team in
+            // Exclude teams where user is already a manager
+            !existingManagerTeams.contains(team.id) && 
+            !existingManagerTeams.contains(team.code ?? "")
+        }
+    }
+    
     private var limitedResults: [SearchTeam] {
-        Array(results.prefix(maxDisplayedResults))
+        Array(filteredResults.prefix(maxDisplayedResults))
     }
     private var hasMoreResults: Bool {
-        results.count > maxDisplayedResults
+        filteredResults.count > maxDisplayedResults
     }
     
     var body: some View {
@@ -406,12 +421,28 @@ private struct MemberSearchSection: View {
                     )
                 }
                 
+                // Show info if teams were filtered out
+                let filteredCount = results.count - filteredResults.count
+                if filteredCount > 0 {
+                    HStack {
+                        Image(systemName: "info.circle")
+                            .foregroundStyle(KKTheme.accent)
+                        Text("\(filteredCount) team\(filteredCount == 1 ? "" : "s") verborgen (al geregistreerd als manager)")
+                            .font(KKFont.body(11))
+                            .foregroundStyle(KKTheme.textSecondary)
+                    }
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 6)
+                    .background(KKTheme.accent.opacity(0.05))
+                    .cornerRadius(6)
+                }
+                
                 // Show message when there are more results
                 if hasMoreResults {
                     HStack {
                         Image(systemName: "magnifyingglass")
                             .foregroundStyle(KKTheme.textSecondary)
-                        Text("Er zijn \(results.count - maxDisplayedResults) meer resultaten. Typ meer letters voor een specifiekere zoekopdracht.")
+                        Text("Er zijn \(filteredResults.count - maxDisplayedResults) meer resultaten. Typ meer letters voor een specifiekere zoekopdracht.")
                             .font(KKFont.body(12))
                             .foregroundStyle(KKTheme.textSecondary)
                     }
