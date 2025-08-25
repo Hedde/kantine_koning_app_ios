@@ -434,11 +434,16 @@ private struct LeaderboardMenuView: View {
                 VStack(spacing: 16) {
                     // National leaderboard option
                     Button(action: onNationalSelected) {
-                        HStack {
+                        HStack(spacing: 16) {
+                            // Trophy icon (same size as club logos)
+                            Image(systemName: "trophy.fill")
+                                .foregroundColor(KKTheme.accent)
+                                .frame(width: 40, height: 40)
+                                .background(KKTheme.accent.opacity(0.1))
+                                .cornerRadius(8)
+                            
                             VStack(alignment: .leading, spacing: 4) {
                                 HStack(spacing: 8) {
-                                    Image(systemName: "trophy.fill")
-                                        .foregroundColor(KKTheme.accent)
                                     Text("Nationaal Leaderboard")
                                         .font(KKFont.title(18))
                                         .foregroundStyle(KKTheme.textPrimary)

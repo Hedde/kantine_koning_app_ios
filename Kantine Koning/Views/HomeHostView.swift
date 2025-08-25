@@ -214,7 +214,13 @@ private struct TeamsView: View {
                 }
                 .multilineTextAlignment(.center)
                 VStack(spacing: 8) {
-                    ForEach(tenant.teams.sorted(by: { $0.name < $1.name }), id: \.id) { team in
+                    ForEach(tenant.teams.sorted(by: { 
+                        // Sort manager teams first, then by name
+                        if $0.role != $1.role {
+                            return $0.role == .manager && $1.role == .member
+                        }
+                        return $0.name < $1.name 
+                    }), id: \.id) { team in
                         SwipeableRow(onTap: { onTeamSelected(team.id) }, onDelete: { store.removeTeam(team.id, from: tenant.slug) }) {
                             HStack(spacing: 16) {
                                 // Club logo (same for all teams in this tenant)
@@ -1101,9 +1107,10 @@ private struct EmailNotificationPreferencesView: View {
             let managerTeams = tenant.teams.filter({ $0.role == .manager })
             guard !managerTeams.isEmpty else { continue }
             
-            // Use tenant-specific auth token for this enrollment
-            guard let authToken = tenant.signedDeviceToken else {
-                Logger.email("No auth token for tenant \(tenant.name)")
+            // Use manager team-specific auth token to prevent token mixup
+            let firstManagerTeam = managerTeams.first!
+            guard let authToken = store.model.authTokenForTeam(firstManagerTeam.id, in: tenant.slug) else {
+                Logger.email("No auth token for manager team \(firstManagerTeam.id) in tenant \(tenant.name)")
                 // Fallback to defaults for this tenant
                 setDefaultsForTenant(tenant, managerTeams: managerTeams)
                 continue
@@ -1153,9 +1160,9 @@ private struct EmailNotificationPreferencesView: View {
     private func updateEmailPreference(for team: DomainModel.Team, in tenant: DomainModel.Tenant, enabled: Bool) {
         Logger.email("Email notifications for \(team.name) (\(tenant.name)): \(enabled ? "enabled" : "disabled")")
         
-        // Use tenant-specific auth token for this enrollment
-        guard let authToken = tenant.signedDeviceToken else {
-            Logger.email("No auth token for tenant \(tenant.name)")
+        // Use team-specific auth token to prevent token mixup with multiple enrollments
+        guard let authToken = store.model.authTokenForTeam(team.id, in: tenant.slug) else {
+            Logger.email("No auth token for team \(team.id) in tenant \(tenant.name)")
             // Revert UI state
             withAnimation(.easeInOut(duration: 0.2)) {
                 emailPreferences[team.id] = !enabled
