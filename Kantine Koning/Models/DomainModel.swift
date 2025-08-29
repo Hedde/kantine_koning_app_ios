@@ -24,6 +24,12 @@ struct DomainModel: Codable, Equatable {
         var teams: [Team]
         var signedDeviceToken: String?  // Primary token (backwards compatibility)
         var enrollments: [String] = []  // Enrollment IDs for this tenant
+        var seasonEnded: Bool = false  // NEW: Track season state
+        
+        // Helper to check if tenant is accessible
+        var isAccessible: Bool {
+            return !seasonEnded && signedDeviceToken != nil
+        }
     }
 
     struct Team: Codable, Equatable, Identifiable {

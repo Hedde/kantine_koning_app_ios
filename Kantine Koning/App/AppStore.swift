@@ -291,12 +291,83 @@ final class AppStore: ObservableObject {
             tempBackend.authToken = token
             Logger.auth("Using enrollment-specific token for team removal")
             
-            tempBackend.removeTeams([team]) { result in
+            tempBackend.removeTeams([team]) { [weak self] result in
                 Logger.network("Backend team removal result: \(result)")
                 // Local state already updated, so no need to update again
+                if case .failure(let error) = result {
+                    self?.handlePotentialTokenRevocation(error: error, tenant: tenant)
+                }
             }
         } else {
             Logger.warning("No enrollment-specific auth token - member enrollment, local removal only")
+        }
+    }
+    
+    // MARK: - Token Revocation Handling
+    
+    func handleTokenRevocation(for tenant: TenantID, reason: String?) {
+        Logger.auth("🚨 Token revoked for tenant \(tenant), reason: \(reason ?? "unknown")")
+        
+        guard var tenantData = model.tenants[tenant] else {
+            Logger.warning("Tenant \(tenant) not found when handling revocation")
+            return
+        }
+        
+        // Mark tenant as season ended
+        tenantData.seasonEnded = true
+        model.tenants[tenant] = tenantData
+        
+        // Persist the updated model
+        enrollmentRepository.persist(model: model)
+        
+        Logger.auth("Tenant \(tenant) marked as season ended")
+        
+        // Trigger UI update
+        objectWillChange.send()
+    }
+    
+    private func handlePotentialTokenRevocation(error: Error, tenant: TenantID) {
+        // Check if error indicates token revocation
+        if let nsError = error as NSError?, 
+           nsError.domain == "BackendTokenError",
+           let errorType = nsError.userInfo["errorType"] as? String {
+            
+            switch errorType {
+            case "token_revoked":
+                let reason = nsError.userInfo["reason"] as? String
+                handleTokenRevocation(for: tenant, reason: reason)
+            case "invalid_token":
+                Logger.auth("Invalid token for tenant \(tenant) - may need re-enrollment")
+                // Could also trigger re-enrollment flow in future
+            default:
+                Logger.debug("Other auth error for tenant \(tenant): \(errorType)")
+            }
+        }
+    }
+    
+    func removeSeasonEndedTenant(_ tenantSlug: TenantID) {
+        Logger.userInteraction("Remove Season Ended Tenant", target: "AppStore", context: ["tenant": tenantSlug])
+        
+        // Remove from model
+        model.tenants.removeValue(forKey: tenantSlug)
+        
+        // Clean up local diensten data for this tenant
+        upcoming.removeAll { $0.tenantId == tenantSlug }
+        
+        // Remove tenant info
+        tenantInfo.removeValue(forKey: tenantSlug)
+        leaderboards.removeValue(forKey: tenantSlug)
+        
+        // Persist changes
+        enrollmentRepository.persist(model: model)
+        
+        Logger.auth("Removed tenant \(tenantSlug) after season end")
+        
+        // Navigate appropriately
+        if model.tenants.isEmpty {
+            // No tenants left -> go to onboarding
+            appPhase = .onboarding
+            Logger.bootstrap("No tenants remaining - returning to onboarding")
         }
     }
 
@@ -347,6 +418,11 @@ final class AppStore: ObservableObject {
                     
                 case .failure(let error):
                     Logger.error("Failed to fetch tenant info: \(error)")
+                    // Check if this is a token revocation (could affect any tenant)
+                    // Since we use first available token, we need to check which tenant might be affected
+                    if let firstTenant = self?.model.tenants.first {
+                        self?.handlePotentialTokenRevocation(error: error, tenant: firstTenant.key)
+                    }
                 }
             }
         }
@@ -533,6 +609,7 @@ extension AppStore {
                     completion(.success(()))
                 case .failure(let err):
                     Logger.volunteer("❌ Failed to add volunteer: \(err)")
+                    self?.handlePotentialTokenRevocation(error: err, tenant: tenant)
                     completion(.failure(err))
                 }
             }
@@ -590,6 +667,7 @@ extension AppStore {
                     completion(.success(()))
                 case .failure(let err):
                     Logger.volunteer("❌ Failed to remove volunteer: \(err)")
+                    self?.handlePotentialTokenRevocation(error: err, tenant: tenant)
                     completion(.failure(err))
                 }
             }

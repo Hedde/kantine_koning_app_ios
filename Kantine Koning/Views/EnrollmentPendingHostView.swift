@@ -1,4 +1,5 @@
 import SwiftUI
+import UIKit
 
 struct EnrollmentPendingHostView: View {
     @EnvironmentObject var store: AppStore
@@ -35,6 +36,13 @@ struct EnrollmentPendingHostView: View {
                     Text("We hebben een bevestigingslink naar je e-mailadres gestuurd. Open de link op dit toestel om je aanmelding te voltooien.")
                         .font(KKFont.body(14))
                         .foregroundStyle(KKTheme.textSecondary)
+                    
+                    // Development paste button for magic links
+                    #if DEBUG
+                    developmentPasteButton()
+                    #elseif ENABLE_LOGGING
+                    developmentPasteButton()
+                    #endif
                 }
                 .kkCard()
                 .padding(.horizontal, 24)
@@ -45,6 +53,54 @@ struct EnrollmentPendingHostView: View {
         .navigationTitle("")
         .navigationBarHidden(true)
         .background(KKTheme.surface.ignoresSafeArea())
+    }
+    
+    @ViewBuilder
+    private func developmentPasteButton() -> some View {
+        VStack(spacing: 8) {
+            Text("Development/Testing")
+                .font(KKFont.body(10))
+                .foregroundStyle(KKTheme.textSecondary)
+                .italic()
+            
+            Button(action: pasteEnrollmentLink) {
+                HStack(spacing: 6) {
+                    Image(systemName: "clipboard")
+                    Text("Paste Magic Link")
+                }
+                .font(KKFont.body(12))
+                .foregroundStyle(.white)
+                .padding(.horizontal, 12)
+                .padding(.vertical, 6)
+                .background(Color.blue.opacity(0.8))
+                .cornerRadius(6)
+            }
+        }
+        .padding(.top, 8)
+    }
+    
+    private func pasteEnrollmentLink() {
+        guard let clipboardString = UIPasteboard.general.string else {
+            Logger.debug("📋 No text found in clipboard for magic link")
+            return
+        }
+        
+        Logger.debug("📋 Attempting to paste magic link: \(clipboardString.prefix(80))...")
+        
+        // Try to create URL from clipboard content
+        guard let url = URL(string: clipboardString) else {
+            Logger.debug("❌ Invalid URL format in clipboard")
+            return
+        }
+        
+        // Verify it's an enrollment link
+        guard DeepLink.isEnrollment(url) else {
+            Logger.debug("❌ Clipboard URL is not a valid enrollment link")
+            return
+        }
+        
+        Logger.success("✅ Processing pasted magic link")
+        store.handleIncomingURL(url)
     }
 }
 

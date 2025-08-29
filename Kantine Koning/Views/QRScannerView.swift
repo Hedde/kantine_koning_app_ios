@@ -48,6 +48,7 @@ final class ScannerViewController: UIViewController {
         super.viewDidLoad()
         view.backgroundColor = .black
         setupCamera()
+        setupDevelopmentPasteButton()
     }
 
     private func setupCamera() {
@@ -97,6 +98,48 @@ final class ScannerViewController: UIViewController {
                 session.stopRunning()
             }
         }
+    }
+    
+    private func setupDevelopmentPasteButton() {
+        #if DEBUG
+        addPasteButton()
+        #elseif ENABLE_LOGGING
+        // Release Testing scheme with logging enabled
+        addPasteButton()
+        #endif
+    }
+    
+    private func addPasteButton() {
+        let pasteButton = UIButton(type: .system)
+        pasteButton.setTitle("📋 Paste QR", for: .normal)
+        pasteButton.titleLabel?.font = .systemFont(ofSize: 16, weight: .medium)
+        pasteButton.setTitleColor(.white, for: .normal)
+        pasteButton.backgroundColor = UIColor.systemBlue.withAlphaComponent(0.8)
+        pasteButton.layer.cornerRadius = 8
+        pasteButton.translatesAutoresizingMaskIntoConstraints = false
+        
+        pasteButton.addTarget(self, action: #selector(pasteButtonTapped), for: .touchUpInside)
+        
+        view.addSubview(pasteButton)
+        
+        NSLayoutConstraint.activate([
+            pasteButton.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor, constant: 20),
+            pasteButton.trailingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.trailingAnchor, constant: -20),
+            pasteButton.widthAnchor.constraint(equalToConstant: 100),
+            pasteButton.heightAnchor.constraint(equalToConstant: 40)
+        ])
+        
+        Logger.qr("🔧 Development paste button added for QR testing")
+    }
+    
+    @objc private func pasteButtonTapped() {
+        guard let clipboardString = UIPasteboard.general.string else {
+            Logger.qr("📋 No text found in clipboard")
+            return
+        }
+        
+        Logger.qr("📋 Pasting from clipboard: \(clipboardString.prefix(50))...")
+        onScanned?(clipboardString)
     }
 }
 

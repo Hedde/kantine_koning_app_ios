@@ -26,21 +26,45 @@ struct HomeHostView: View {
                 } else if let tenantSlug = selectedTenant, let teamId = selectedTeam, let tenant = store.model.tenants[tenantSlug] {
                     TeamDienstenView(tenant: tenant, teamId: teamId).environmentObject(store)
                 } else if let tenantSlug = selectedTenant, let tenant = store.model.tenants[tenantSlug] {
-                    TeamsView(tenant: tenant,
-                              onTeamSelected: { teamId in selectedTeam = teamId },
-                              onBack: { selectedTenant = nil })
-                    .environmentObject(store)
+                    // If selected tenant has season ended, show season overview
+                    if tenant.seasonEnded {
+                        SeasonOverviewView(tenant: tenant)
+                            .environmentObject(store)
+                    } else {
+                        // Normal accessible tenant -> show teams
+                        TeamsView(tenant: tenant,
+                                  onTeamSelected: { teamId in selectedTeam = teamId },
+                                  onBack: { selectedTenant = nil })
+                        .environmentObject(store)
+                    }
                 } else {
-                    ClubsViewInternal(
-                        onTenantSelected: { slug in
-                            selectedTenant = slug
-                            // Auto-select team when only one exists
-                            if let tenant = store.model.tenants[slug], tenant.teams.count == 1, let onlyTeam = tenant.teams.first {
-                                selectedTeam = onlyTeam.id
+                    // Smart tenant selection logic
+                    let allTenants = Array(store.model.tenants.values)
+                    let accessibleTenants = allTenants.filter { $0.isAccessible }
+                    
+                    // If only ONE tenant total and it's season ended -> show directly
+                    if allTenants.count == 1, let singleTenant = allTenants.first, singleTenant.seasonEnded {
+                        SeasonOverviewView(tenant: singleTenant)
+                            .environmentObject(store)
+                    } 
+                    // If multiple tenants OR single accessible tenant -> show selection
+                    else if allTenants.count > 1 || !accessibleTenants.isEmpty {
+                        ClubsViewInternal(
+                            onTenantSelected: { slug in
+                                selectedTenant = slug
+                                // Auto-select team when only one exists (for accessible tenants)
+                                if let tenant = store.model.tenants[slug], tenant.isAccessible, tenant.teams.count == 1, let onlyTeam = tenant.teams.first {
+                                    selectedTeam = onlyTeam.id
+                                }
+                                // Note: Season ended tenants will be handled by selectedTenant logic above
                             }
-                        }
-                    )
-                    .environmentObject(store)
+                        )
+                        .environmentObject(store)
+                    } 
+                    // No tenants at all -> should not happen here
+                    else {
+                        EmptyView()
+                    }
                 }
 
                 // Subtle back control
@@ -678,7 +702,9 @@ private struct DienstCardContent: View {
             case .success:
                 Logger.volunteer("Successfully added volunteer via API")
                 // Note: volunteers will be updated when diensten refresh after cache invalidation
-                if isFullyStaffed { triggerCelebration() }
+                // Check if dienst will be fully staffed after adding this volunteer
+                let newVolunteerCount = volunteers.count + 1
+                if newVolunteerCount >= minimumBemanning { triggerCelebration() }
             case .failure(let err):
                 Logger.volunteer("Failed to add volunteer: \(err)")
                 // Revert UI state on failure
@@ -715,6 +741,17 @@ private struct DienstCardContent: View {
     private func triggerCelebration() {
         withAnimation(.spring(response: 0.4, dampingFraction: 0.6)) { showCelebration = true }
         confettiTrigger += 1
+        
+        // Add haptic feedback for extra celebration feel
+        let impactFeedback = UIImpactFeedbackGenerator(style: .heavy)
+        impactFeedback.impactOccurred()
+        
+        // Second lighter haptic after delay for double celebration
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+            let lightFeedback = UIImpactFeedbackGenerator(style: .light)
+            lightFeedback.impactOccurred()
+        }
+        
         DispatchQueue.main.asyncAfter(deadline: .now() + 2.0) {
             withAnimation(.easeOut(duration: 0.3)) { showCelebration = false }
         }
@@ -741,7 +778,8 @@ private struct ClubsViewInternal: View {
                 }
                 .multilineTextAlignment(.center)
                 VStack(spacing: 8) {
-                    ForEach(Array(store.model.tenants.values), id: \.slug) { tenant in
+                    // Show all tenants, but mark season ended ones differently
+                    ForEach(Array(store.model.tenants.values.sorted { $0.name < $1.name }), id: \.slug) { tenant in
                         SwipeableRow(onTap: { onTenantSelected(tenant.slug) }, onDelete: { store.removeTenant(tenant.slug) }) {
                             HStack(spacing: 16) {
                                 // Club logo (from tenant info)
@@ -879,6 +917,9 @@ private struct SettingsViewInternal: View {
                 EmailNotificationPreferencesView()
                     .environmentObject(store)
                 
+                // Development/Testing features
+                developmentFeaturesCard()
+                
                 // Destructive reset card
                 VStack(alignment: .leading, spacing: 12) {
                     Text("Geavanceerd")
@@ -927,6 +968,68 @@ private struct SettingsViewInternal: View {
         } message: {
             Text("Dit verwijdert alle lokale enrollments en gegevens van dit apparaat.")
         }
+    }
+    
+    // MARK: - Development Features
+    @ViewBuilder
+    private func developmentFeaturesCard() -> some View {
+        #if DEBUG
+        developmentCard()
+        #elseif ENABLE_LOGGING
+        // Release Testing scheme with logging enabled
+        developmentCard()
+        #endif
+    }
+    
+    private func developmentCard() -> some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text("🧪 Development Features")
+                .font(KKFont.body(12))
+                .foregroundStyle(KKTheme.textSecondary)
+            
+            Text("Tijdelijke test functies voor ontwikkeling")
+                .font(KKFont.body(10))
+                .foregroundStyle(KKTheme.textSecondary)
+                .italic()
+            
+            VStack(spacing: 8) {
+                // Force Season End for any tenant
+                ForEach(Array(store.model.tenants.values), id: \.slug) { tenant in
+                    Button {
+                        simulateSeasonEnd(for: tenant)
+                    } label: {
+                        if tenant.seasonEnded {
+                            Label("Season Ended: \(tenant.name)", systemImage: "checkmark.circle.fill")
+                                .foregroundStyle(.gray)
+                        } else {
+                            Label("🏁 Force Season End: \(tenant.name)", systemImage: "stop.circle.fill")
+                                .foregroundStyle(.orange)
+                        }
+                    }
+                    .buttonStyle(KKSecondaryButton())
+                    .disabled(tenant.seasonEnded)
+                }
+                
+                if store.model.tenants.isEmpty {
+                    Text("Geen tenants beschikbaar voor season end test")
+                        .font(KKFont.body(10))
+                        .foregroundStyle(KKTheme.textSecondary)
+                        .italic()
+                }
+            }
+        }
+        .kkCard()
+        .padding(.horizontal, 24)
+    }
+    
+
+    private func simulateSeasonEnd(for tenant: DomainModel.Tenant) {
+        Logger.debug("🧪 [DEV] Simulating season end for tenant: \(tenant.name)")
+        
+        // Simulate the token revocation scenario
+        store.handleTokenRevocation(for: tenant.slug, reason: "dev_simulation")
+        
+        Logger.debug("🧪 [DEV] Season end simulation completed - tenant marked as ended")
     }
 }
 

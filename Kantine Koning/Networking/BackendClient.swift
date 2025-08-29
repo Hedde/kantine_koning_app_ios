@@ -734,6 +734,13 @@ final class BackendClient {
             Logger.debug("Response body: \(body)")
         }
         
+        // Parse 401 errors for token revocation details (NEW)
+        if statusCode == 401 {
+            if let backendError = parseBackendError(from: data) {
+                return convertBackendErrorToNSError(backendError, context: context)
+            }
+        }
+        
         let userMessage: String
         switch statusCode {
         case 400:
@@ -755,6 +762,81 @@ final class BackendClient {
         return NSError(domain: "Backend", code: statusCode, userInfo: [
             NSLocalizedDescriptionKey: userMessage
         ])
+    }
+    
+    // NEW: Parse backend error response for token revocation details
+    private func parseBackendError(from data: Data) -> BackendError? {
+        guard let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let errorType = json["error"] as? String else {
+            return nil
+        }
+        
+        Logger.auth("Parsed backend error type: \(errorType)")
+        
+        switch errorType {
+        case "token_revoked":
+            let reason = json["reason"] as? String
+            Logger.auth("Token revoked, reason: \(reason ?? "unknown")")
+            return .tokenRevoked(reason: reason)
+        case "invalid_token":
+            Logger.auth("Token invalid")
+            return .tokenInvalid
+        default:
+            let message = json["message"] as? String
+            return .unauthorized(message: message)
+        }
+    }
+    
+    // NEW: Convert BackendError to NSError for compatibility
+    private func convertBackendErrorToNSError(_ backendError: BackendError, context: String) -> NSError {
+        let domain = "BackendTokenError"
+        
+        switch backendError {
+        case .tokenRevoked(let reason):
+            return NSError(domain: domain, code: 1001, userInfo: [
+                NSLocalizedDescriptionKey: "Token ingetrokken",
+                "errorType": "token_revoked",
+                "reason": reason ?? "unknown",
+                "context": context
+            ])
+        case .tokenInvalid:
+            return NSError(domain: domain, code: 1002, userInfo: [
+                NSLocalizedDescriptionKey: "Token ongeldig",
+                "errorType": "invalid_token",
+                "context": context
+            ])
+        case .unauthorized(let message):
+            return NSError(domain: domain, code: 1003, userInfo: [
+                NSLocalizedDescriptionKey: message ?? "Niet geautoriseerd",
+                "errorType": "unauthorized",
+                "context": context
+            ])
+        default:
+            return NSError(domain: "Backend", code: 401, userInfo: [
+                NSLocalizedDescriptionKey: "Onbekende autorisatiefout"
+            ])
+        }
+    }
+}
+
+// MARK: - Error Types
+enum BackendError: Error, Equatable {
+    case tokenRevoked(reason: String?)
+    case tokenInvalid
+    case unauthorized(message: String?)
+    case networkError(code: Int, message: String)
+    case decodingError(String)
+    case other(Error)
+    
+    static func == (lhs: BackendError, rhs: BackendError) -> Bool {
+        switch (lhs, rhs) {
+        case (.tokenRevoked(let l), .tokenRevoked(let r)): return l == r
+        case (.tokenInvalid, .tokenInvalid): return true
+        case (.unauthorized(let l), .unauthorized(let r)): return l == r
+        case (.networkError(let lc, let lm), .networkError(let rc, let rm)): return lc == rc && lm == rm
+        case (.decodingError(let l), .decodingError(let r)): return l == r
+        default: return false
+        }
     }
 }
 
