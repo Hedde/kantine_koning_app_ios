@@ -349,6 +349,9 @@ struct LeaderboardHostView: View {
                 }
                 switch result {
                 case .success(let leaderboard):
+                    // TEMPORARY: Log full API response to debug logo URLs
+                    Logger.debug("🔍 FULL API RESPONSE: \(leaderboard)")
+                    
                     self.store.globalLeaderboard = GlobalLeaderboardData(
                         period: leaderboard.period,
                         teams: leaderboard.teams.map { teamEntry in
