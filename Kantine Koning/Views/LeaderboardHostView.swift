@@ -737,19 +737,20 @@ protocol TeamDisplayable {
     var totalHours: Double { get }
     var positionChange: Int { get }
     
-    // Optional club info (for global leaderboard)
-    var clubName: String? { get }
-    var clubLogoUrl: String? { get }
+    // Club info methods (to avoid naming conflicts)
+    func getClubName() -> String?
+    func getClubLogoUrl() -> String?
 }
 
 // MARK: - Protocol Extensions
 extension GlobalLeaderboardTeam: TeamDisplayable {
-    // clubName and clubLogoUrl already exist in GlobalLeaderboardTeam
+    func getClubName() -> String? { clubName }
+    func getClubLogoUrl() -> String? { clubLogoUrl }
 }
 
 extension LeaderboardTeam: TeamDisplayable {
-    var clubName: String? { nil }
-    var clubLogoUrl: String? { nil }
+    func getClubName() -> String? { nil }
+    func getClubLogoUrl() -> String? { nil }
 }
 
 // MARK: - Unified Team Row
@@ -777,7 +778,7 @@ private struct UnifiedTeamRowView<T: TeamDisplayable>: View {
             }
             
             // Club logo (only for global)
-            if showClubInfo, let logoUrl = team.clubLogoUrl {
+            if showClubInfo, let logoUrl = team.getClubLogoUrl() {
                 CachedAsyncImage(url: URL(string: logoUrl)) { image in
                     image.resizable().scaledToFit()
                 } placeholder: {
@@ -814,7 +815,7 @@ private struct UnifiedTeamRowView<T: TeamDisplayable>: View {
                 
                 HStack(spacing: 16) {
                     // Club name (only for global)
-                    if showClubInfo, let clubName = team.clubName {
+                    if showClubInfo, let clubName = team.getClubName() {
                         Text(clubName)
                             .font(KKFont.body(12))
                             .foregroundStyle(KKTheme.textSecondary)
