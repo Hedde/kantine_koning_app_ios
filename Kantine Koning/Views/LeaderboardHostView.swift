@@ -124,7 +124,12 @@ struct LeaderboardHostView: View {
                         } else if let globalData = store.globalLeaderboard {
                             GlobalLeaderboardView(
                                 leaderboard: globalData, 
-                                highlightedTeamCodes: Set(store.model.tenants.values.flatMap { $0.teams.map { $0.id } })
+                                highlightedTeamCodes: Set(store.model.tenants.values.flatMap { tenant in
+                                    tenant.teams.flatMap { team in
+                                        // Include both team ID and team code for highlighting
+                                        [team.id, team.code].compactMap { $0 }
+                                    }
+                                })
                             )
                         }
                         
@@ -702,7 +707,7 @@ private struct GlobalLeaderboardView: View {
                 ForEach(Array(leaderboard.teams.enumerated()), id: \.element.id) { index, team in
                     GlobalTeamRowView(
                         team: team,
-                        isHighlighted: highlightedTeamCodes.contains(team.code ?? "")
+                        isHighlighted: highlightedTeamCodes.contains(team.id) || highlightedTeamCodes.contains(team.code ?? "")
                     )
                 }
             }
