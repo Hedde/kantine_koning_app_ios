@@ -676,7 +676,7 @@ final class BackendClient {
             
             do {
                 let decoder = JSONDecoder()
-                decoder.keyDecodingStrategy = .convertFromSnakeCase
+                // Note: Manual CodingKeys used instead of .convertFromSnakeCase to avoid conflicts
                 let leaderboard = try decoder.decode(GlobalLeaderboardResponse.self, from: data)
                 Logger.success("Global leaderboard fetched: \(leaderboard.teams.count) teams")
                 completion(.success(leaderboard))
@@ -1003,6 +1003,13 @@ struct GlobalLeaderboardResponse: Codable {
                 case name, slug
                 case logoUrl = "logo_url"
             }
+            
+            init(from decoder: Decoder) throws {
+                let container = try decoder.container(keyedBy: CodingKeys.self)
+                self.name = try container.decode(String.self, forKey: .name)
+                self.slug = try container.decode(String.self, forKey: .slug)
+                self.logoUrl = try container.decodeIfPresent(String.self, forKey: .logoUrl)
+            }
         }
         
         let rank: Int
@@ -1031,8 +1038,10 @@ struct GlobalLeaderboardResponse: Codable {
         }
         
         private enum CodingKeys: String, CodingKey {
-            case rank, team, club, points, totalHours, recentChange, positionChange, highlighted
-            // No manual mapping needed - keyDecodingStrategy handles snake_case conversion
+            case rank, team, club, points, highlighted
+            case totalHours = "total_hours"
+            case recentChange = "recent_change"
+            case positionChange = "position_change"
         }
     }
     

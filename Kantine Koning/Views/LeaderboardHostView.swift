@@ -349,9 +349,6 @@ struct LeaderboardHostView: View {
                 }
                 switch result {
                 case .success(let leaderboard):
-                    // TEMPORARY: Log full API response to debug logo URLs
-                    Logger.debug("🔍 FULL API RESPONSE: \(leaderboard)")
-                    
                     self.store.globalLeaderboard = GlobalLeaderboardData(
                         period: leaderboard.period,
                         teams: leaderboard.teams.map { teamEntry in
@@ -367,12 +364,7 @@ struct LeaderboardHostView: View {
                                 highlighted: teamEntry.highlighted,
                                 clubName: teamEntry.club.name,
                                 clubSlug: teamEntry.club.slug,
-                                clubLogoUrl: {
-                                    let logoUrl = teamEntry.club.logoUrl
-                                    Logger.debug("🏆 LEADERBOARD Team '\(teamEntry.team.name)' (club: \(teamEntry.club.name)) logo_url: \(logoUrl ?? "nil")")
-                                    Logger.debug("🔍 iOS LOGO DEBUG: Mapping team '\(teamEntry.team.name)' club '\(teamEntry.club.name)' logoUrl='\(logoUrl ?? "nil")'")
-                                    return logoUrl
-                                }()
+                                clubLogoUrl: teamEntry.club.logoUrl
                             )
                         },
                         lastUpdated: Date()
