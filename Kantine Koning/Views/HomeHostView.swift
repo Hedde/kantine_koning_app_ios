@@ -295,7 +295,18 @@ private struct TeamsView: View {
         }
     }
     private func dienstCountText(for teamId: String) -> String {
-        let count = store.upcoming.filter { $0.teamId == teamId && $0.tenantId == tenant.slug }.count
+        // Find the team first to get both ID and code
+        guard let team = tenant.teams.first(where: { $0.id == teamId }) else {
+            return "Geen diensten"
+        }
+        
+        // Match diensten using both team ID and team code (diensten use team codes as teamId)
+        let count = store.upcoming.filter { dienst in
+            guard dienst.tenantId == tenant.slug else { return false }
+            // Match either by the team's ID or the team's code
+            return dienst.teamId == team.id || dienst.teamId == team.code
+        }.count
+        
         return count == 0 ? "Geen diensten" : count == 1 ? "1 dienst" : "\(count) diensten"
     }
 }
@@ -371,10 +382,28 @@ private struct TeamDienstenView: View {
     }
     
     private var diensten: [Dienst] {
-        let filtered = store.upcoming.filter { $0.teamId == teamId && $0.tenantId == tenant.slug }
+        // Find the team first to get both ID and code
+        guard let team = tenant.teams.first(where: { $0.id == teamId }) else {
+            Logger.warning("❌ Team with ID '\(teamId)' not found in tenant '\(tenant.name)'")
+            return []
+        }
+        
+        // Match diensten using both team ID and team code (diensten use team codes as teamId)
+        let filtered = store.upcoming.filter { dienst in
+            guard dienst.tenantId == tenant.slug else { return false }
+            // Match either by the team's ID or the team's code
+            let matches = dienst.teamId == team.id || dienst.teamId == team.code
+            if matches {
+                Logger.debug("🎯 Found matching dienst: dienstTeamId='\(dienst.teamId ?? "nil")' matches team id='\(team.id)' or code='\(team.code ?? "nil")'")
+            }
+            return matches
+        }
+        
         let now = Date()
         let future = filtered.filter { $0.startTime >= now }.sorted { $0.startTime < $1.startTime }
         let past = filtered.filter { $0.startTime < now }.sorted { $0.startTime > $1.startTime }
+        
+        Logger.debug("📊 Filtered diensten for team '\(team.name)': \(filtered.count) total (\(future.count) future, \(past.count) past)")
         return future + past
     }
     
