@@ -213,7 +213,10 @@ struct LeaderboardHostView: View {
                         } else if let leaderboardData = store.leaderboards[tenant.slug] {
                             LocalLeaderboardView(
                                 leaderboard: leaderboardData, 
-                                highlightedTeamCodes: Set(tenant.teams.map { $0.id })  // These are codes, not IDs
+                                highlightedTeamCodes: Set(tenant.teams.flatMap { team in
+                                    // Include both team ID and team code for highlighting
+                                    [team.id, team.code].compactMap { $0 }
+                                })
                             )
                             .onAppear {
                                 let enrolledTeamCodes = Set(tenant.teams.map { $0.id })  // These are actually codes
@@ -688,7 +691,11 @@ private struct LocalLeaderboardView: View {
                 ForEach(Array(leaderboard.teams.enumerated()), id: \.element.id) { index, team in
                     TeamRowView(
                         team: team,
-                        isHighlighted: highlightedTeamCodes.contains(team.code ?? ""),
+                        isHighlighted: {
+                            let highlighted = highlightedTeamCodes.contains(team.id) || highlightedTeamCodes.contains(team.code ?? "")
+                            Logger.debug("🏆 LOCAL LEADERBOARD Team '\(team.name)' id='\(team.id)' code='\(team.code ?? "nil")' highlighted=\(highlighted) (highlightedCodes: \(highlightedTeamCodes))")
+                            return highlighted
+                        }(),
                         isLocal: true
                     )
                 }
