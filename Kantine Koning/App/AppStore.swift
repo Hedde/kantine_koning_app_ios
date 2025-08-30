@@ -101,10 +101,18 @@ final class AppStore: ObservableObject {
         // Register APNs token once with any available enrollment token
         // Backend will update all enrollments for this device
         if let anyAuthToken = model.tenants.values.first?.signedDeviceToken {
-            Logger.push("Registering APNs token with backend using any available auth token")
+            Logger.push("🔔 Registering APNs token with backend using available auth token")
             pushService.updateAPNs(token: token, auth: anyAuthToken)
         } else {
-            Logger.push("No auth tokens available for APNs registration")
+            Logger.push("⚠️ No auth tokens available for APNs registration - will retry after enrollment")
+            // Store the token and try again shortly in case enrollment is in progress
+            DispatchQueue.main.asyncAfter(deadline: .now() + 2.0) { [weak self] in
+                guard let self = self, self.pushToken == token else { return }
+                if let anyAuthToken = self.model.tenants.values.first?.signedDeviceToken {
+                    Logger.push("🔄 Retrying APNs token registration after delay")
+                    self.pushService.updateAPNs(token: token, auth: anyAuthToken)
+                }
+            }
         }
     }
     func handlePushRegistrationFailure(_ error: Error) { Logger.error("APNs failure: \(error)") }
@@ -230,10 +238,16 @@ final class AppStore: ObservableObject {
                     self.enrollmentRepository.persist(model: self.model)
                     self.appPhase = .registered
                     self.refreshDiensten()
+                    
+                    // CRITICAL: Ensure push notifications are configured immediately after enrollment
+                    self.configurePushNotifications()
+                    
                     // Register push token with backend (once, using any available auth token)
                     if let token = self.pushToken, let anyAuthToken = self.model.tenants.values.first?.signedDeviceToken {
                         Logger.push("Re-registering APNs token after enrollment completion")
                         self.pushService.updateAPNs(token: token, auth: anyAuthToken)
+                    } else {
+                        Logger.push("⏳ Push token will be registered when received from iOS")
                     }
                     completion(.success(()))
                 }
@@ -551,6 +565,17 @@ extension AppStore {
                     self.enrollmentRepository.persist(model: self.model)
                     self.appPhase = .registered
                     self.refreshDiensten()
+                    
+                    // CRITICAL: Ensure push notifications are configured for member enrollment too
+                    self.configurePushNotifications()
+                    
+                    // Register push token with backend after member enrollment
+                    if let token = self.pushToken, let anyAuthToken = self.model.tenants.values.first?.signedDeviceToken {
+                        Logger.push("Re-registering APNs token after member enrollment completion")
+                        self.pushService.updateAPNs(token: token, auth: anyAuthToken)
+                    } else {
+                        Logger.push("⏳ Push token will be registered when received from iOS (member)")
+                    }
                     completion(.success(()))
                 }
             case .failure(let err): completion(.failure(err))
