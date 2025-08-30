@@ -361,7 +361,10 @@ struct LeaderboardHostView: View {
                                 highlighted: teamEntry.highlighted,
                                 clubName: teamEntry.club.name,
                                 clubSlug: teamEntry.club.slug,
-                                clubLogoUrl: teamEntry.club.logoUrl
+                                clubLogoUrl: {
+                                    Logger.debug("🏆 LEADERBOARD Team '\(teamEntry.team.name)' (club: \(teamEntry.club.name)) logo_url: \(teamEntry.club.logoUrl ?? "nil")")
+                                    return teamEntry.club.logoUrl
+                                }()
                             )
                         },
                         lastUpdated: Date()
