@@ -256,6 +256,27 @@ final class AppStore: ObservableObject {
         }
     }
 
+    // MARK: - Shared Tenant Cleanup
+    private func cleanupTenantData(_ tenant: TenantID) {
+        Logger.debug("🧹 Cleaning up all data for tenant: \(tenant)")
+        
+        // Remove tenant from model
+        model.tenants.removeValue(forKey: tenant)
+        
+        // Clean up ALL related data for this tenant
+        upcoming.removeAll { $0.tenantId == tenant }
+        tenantInfo.removeValue(forKey: tenant)
+        leaderboards.removeValue(forKey: tenant)
+        
+        // Clear global leaderboard cache to prevent stale highlighting
+        globalLeaderboard = nil
+        
+        // Persist changes
+        enrollmentRepository.persist(model: model)
+        
+        Logger.success("Tenant data cleanup complete for: \(tenant)")
+    }
+    
     func removeTenant(_ tenant: TenantID) {
         Logger.debug("🗑️ Removing tenant: \(tenant)")
         
@@ -263,11 +284,8 @@ final class AppStore: ObservableObject {
         let tenantToken = model.tenants[tenant]?.signedDeviceToken
         Logger.debug("Tenant-specific auth token available: \(tenantToken != nil)")
         
-        // Always update local state first for immediate UI feedback
-        let updatedModel = model.removingTenant(tenant)
-        model = updatedModel
-        enrollmentRepository.persist(model: model)
-        Logger.success("Local tenant removal complete")
+        // Perform all local cleanup
+        cleanupTenantData(tenant)
         
         // Try backend removal if we have the tenant's auth token
         if let token = tenantToken {
@@ -362,18 +380,8 @@ final class AppStore: ObservableObject {
     func removeSeasonEndedTenant(_ tenantSlug: TenantID) {
         Logger.userInteraction("Remove Season Ended Tenant", target: "AppStore", context: ["tenant": tenantSlug])
         
-        // Remove from model
-        model.tenants.removeValue(forKey: tenantSlug)
-        
-        // Clean up local diensten data for this tenant
-        upcoming.removeAll { $0.tenantId == tenantSlug }
-        
-        // Remove tenant info
-        tenantInfo.removeValue(forKey: tenantSlug)
-        leaderboards.removeValue(forKey: tenantSlug)
-        
-        // Persist changes
-        enrollmentRepository.persist(model: model)
+        // Use shared cleanup function
+        cleanupTenantData(tenantSlug)
         
         Logger.auth("Removed tenant \(tenantSlug) after season end")
         
