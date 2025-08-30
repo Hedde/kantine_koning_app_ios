@@ -744,8 +744,7 @@ protocol TeamDisplayable {
 
 // MARK: - Protocol Extensions
 extension GlobalLeaderboardTeam: TeamDisplayable {
-    var clubName: String? { clubName }
-    var clubLogoUrl: String? { clubLogoUrl }
+    // clubName and clubLogoUrl already exist in GlobalLeaderboardTeam
 }
 
 extension LeaderboardTeam: TeamDisplayable {
