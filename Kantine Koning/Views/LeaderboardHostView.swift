@@ -689,14 +689,14 @@ private struct LocalLeaderboardView: View {
             // Teams list
             LazyVStack(spacing: 8) {
                 ForEach(Array(leaderboard.teams.enumerated()), id: \.element.id) { index, team in
-                    TeamRowView(
+                    UnifiedTeamRowView(
                         team: team,
                         isHighlighted: {
                             let highlighted = highlightedTeamCodes.contains(team.id) || highlightedTeamCodes.contains(team.code ?? "")
                             Logger.debug("🏆 LOCAL LEADERBOARD Team '\(team.name)' id='\(team.id)' code='\(team.code ?? "nil")' highlighted=\(highlighted) (highlightedCodes: \(highlightedTeamCodes))")
                             return highlighted
                         }(),
-                        isLocal: true
+                        showClubInfo: false
                     )
                 }
             }
@@ -715,9 +715,10 @@ private struct GlobalLeaderboardView: View {
             // Teams list with club logos
             LazyVStack(spacing: 8) {
                 ForEach(Array(leaderboard.teams.enumerated()), id: \.element.id) { index, team in
-                    GlobalTeamRowView(
+                    UnifiedTeamRowView(
                         team: team,
-                        isHighlighted: highlightedTeamCodes.contains(team.id) || highlightedTeamCodes.contains(team.code ?? "")
+                        isHighlighted: highlightedTeamCodes.contains(team.id) || highlightedTeamCodes.contains(team.code ?? ""),
+                        showClubInfo: true
                     )
                 }
             }
@@ -726,14 +727,41 @@ private struct GlobalLeaderboardView: View {
     }
 }
 
-// MARK: - Global Team Row
-private struct GlobalTeamRowView: View {
-    let team: GlobalLeaderboardTeam
+// MARK: - Team Display Protocol
+protocol TeamDisplayable {
+    var id: String { get }
+    var name: String { get }
+    var code: String? { get }
+    var rank: Int { get }
+    var points: Int { get }
+    var totalHours: Double { get }
+    var positionChange: Int { get }
+    
+    // Optional club info (for global leaderboard)
+    var clubName: String? { get }
+    var clubLogoUrl: String? { get }
+}
+
+// MARK: - Protocol Extensions
+extension GlobalLeaderboardTeam: TeamDisplayable {
+    var clubName: String? { clubName }
+    var clubLogoUrl: String? { clubLogoUrl }
+}
+
+extension LeaderboardTeam: TeamDisplayable {
+    var clubName: String? { nil }
+    var clubLogoUrl: String? { nil }
+}
+
+// MARK: - Unified Team Row
+private struct UnifiedTeamRowView<T: TeamDisplayable>: View {
+    let team: T
     let isHighlighted: Bool
+    let showClubInfo: Bool
     
     var body: some View {
         HStack(spacing: 12) {
-            // Rank
+            // Rank circle
             ZStack {
                 Circle()
                     .fill(isHighlighted ? KKTheme.accent : rankColor)
@@ -749,17 +777,19 @@ private struct GlobalTeamRowView: View {
                     .foregroundColor(.white)
             }
             
-            // Club logo - use direct URL from global leaderboard response
-            CachedAsyncImage(url: team.clubLogoUrl.flatMap(URL.init)) { image in
-                image.resizable().scaledToFit()
-            } placeholder: {
-                Image(systemName: "building.2")
-                    .foregroundStyle(KKTheme.textSecondary)
+            // Club logo (only for global)
+            if showClubInfo, let logoUrl = team.clubLogoUrl {
+                CachedAsyncImage(url: URL(string: logoUrl)) { image in
+                    image.resizable().scaledToFit()
+                } placeholder: {
+                    Image(systemName: "building.2")
+                        .foregroundStyle(KKTheme.textSecondary)
+                }
+                .frame(width: 32, height: 32)
+                .cornerRadius(6)
             }
-            .frame(width: 32, height: 32)
-            .cornerRadius(6)
             
-            // Team and club info
+            // Team info
             VStack(alignment: .leading, spacing: 4) {
                 HStack(spacing: 8) {
                     Text(team.name)
@@ -784,9 +814,12 @@ private struct GlobalTeamRowView: View {
                 }
                 
                 HStack(spacing: 16) {
-                    Text(team.clubName)
-                        .font(KKFont.body(12))
-                        .foregroundStyle(KKTheme.textSecondary)
+                    // Club name (only for global)
+                    if showClubInfo, let clubName = team.clubName {
+                        Text(clubName)
+                            .font(KKFont.body(12))
+                            .foregroundStyle(KKTheme.textSecondary)
+                    }
                     
                     Text("\(team.points) punten")
                         .font(KKFont.body(12))
@@ -817,7 +850,7 @@ private struct GlobalTeamRowView: View {
         .cornerRadius(8)
         .overlay(
             RoundedRectangle(cornerRadius: 8)
-                .stroke(isHighlighted ? Color.orange : Color.clear, lineWidth: 1)  // Dunne border
+                .stroke(isHighlighted ? Color.orange : Color.clear, lineWidth: 1)
         )
         .shadow(color: isHighlighted ? Color.orange.opacity(0.4) : Color.clear, radius: 6, x: 0, y: 2)
         .scaleEffect(isHighlighted ? 1.02 : 1.0)
@@ -826,7 +859,7 @@ private struct GlobalTeamRowView: View {
     
     private var highlightedBackground: Color {
         if isHighlighted {
-            return Color.orange.opacity(0.25)  // Test kleur
+            return Color.orange.opacity(0.25)
         } else {
             return KKTheme.surfaceAlt
         }
@@ -845,103 +878,7 @@ private struct GlobalTeamRowView: View {
     }
 }
 
-// MARK: - Team Row Views
-private struct TeamRowView: View {
-    let team: LeaderboardTeam
-    let isHighlighted: Bool
-    let isLocal: Bool
-    
-    var body: some View {
-        HStack(spacing: 12) {
-            // Rank
-            ZStack {
-                Circle()
-                    .fill(isHighlighted ? KKTheme.accent : rankColor)
-                    .frame(width: 32, height: 32)
-                if isHighlighted {
-                    Circle()
-                        .stroke(Color.white, lineWidth: 1)
-                        .frame(width: 32, height: 32)
-                }
-                Text("\(team.rank)")
-                    .font(KKFont.body(14))
-                    .fontWeight(isHighlighted ? .bold : .medium)
-                    .foregroundColor(.white)
-            }
-            
-            // Team info
-            VStack(alignment: .leading, spacing: 4) {
-                HStack(spacing: 8) {
-                    Text(team.name)
-                        .font(KKFont.title(16))
-                        .fontWeight(isHighlighted ? .bold : .regular)
-                        .foregroundStyle(isHighlighted ? KKTheme.accent : KKTheme.textPrimary)
-                    if let code = team.code {
-                        Text("(\(code))")
-                            .font(KKFont.body(12))
-                            .foregroundStyle(KKTheme.textSecondary)
-                    }
-                    if isHighlighted {
-                        Text("JIJ")
-                            .font(KKFont.body(10))
-                            .fontWeight(.bold)
-                            .padding(.horizontal, 6)
-                            .padding(.vertical, 2)
-                            .background(KKTheme.accent)
-                            .foregroundColor(.white)
-                            .cornerRadius(4)
-                    }
-                }
-                
-                HStack(spacing: 16) {
-                    Text("\(team.points) punten")
-                        .font(KKFont.body(12))
-                        .foregroundStyle(KKTheme.textSecondary)
-                    
-                    Text("\(String(format: "%.1f", team.totalHours)) uur")
-                        .font(KKFont.body(12))
-                        .foregroundStyle(KKTheme.textSecondary)
-                }
-            }
-            
-            Spacer()
-            
-            // Position change indicator
-            if team.positionChange != 0 {
-                HStack(spacing: 4) {
-                    Image(systemName: team.positionChange > 0 ? "arrow.up" : "arrow.down")
-                        .font(.caption)
-                    Text("\(abs(team.positionChange))")
-                        .font(KKFont.body(10))
-                }
-                .foregroundColor(team.positionChange > 0 ? .green : .red)
-            }
-        }
-        .padding(.horizontal, 16)
-        .padding(.vertical, 12)
-        .background(isHighlighted ? Color.orange.opacity(0.25) : KKTheme.surfaceAlt)
-        .cornerRadius(8)
-        .overlay(
-            RoundedRectangle(cornerRadius: 8)
-                .stroke(isHighlighted ? Color.orange : Color.clear, lineWidth: 1)  // Dunne border
-        )
-        .shadow(color: isHighlighted ? Color.orange.opacity(0.4) : Color.clear, radius: 6, x: 0, y: 2)
-        .scaleEffect(isHighlighted ? 1.02 : 1.0)
-        .animation(.easeInOut(duration: 0.2), value: isHighlighted)
-    }
-    
-    private var rankColor: Color {
-        if isHighlighted {
-            return KKTheme.accent
-        }
-        switch team.rank {
-        case 1: return Color.yellow
-        case 2: return Color.gray
-        case 3: return Color.orange
-        default: return KKTheme.accent
-        }
-    }
-}
+
 
 // MARK: - Error View
 private struct ErrorView: View {
