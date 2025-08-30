@@ -997,7 +997,12 @@ struct GlobalLeaderboardResponse: Codable {
         struct Club: Codable {
             let name: String
             let slug: String
-            // logoUrl removed - now handled by /tenants API
+            let logoUrl: String?
+            
+            enum CodingKeys: String, CodingKey {
+                case name, slug
+                case logoUrl = "logo_url"
+            }
         }
         
         let rank: Int

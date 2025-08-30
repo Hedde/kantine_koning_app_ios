@@ -602,24 +602,23 @@ extension AppStore {
         }
         
         // Check if we have manager role for this specific team
-        let hasManagerAccess = tenantData.teams.contains { team in
-            team.id == dienstTeamId && team.role == .manager
-        }
-        
-        guard hasManagerAccess else {
-            Logger.error("No manager access for team \(dienstTeamId)")
+        // Note: dienstTeamId can be either team ID (UUID) or team code
+        guard let actualTeam = tenantData.teams.first(where: { team in
+            (team.id == dienstTeamId || team.code == dienstTeamId) && team.role == .manager
+        }) else {
+            Logger.error("No manager access for team \(dienstTeamId) - available teams: \(tenantData.teams.map { "id=\($0.id) code=\($0.code ?? "nil") role=\($0.role)" })")
             completion(.failure(NSError(domain: "AppStore", code: 403, userInfo: [NSLocalizedDescriptionKey: "No manager access for this team"])))
             return
         }
         
-        // Use specific token for this team (from enrollment)
-        guard let authToken = model.authTokenForTeam(dienstTeamId, in: tenant) else {
-            Logger.error("No auth token for team \(dienstTeamId) in tenant \(tenant)")
+        // Use specific token for this team (from enrollment) - use actual team ID for lookup
+        guard let authToken = model.authTokenForTeam(actualTeam.id, in: tenant) else {
+            Logger.error("No auth token for team \(actualTeam.id) (\(actualTeam.name)) in tenant \(tenant)")
             completion(.failure(NSError(domain: "AppStore", code: 401, userInfo: [NSLocalizedDescriptionKey: "No auth token for this team"])))
             return
         }
         
-        Logger.auth("Using enrollment-specific token for team \(dienstTeamId): \(authToken.prefix(20))...")
+        Logger.auth("Using enrollment-specific token for team \(actualTeam.name) (id=\(actualTeam.id)): \(authToken.prefix(20))...")
         
         // Use direct backend call with proper auth token, then refresh data model
         let backend = BackendClient()
@@ -660,24 +659,23 @@ extension AppStore {
         }
         
         // Check if we have manager role for this specific team
-        let hasManagerAccess = tenantData.teams.contains { team in
-            team.id == dienstTeamId && team.role == .manager
-        }
-        
-        guard hasManagerAccess else {
-            Logger.error("No manager access for team \(dienstTeamId)")
+        // Note: dienstTeamId can be either team ID (UUID) or team code
+        guard let actualTeam = tenantData.teams.first(where: { team in
+            (team.id == dienstTeamId || team.code == dienstTeamId) && team.role == .manager
+        }) else {
+            Logger.error("No manager access for team \(dienstTeamId) - available teams: \(tenantData.teams.map { "id=\($0.id) code=\($0.code ?? "nil") role=\($0.role)" })")
             completion(.failure(NSError(domain: "AppStore", code: 403, userInfo: [NSLocalizedDescriptionKey: "No manager access for this team"])))
             return
         }
         
-        // Use specific token for this team (from enrollment)
-        guard let authToken = model.authTokenForTeam(dienstTeamId, in: tenant) else {
-            Logger.error("No auth token for team \(dienstTeamId) in tenant \(tenant)")
+        // Use specific token for this team (from enrollment) - use actual team ID for lookup
+        guard let authToken = model.authTokenForTeam(actualTeam.id, in: tenant) else {
+            Logger.error("No auth token for team \(actualTeam.id) (\(actualTeam.name)) in tenant \(tenant)")
             completion(.failure(NSError(domain: "AppStore", code: 401, userInfo: [NSLocalizedDescriptionKey: "No auth token for this team"])))
             return
         }
         
-        Logger.auth("Using enrollment-specific token for team \(dienstTeamId): \(authToken.prefix(20))...")
+        Logger.auth("Using enrollment-specific token for team \(actualTeam.name) (id=\(actualTeam.id)): \(authToken.prefix(20))...")
         
         // Use direct backend call with proper auth token, then refresh data model
         let backend = BackendClient()

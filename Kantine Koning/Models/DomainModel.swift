@@ -73,10 +73,29 @@ struct DomainModel: Codable, Equatable {
     // MARK: - Token Management
     func authTokenForTeam(_ teamId: TeamID, in tenant: TenantID) -> String? {
         // Find enrollment that contains this team
+        // First try direct match (enrollment.teams contains UUIDs)
         let enrollment = enrollments.values.first { enrollment in
             enrollment.tenantSlug == tenant && enrollment.teams.contains(teamId)
         }
-        return enrollment?.signedDeviceToken ?? tenants[tenant]?.signedDeviceToken
+        
+        if let enrollment = enrollment {
+            return enrollment.signedDeviceToken
+        }
+        
+        // If no direct match, try to find by team code
+        // Find the actual team in this tenant to check its code
+        if let actualTeam = tenants[tenant]?.teams.first(where: { $0.id == teamId }),
+           let teamCode = actualTeam.code {
+            let enrollmentByCode = enrollments.values.first { enrollment in
+                enrollment.tenantSlug == tenant && enrollment.teams.contains(teamCode)
+            }
+            if let enrollmentByCode = enrollmentByCode {
+                return enrollmentByCode.signedDeviceToken
+            }
+        }
+        
+        // Fallback to tenant token (backwards compatibility)
+        return tenants[tenant]?.signedDeviceToken
     }
 
     // MARK: - Mutations (immutable-style)

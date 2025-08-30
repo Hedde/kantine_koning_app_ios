@@ -124,8 +124,7 @@ struct LeaderboardHostView: View {
                         } else if let globalData = store.globalLeaderboard {
                             GlobalLeaderboardView(
                                 leaderboard: globalData, 
-                                highlightedTeamCodes: Set(store.model.tenants.values.flatMap { $0.teams.map { $0.id } }),
-                                tenantInfo: store.tenantInfo
+                                highlightedTeamCodes: Set(store.model.tenants.values.flatMap { $0.teams.map { $0.id } })
                             )
                         }
                         
@@ -357,7 +356,7 @@ struct LeaderboardHostView: View {
                                 highlighted: teamEntry.highlighted,
                                 clubName: teamEntry.club.name,
                                 clubSlug: teamEntry.club.slug,
-                                clubLogoUrl: nil  // Logo URLs now come from /tenants API
+                                clubLogoUrl: teamEntry.club.logoUrl
                             )
                         },
                         lastUpdated: Date()
@@ -695,7 +694,6 @@ private struct LocalLeaderboardView: View {
 private struct GlobalLeaderboardView: View {
     let leaderboard: GlobalLeaderboardData
     let highlightedTeamCodes: Set<String>
-    let tenantInfo: [String: TenantInfo]
     
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
@@ -704,8 +702,7 @@ private struct GlobalLeaderboardView: View {
                 ForEach(Array(leaderboard.teams.enumerated()), id: \.element.id) { index, team in
                     GlobalTeamRowView(
                         team: team,
-                        isHighlighted: highlightedTeamCodes.contains(team.code ?? ""),
-                        tenantInfo: tenantInfo
+                        isHighlighted: highlightedTeamCodes.contains(team.code ?? "")
                     )
                 }
             }
@@ -718,7 +715,6 @@ private struct GlobalLeaderboardView: View {
 private struct GlobalTeamRowView: View {
     let team: GlobalLeaderboardTeam
     let isHighlighted: Bool
-    let tenantInfo: [String: TenantInfo]
     
     var body: some View {
         HStack(spacing: 12) {
@@ -738,8 +734,8 @@ private struct GlobalTeamRowView: View {
                     .foregroundColor(.white)
             }
             
-            // Club logo
-            CachedAsyncImage(url: tenantInfo[team.clubSlug]?.clubLogoUrl.flatMap(URL.init)) { image in
+            // Club logo - use direct URL from global leaderboard response
+            CachedAsyncImage(url: team.clubLogoUrl.flatMap(URL.init)) { image in
                 image.resizable().scaledToFit()
             } placeholder: {
                 Image(systemName: "building.2")
