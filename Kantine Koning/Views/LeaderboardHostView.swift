@@ -778,15 +778,26 @@ private struct UnifiedTeamRowView<T: TeamDisplayable>: View {
             }
             
             // Club logo (only for global)
-            if showClubInfo, let logoUrl = team.getClubLogoUrl() {
-                CachedAsyncImage(url: URL(string: logoUrl)) { image in
-                    image.resizable().scaledToFit()
-                } placeholder: {
+            if showClubInfo {
+                let logoUrl = team.getClubLogoUrl()
+                Logger.debug("🔍 iOS LOGO DEBUG: Team '\(team.name)' club '\(team.getClubName() ?? "nil")' logoUrl='\(logoUrl ?? "nil")'")
+                
+                if let logoUrl = logoUrl, !logoUrl.isEmpty {
+                    CachedAsyncImage(url: URL(string: logoUrl)) { image in
+                        image.resizable().scaledToFit()
+                    } placeholder: {
+                        Image(systemName: "building.2")
+                            .foregroundStyle(KKTheme.textSecondary)
+                    }
+                    .frame(width: 32, height: 32)
+                    .cornerRadius(6)
+                } else {
+                    // Show placeholder when no logo available  
                     Image(systemName: "building.2")
                         .foregroundStyle(KKTheme.textSecondary)
+                        .frame(width: 32, height: 32)
+                        .cornerRadius(6)
                 }
-                .frame(width: 32, height: 32)
-                .cornerRadius(6)
             }
             
             // Team info
