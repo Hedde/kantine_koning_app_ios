@@ -442,6 +442,23 @@ private struct TeamDienstenView: View {
         }
         return "TEAM (\(teamId))"
     }
+    
+    private func teamDisplayNameForEmailSettings(team: DomainModel.Team, in tenant: DomainModel.Tenant) -> String {
+        Logger.debug("🔍 Email settings: Looking for team display name for team id='\(team.id)' name='\(team.name)'")
+        
+        // NEW: Check if any dienst has team name data that matches this team
+        if let dienst = store.upcoming.first(where: { 
+            ($0.teamId == team.id || $0.teamId == team.code) && $0.teamName != nil 
+        }),
+           let teamName = dienst.teamName {
+            Logger.debug("🎯 Email settings: Found team name from dienst: '\(teamName)' for team '\(team.id)'")
+            return teamName
+        }
+        
+        // Fallback to enrollment team name (may be team code if enrollment was done before backend fix)
+        Logger.debug("📋 Email settings: Using enrollment team name: '\(team.name)'")
+        return team.name
+    }
 }
 
 private struct DienstDetail: View {
@@ -1118,7 +1135,7 @@ private struct EmailNotificationPreferencesView: View {
                             
                             HStack(spacing: 12) {
                                 VStack(alignment: .leading, spacing: 2) {
-                                    Text(team.name)
+                                    Text(teamDisplayNameForEmailSettings(team: team, in: tenant))
                                         .font(KKFont.body(14))
                                         .foregroundStyle(KKTheme.textPrimary)
                                     
