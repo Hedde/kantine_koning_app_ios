@@ -442,23 +442,6 @@ private struct TeamDienstenView: View {
         }
         return "TEAM (\(teamId))"
     }
-    
-    private func teamDisplayNameForEmailSettings(team: DomainModel.Team, in tenant: DomainModel.Tenant) -> String {
-        Logger.debug("🔍 Email settings: Looking for team display name for team id='\(team.id)' name='\(team.name)'")
-        
-        // NEW: Check if any dienst has team name data that matches this team
-        if let dienst = store.upcoming.first(where: { 
-            ($0.teamId == team.id || $0.teamId == team.code) && $0.teamName != nil 
-        }),
-           let teamName = dienst.teamName {
-            Logger.debug("🎯 Email settings: Found team name from dienst: '\(teamName)' for team '\(team.id)'")
-            return teamName
-        }
-        
-        // Fallback to enrollment team name (may be team code if enrollment was done before backend fix)
-        Logger.debug("📋 Email settings: Using enrollment team name: '\(team.name)'")
-        return team.name
-    }
 }
 
 private struct DienstDetail: View {
@@ -1114,9 +1097,11 @@ private struct EmailNotificationPreferencesView: View {
             } else {
                 VStack(spacing: 8) {
                     // Group teams by tenant - only show tenants with manager teams
-                    ForEach(Array(store.model.tenants.values.filter({ tenant in
-                        tenant.teams.contains { $0.role == .manager }
-                    }).sorted(by: { $0.name < $1.name })), id: \.slug) { tenant in
+                    let managerTenants = store.model.tenants.values
+                        .filter({ tenant in tenant.teams.contains { $0.role == .manager } })
+                        .sorted(by: { $0.name < $1.name })
+                    
+                    ForEach(Array(managerTenants), id: \.slug) { tenant in
                         // Tenant header
                         HStack {
                             Text(tenant.name)
@@ -1358,6 +1343,23 @@ private struct EmailNotificationPreferencesView: View {
                 }
             }
         }
+    }
+    
+    private func teamDisplayNameForEmailSettings(team: DomainModel.Team, in tenant: DomainModel.Tenant) -> String {
+        Logger.debug("🔍 Email settings: Looking for team display name for team id='\(team.id)' name='\(team.name)'")
+        
+        // NEW: Check if any dienst has team name data that matches this team
+        if let dienst = store.upcoming.first(where: { 
+            ($0.teamId == team.id || $0.teamId == team.code) && $0.teamName != nil 
+        }),
+           let teamName = dienst.teamName {
+            Logger.debug("🎯 Email settings: Found team name from dienst: '\(teamName)' for team '\(team.id)'")
+            return teamName
+        }
+        
+        // Fallback to enrollment team name (may be team code if enrollment was done before backend fix)
+        Logger.debug("📋 Email settings: Using enrollment team name: '\(team.name)'")
+        return team.name
     }
 }
 
