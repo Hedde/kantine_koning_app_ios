@@ -180,6 +180,7 @@ final class DefaultDienstRepository: DienstRepository {
             id: dto.id,
             tenantId: dto.tenant_id,
             teamId: dto.team?.code ?? dto.team?.id,
+            teamName: dto.team?.naam,  // Store team name directly from API
             startTime: dto.start_tijd,
             endTime: dto.eind_tijd,
             status: dto.status,
@@ -197,6 +198,7 @@ final class DefaultDienstRepository: DienstRepository {
                     id: dto.id,
                     tenantId: dto.tenant_id,
                     teamId: dto.team?.id,
+                    teamName: dto.team?.naam,  // Store team name from add volunteer response
                     startTime: dto.start_tijd,
                     endTime: dto.eind_tijd,
                     status: dto.status,
@@ -216,6 +218,7 @@ final class DefaultDienstRepository: DienstRepository {
                     id: dto.id,
                     tenantId: dto.tenant_id,
                     teamId: dto.team?.id,
+                    teamName: dto.team?.naam,  // Store team name from remove volunteer response
                     startTime: dto.start_tijd,
                     endTime: dto.eind_tijd,
                     status: dto.status,
@@ -238,6 +241,7 @@ struct Dienst: Codable, Identifiable, Equatable {
     let id: String
     let tenantId: TenantID
     let teamId: TeamID?
+    let teamName: String?  // Add team name for direct display
     let startTime: Date
     let endTime: Date
     let status: String

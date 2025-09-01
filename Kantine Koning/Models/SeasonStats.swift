@@ -74,8 +74,10 @@ extension SeasonStats {
                 return total + (duration / 3600.0)
             }
             
-            // Find the actual team name from the tenant's teams
-            let teamName = tenant.teams.first { $0.id == teamId }?.name ?? teamId
+            // Find the actual team name from diensten first (most accurate), then tenant teams
+            let teamName = teamDiensten.first?.teamName 
+                ?? tenant.teams.first { $0.id == teamId }?.name 
+                ?? teamId
             
             return TeamContribution(
                 teamCode: teamId,

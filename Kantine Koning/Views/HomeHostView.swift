@@ -338,7 +338,7 @@ private struct TeamDienstenView: View {
             VStack(spacing: 24) {
                 Spacer(minLength: 24)
                 VStack(spacing: 8) {
-                    Text(findTeamName(teamId: teamId, in: tenant).uppercased())
+                    Text(teamDisplayName(teamId: teamId, in: tenant).uppercased())
                         .font(KKFont.heading(24))
                         .fontWeight(.regular)
                         .kerning(-1.0)
@@ -407,22 +407,27 @@ private struct TeamDienstenView: View {
         return future + past
     }
     
-    private func findTeamName(teamId: String, in tenant: DomainModel.Tenant) -> String {
-        Logger.debug("🔍 Looking for team with teamId: '\(teamId)' in tenant '\(tenant.name)'")
+    private func teamDisplayName(teamId: String, in tenant: DomainModel.Tenant) -> String {
+        Logger.debug("🔍 Looking for team display name with teamId: '\(teamId)' in tenant '\(tenant.name)'")
         
-        // First try to find by ID
+        // NEW: First check if any dienst has this teamId and already has the teamName
+        if let dienst = store.upcoming.first(where: { $0.teamId == teamId && $0.teamName != nil }),
+           let teamName = dienst.teamName {
+            Logger.debug("🎯 Found team name from dienst: '\(teamName)' for teamId='\(teamId)'")
+            return teamName
+        }
+        
+        // Fallback to original lookup logic for backwards compatibility
         if let team = tenant.teams.first(where: { $0.id == teamId }) {
             Logger.debug("🎯 Found team by ID: '\(team.name)' (id='\(team.id)' code='\(team.code ?? "nil")')")
             return team.name
         }
         
-        // Fallback: try to find by code
         if let team = tenant.teams.first(where: { $0.code == teamId }) {
             Logger.debug("🎯 Found team by CODE: '\(team.name)' (id='\(team.id)' code='\(team.code ?? "nil")')")
             return team.name
         }
         
-        // Last resort: partial match on ID or code containing the teamId
         if let team = tenant.teams.first(where: { 
             $0.id.contains(teamId) || ($0.code?.contains(teamId) ?? false)
         }) {
