@@ -521,6 +521,8 @@ final class BackendClient {
     }
 
     // MARK: - Tenant Information
+    // MARK: - Tenant Info
+    
     func fetchTenantInfo(completion: @escaping (Result<TenantInfoResponse, Error>) -> Void) {
         guard let token = authToken else { 
             completion(.failure(NSError(domain: "Backend", code: 401))); return 
@@ -868,11 +870,13 @@ struct TenantInfoResponse: Codable {
         let slug: String
         let name: String
         let clubLogoUrl: String?
+        let seasonEnded: Bool
         let teams: [TeamData]
         
         enum CodingKeys: String, CodingKey {
             case slug, name, teams
             case clubLogoUrl = "club_logo_url"
+            case seasonEnded = "season_ended"
         }
     }
     

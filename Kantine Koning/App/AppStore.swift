@@ -66,12 +66,29 @@ final class AppStore: ObservableObject {
         // No cache system - using direct data model as single source of truth
         Logger.bootstrap("Using data-driven architecture")
         
+        // Listen for token revocation notifications from repositories
+        NotificationCenter.default.addObserver(
+            forName: .tokenRevoked,
+            object: nil,
+            queue: .main
+        ) { [weak self] notification in
+            guard let tenant = notification.userInfo?["tenant"] as? String,
+                  let reason = notification.userInfo?["reason"] as? String else { return }
+            
+            Logger.auth("📢 Received token revocation notification for tenant \(tenant)")
+            self?.handleTokenRevocation(for: tenant, reason: reason)
+        }
+        
         if model.isEnrolled { 
             Logger.bootstrap("User enrolled - refreshing diensten")
             refreshDiensten() 
         } else {
             Logger.bootstrap("User not enrolled - showing onboarding")
         }
+    }
+    
+    deinit {
+        NotificationCenter.default.removeObserver(self)
     }
     
     // MARK: - Network Monitoring
@@ -401,6 +418,8 @@ final class AppStore: ObservableObject {
             Logger.bootstrap("No tenants remaining - returning to onboarding")
         }
     }
+    
+    // MARK: - Data Refresh
 
     func refreshDiensten() {
         guard model.isEnrolled else { return }
@@ -432,13 +451,20 @@ final class AppStore: ObservableObject {
     }
     
     func refreshTenantInfo() {
-        guard let anyToken = model.primaryAuthToken else {
-            Logger.warning("No auth token available for tenant info")
+        // Get active tenants only and use their tokens
+        let activeTenants = model.tenants.values.filter { !$0.seasonEnded }
+        
+        guard !activeTenants.isEmpty,
+              let firstActiveTenant = activeTenants.first,
+              let authToken = model.authTokenForTeam(firstActiveTenant.teams.first?.id ?? "", in: firstActiveTenant.slug) else {
+            Logger.warning("No active tenants or auth tokens available for tenant info")
             return
         }
         
         let backend = BackendClient()
-        backend.authToken = anyToken
+        backend.authToken = authToken
+        
+        Logger.debug("Fetching tenant info using token from active tenant \(firstActiveTenant.slug)")
         
         backend.fetchTenantInfo { [weak self] result in
             DispatchQueue.main.async {
@@ -449,11 +475,8 @@ final class AppStore: ObservableObject {
                     
                 case .failure(let error):
                     Logger.error("Failed to fetch tenant info: \(error)")
-                    // Check if this is a token revocation (could affect any tenant)
-                    // Since we use first available token, we need to check which tenant might be affected
-                    if let firstTenant = self?.model.tenants.first {
-                        self?.handlePotentialTokenRevocation(error: error, tenant: firstTenant.key)
-                    }
+                    // Check if this is a token revocation for the specific tenant we used
+                    self?.handlePotentialTokenRevocation(error: error, tenant: firstActiveTenant.slug)
                 }
             }
         }
@@ -476,8 +499,32 @@ final class AppStore: ObservableObject {
                 slug: tenantData.slug,
                 name: tenantData.name,
                 clubLogoUrl: tenantData.clubLogoUrl,
+                seasonEnded: tenantData.seasonEnded,
                 teams: teams
             )
+            
+            // CRITICAL: If tenant is season ended, update our domain model
+            if tenantData.seasonEnded, var existingTenant = model.tenants[tenantData.slug] {
+                if !existingTenant.seasonEnded {
+                    Logger.auth("🔄 Tenant \(tenantData.slug) detected as season ended from API")
+                    existingTenant.seasonEnded = true
+                    existingTenant.signedDeviceToken = nil
+                    model.tenants[tenantData.slug] = existingTenant
+                    
+                    // Clear enrollments for this tenant
+                    let tenantEnrollmentIds = existingTenant.enrollments
+                    for enrollmentId in tenantEnrollmentIds {
+                        model.enrollments.removeValue(forKey: enrollmentId)
+                    }
+                    existingTenant.enrollments.removeAll()
+                    model.tenants[tenantData.slug] = existingTenant
+                    
+                    // Persist the changes
+                    enrollmentRepository.persist(model: model)
+                    
+                    Logger.auth("✅ Updated domain model for season-ended tenant \(tenantData.slug)")
+                }
+            }
         }
         
         tenantInfo = newTenantInfo

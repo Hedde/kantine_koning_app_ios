@@ -102,13 +102,27 @@ final class DefaultDienstRepository: DienstRepository {
         for tenant in model.tenants.values {
             group.enter()
             
-            // Use tenant-specific auth token
+            // Skip season-ended tenants or get team-specific token
+            guard !tenant.seasonEnded else {
+                Logger.auth("⏭️ Skipping season-ended tenant \(tenant.slug)")
+                group.leave()
+                continue
+            }
+            
+            // Use team-specific auth token (safer than direct tenant token)
+            guard let firstTeam = tenant.teams.first,
+                  let authToken = model.authTokenForTeam(firstTeam.id, in: tenant.slug) else {
+                Logger.auth("❌ No valid auth token for tenant \(tenant.slug)")
+                group.leave()
+                continue
+            }
+            
             let tenantBackend = BackendClient()
-            tenantBackend.authToken = tenant.signedDeviceToken
+            tenantBackend.authToken = authToken
             
-            Logger.network("Fetching diensten for tenant \(tenant.slug) with token \(tenant.signedDeviceToken?.prefix(20) ?? "nil")")
+            Logger.network("Fetching diensten for tenant \(tenant.slug) with team-specific token \(authToken.prefix(20))")
             
-            tenantBackend.fetchDiensten(tenant: tenant.slug) { result in
+            tenantBackend.fetchDiensten(tenant: tenant.slug) { [weak self] result in
                 switch result {
                 case .success(let items):
                     Logger.success("Fetched \(items.count) diensten for tenant \(tenant.slug)")
@@ -116,6 +130,10 @@ final class DefaultDienstRepository: DienstRepository {
                     collected.append(contentsOf: mapped)
                 case .failure(let err):
                     Logger.error("Failed to fetch diensten for tenant \(tenant.slug): \(err)")
+                    
+                    // Check for token revocation
+                    self?.checkTokenRevocation(error: err, tenant: tenant.slug)
+                    
                     if firstError == nil { firstError = err }
                 }
                 group.leave()
@@ -260,5 +278,38 @@ struct SearchTeam: Identifiable, Equatable {
 
 // Remote Team search DTO
 struct TeamDTO: Decodable { let id: String; let code: String?; let naam: String }
+
+// MARK: - DienstRepository Extension for Token Revocation
+
+extension DienstRepository {
+    private func checkTokenRevocation(error: Error, tenant: TenantID) {
+        // Check if error indicates token revocation
+        if let nsError = error as NSError?, 
+           nsError.domain == "BackendTokenError",
+           let errorType = nsError.userInfo["errorType"] as? String {
+            
+            switch errorType {
+            case "token_revoked":
+                let reason = nsError.userInfo["reason"] as? String
+                Logger.auth("🚨 Token revoked for tenant \(tenant), reason: \(reason ?? "unknown")")
+                
+                // Need to notify AppStore about revocation
+                NotificationCenter.default.post(
+                    name: .tokenRevoked,
+                    object: nil,
+                    userInfo: ["tenant": tenant, "reason": reason ?? "unknown"]
+                )
+            default:
+                Logger.debug("Other auth error for tenant \(tenant): \(errorType)")
+            }
+        }
+    }
+}
+
+// MARK: - Notification Names
+
+extension Notification.Name {
+    static let tokenRevoked = Notification.Name("TokenRevoked")
+}
 
 

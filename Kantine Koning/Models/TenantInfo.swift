@@ -5,6 +5,7 @@ struct TenantInfo {
     let slug: String
     let name: String
     let clubLogoUrl: String?
+    let seasonEnded: Bool
     let teams: [TeamInfo]
     
     struct TeamInfo {
