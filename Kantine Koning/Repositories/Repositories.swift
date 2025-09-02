@@ -286,7 +286,7 @@ struct TeamDTO: Decodable { let id: String; let code: String?; let naam: String 
 // MARK: - DienstRepository Extension for Token Revocation
 
 extension DienstRepository {
-    private func checkTokenRevocation(error: Error, tenant: TenantID) {
+    fileprivate func checkTokenRevocation(error: Error, tenant: TenantID) {
         // Check if error indicates token revocation
         if let nsError = error as NSError?, 
            nsError.domain == "BackendTokenError",
