@@ -126,6 +126,10 @@ final class DefaultDienstRepository: DienstRepository {
                 switch result {
                 case .success(let items):
                     Logger.success("Fetched \(items.count) diensten for tenant \(tenant.slug)")
+                    guard let self = self else { 
+                        group.leave()
+                        return 
+                    }
                     let mapped = items.map(self.mapDTOToDienst)
                     collected.append(contentsOf: mapped)
                 case .failure(let err):
