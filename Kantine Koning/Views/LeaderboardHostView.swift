@@ -327,16 +327,16 @@ struct LeaderboardHostView: View {
         }
         errorMessage = nil
         
-        // Use first tenant for authentication
-        guard let firstTenant = store.model.tenants.values.first else {
-            errorMessage = "Geen verenigingen beschikbaar"
+        // Use first active tenant for authentication
+        guard let firstTenant = store.model.tenants.values.first(where: { !$0.seasonEnded }) else {
+            errorMessage = "Geen actieve verenigingen beschikbaar"
             isLoading = false
             return
         }
         
         let client = BackendClient()
-        // Use any available tenant token for global leaderboard (read-only operation)
-        client.authToken = store.model.tenants.values.first?.signedDeviceToken
+        // Use any available active tenant token for global leaderboard (read-only operation)
+        client.authToken = store.model.primaryAuthToken
         
         client.fetchGlobalLeaderboard(
             tenant: firstTenant.slug,

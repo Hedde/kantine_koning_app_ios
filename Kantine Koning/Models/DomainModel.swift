@@ -56,22 +56,39 @@ struct DomainModel: Codable, Equatable {
     }
 
     var isEnrolled: Bool { !tenants.isEmpty }
+    
+    // Check if we have any active (non-season-ended) tenants
+    var hasActiveTenants: Bool { 
+        tenants.values.contains { !$0.seasonEnded } 
+    }
     var primaryAuthToken: String? {
-        // Prefer any manager tenant token, fallback to any token (including member tokens for push/read operations)
-        if let t = tenants.values.first(where: { $0.teams.contains(where: { $0.role == .manager }) }), let token = t.signedDeviceToken { 
-            Logger.auth("Using manager token for auth")
+        // Prefer any ACTIVE manager tenant token, fallback to any ACTIVE token
+        // Skip season-ended tenants to avoid using revoked tokens
+        if let t = tenants.values.first(where: { 
+            !$0.seasonEnded && 
+            $0.teams.contains(where: { $0.role == .manager }) 
+        }), let token = t.signedDeviceToken { 
+            Logger.auth("Using active manager token for auth")
             return token 
         }
-        if let token = tenants.values.compactMap({ $0.signedDeviceToken }).first {
-            Logger.auth("Using member token for auth")
+        if let token = tenants.values
+            .filter({ !$0.seasonEnded })
+            .compactMap({ $0.signedDeviceToken }).first {
+            Logger.auth("Using active member token for auth")
             return token
         }
-        Logger.warning("No auth token available")
+        Logger.warning("No active auth token available")
         return nil
     }
     
     // MARK: - Token Management
     func authTokenForTeam(_ teamId: TeamID, in tenant: TenantID) -> String? {
+        // Check if this tenant has ended season - refuse token if so
+        guard let tenantData = tenants[tenant], !tenantData.seasonEnded else {
+            Logger.auth("❌ Tenant \(tenant) season ended - refusing token for team \(teamId)")
+            return nil
+        }
+        
         // Find enrollment that contains this team
         // First try direct match (enrollment.teams contains UUIDs)
         let enrollment = enrollments.values.first { enrollment in
@@ -79,6 +96,7 @@ struct DomainModel: Codable, Equatable {
         }
         
         if let enrollment = enrollment {
+            Logger.auth("✅ Using enrollment-specific token for team \(teamId) in tenant \(tenant)")
             return enrollment.signedDeviceToken
         }
         
@@ -90,11 +108,13 @@ struct DomainModel: Codable, Equatable {
                 enrollment.tenantSlug == tenant && enrollment.teams.contains(teamCode)
             }
             if let enrollmentByCode = enrollmentByCode {
+                Logger.auth("✅ Using enrollment-specific token (by code) for team \(teamId) in tenant \(tenant)")
                 return enrollmentByCode.signedDeviceToken
             }
         }
         
         // Fallback to tenant token (backwards compatibility)
+        Logger.auth("⚠️  Using fallback tenant token for team \(teamId) in tenant \(tenant)")
         return tenants[tenant]?.signedDeviceToken
     }
 

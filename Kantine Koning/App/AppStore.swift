@@ -100,7 +100,7 @@ final class AppStore: ObservableObject {
         self.pushToken = token
         // Register APNs token once with any available enrollment token
         // Backend will update all enrollments for this device
-        if let anyAuthToken = model.tenants.values.first?.signedDeviceToken {
+        if let anyAuthToken = model.primaryAuthToken {
             Logger.push("🔔 Registering APNs token with backend using available auth token")
             pushService.updateAPNs(token: token, auth: anyAuthToken)
         } else {
@@ -108,7 +108,7 @@ final class AppStore: ObservableObject {
             // Store the token and try again shortly in case enrollment is in progress
             DispatchQueue.main.asyncAfter(deadline: .now() + 2.0) { [weak self] in
                 guard let self = self, self.pushToken == token else { return }
-                if let anyAuthToken = self.model.tenants.values.first?.signedDeviceToken {
+                if let anyAuthToken = self.model.primaryAuthToken {
                     Logger.push("🔄 Retrying APNs token registration after delay")
                     self.pushService.updateAPNs(token: token, auth: anyAuthToken)
                 }
@@ -135,7 +135,7 @@ final class AppStore: ObservableObject {
         Logger.debug("Current model has \(model.tenants.count) tenants")
         
         // Call backend to remove all enrollments using any available token
-        if let anyToken = model.tenants.values.first?.signedDeviceToken {
+        if let anyToken = model.primaryAuthToken {
             Logger.network("Calling backend removeAllEnrollments with token: \(anyToken.prefix(20))...")
             enrollmentRepository.removeAllEnrollments { [weak self] result in
                 Logger.network("Backend removeAll completed with result: \(result)")
@@ -243,7 +243,7 @@ final class AppStore: ObservableObject {
                     self.configurePushNotifications()
                     
                     // Register push token with backend (once, using any available auth token)
-                    if let token = self.pushToken, let anyAuthToken = self.model.tenants.values.first?.signedDeviceToken {
+                    if let token = self.pushToken, let anyAuthToken = self.model.primaryAuthToken {
                         Logger.push("Re-registering APNs token after enrollment completion")
                         self.pushService.updateAPNs(token: token, auth: anyAuthToken)
                     } else {
@@ -345,14 +345,23 @@ final class AppStore: ObservableObject {
             return
         }
         
-        // Mark tenant as season ended
+        // Mark tenant as season ended and invalidate its token
         tenantData.seasonEnded = true
+        tenantData.signedDeviceToken = nil  // Clear the revoked token
+        model.tenants[tenant] = tenantData
+        
+        // Clear all enrollments for this tenant (they're all revoked)
+        let tenantEnrollmentIds = tenantData.enrollments
+        for enrollmentId in tenantEnrollmentIds {
+            model.enrollments.removeValue(forKey: enrollmentId)
+        }
+        tenantData.enrollments.removeAll()
         model.tenants[tenant] = tenantData
         
         // Persist the updated model
         enrollmentRepository.persist(model: model)
         
-        Logger.auth("Tenant \(tenant) marked as season ended")
+        Logger.auth("✅ Tenant \(tenant) marked as season ended and tokens cleared")
         
         // Trigger UI update
         objectWillChange.send()
@@ -423,7 +432,7 @@ final class AppStore: ObservableObject {
     }
     
     func refreshTenantInfo() {
-        guard let anyToken = model.tenants.values.first?.signedDeviceToken else {
+        guard let anyToken = model.primaryAuthToken else {
             Logger.warning("No auth token available for tenant info")
             return
         }
@@ -578,7 +587,7 @@ extension AppStore {
                     self.configurePushNotifications()
                     
                     // Register push token with backend after member enrollment
-                    if let token = self.pushToken, let anyAuthToken = self.model.tenants.values.first?.signedDeviceToken {
+                    if let token = self.pushToken, let anyAuthToken = self.model.primaryAuthToken {
                         Logger.push("Re-registering APNs token after member enrollment completion")
                         self.pushService.updateAPNs(token: token, auth: anyAuthToken)
                     } else {
