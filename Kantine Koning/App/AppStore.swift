@@ -380,8 +380,8 @@ final class AppStore: ObservableObject {
         
         Logger.auth("✅ Tenant \(tenant) marked as season ended and tokens cleared")
         
-        // Trigger UI update
-        objectWillChange.send()
+        // Refresh data to update UI (will skip season-ended tenant)
+        refreshDiensten()
     }
     
     private func handlePotentialTokenRevocation(error: Error, tenant: TenantID) {
@@ -483,7 +483,8 @@ final class AppStore: ObservableObject {
     }
     
     private func updateTenantInfoFromResponse(_ response: TenantInfoResponse) {
-        var newTenantInfo: [String: TenantInfo] = [:]
+        // Start with existing tenant info to preserve data for season-ended tenants
+        var newTenantInfo: [String: TenantInfo] = tenantInfo
         
         for tenantData in response.tenants {
             let teams = tenantData.teams.map { teamData in
@@ -503,9 +504,16 @@ final class AppStore: ObservableObject {
                 teams: teams
             )
             
-            // CRITICAL: If tenant is season ended, update our domain model
-            if tenantData.seasonEnded, var existingTenant = model.tenants[tenantData.slug] {
-                if !existingTenant.seasonEnded {
+            // Update domain model with latest tenant info (including logo URL)
+            if var existingTenant = model.tenants[tenantData.slug] {
+                // Always update logo URL when available
+                if let logoUrl = tenantData.clubLogoUrl {
+                    existingTenant.clubLogoUrl = logoUrl
+                    model.tenants[tenantData.slug] = existingTenant
+                }
+                
+                // CRITICAL: If tenant is season ended, update our domain model
+                if tenantData.seasonEnded && !existingTenant.seasonEnded {
                     Logger.auth("🔄 Tenant \(tenantData.slug) detected as season ended from API")
                     existingTenant.seasonEnded = true
                     existingTenant.signedDeviceToken = nil

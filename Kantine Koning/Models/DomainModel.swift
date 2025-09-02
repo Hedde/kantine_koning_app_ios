@@ -25,6 +25,7 @@ struct DomainModel: Codable, Equatable {
         var signedDeviceToken: String?  // Primary token (backwards compatibility)
         var enrollments: [String] = []  // Enrollment IDs for this tenant
         var seasonEnded: Bool = false  // NEW: Track season state
+        var clubLogoUrl: String? = nil  // NEW: Store club logo URL
         
         // Helper to check if tenant is accessible
         var isAccessible: Bool {

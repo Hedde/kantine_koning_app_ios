@@ -150,7 +150,7 @@ struct LeaderboardHostView: View {
                         // Header with club info
                         VStack(spacing: 16) {
                             // Club logo
-                            CachedAsyncImage(url: store.tenantInfo[tenant.slug]?.clubLogoUrl.flatMap(URL.init)) { image in
+                            CachedAsyncImage(url: (store.tenantInfo[tenant.slug]?.clubLogoUrl ?? tenant.clubLogoUrl).flatMap(URL.init)) { image in
                                 image.resizable().scaledToFit()
                             } placeholder: {
                                 Image(systemName: "building.2.fill")
@@ -475,7 +475,7 @@ private struct LeaderboardMenuView: View {
                         Button(action: { onTenantSelected(tenant.slug) }) {
                             HStack(spacing: 16) {
                                 // Club logo
-                                CachedAsyncImage(url: store.tenantInfo[tenant.slug]?.clubLogoUrl.flatMap(URL.init)) { image in
+                                CachedAsyncImage(url: (store.tenantInfo[tenant.slug]?.clubLogoUrl ?? tenant.clubLogoUrl).flatMap(URL.init)) { image in
                                     image.resizable().scaledToFit()
                                 } placeholder: {
                                     Image(systemName: "building.2.fill")

@@ -92,6 +92,15 @@ struct HomeHostView: View {
             .onDisappear {
                 Logger.viewLifecycle("HomeHostView", event: "onDisappear")
             }
+            .onChange(of: store.model.tenants) { tenants in
+                // Check if currently selected tenant became season ended
+                if let selectedTenantSlug = selectedTenant,
+                   let tenant = tenants[selectedTenantSlug],
+                   tenant.seasonEnded {
+                    Logger.auth("🔄 Selected tenant \(selectedTenantSlug) became season ended - clearing team selection")
+                    selectedTeam = nil // This will trigger navigation to SeasonOverviewView
+                }
+            }
                             .safeAreaInset(edge: .top) {
                 TopNavigationBar(
                     onHomeAction: {
@@ -248,7 +257,7 @@ private struct TeamsView: View {
                         SwipeableRow(onTap: { onTeamSelected(team.id) }, onDelete: { store.removeTeam(team.id, from: tenant.slug) }) {
                             HStack(spacing: 16) {
                                 // Club logo (same for all teams in this tenant)
-                                CachedAsyncImage(url: store.tenantInfo[tenant.slug]?.clubLogoUrl.flatMap(URL.init)) { image in
+                                CachedAsyncImage(url: (store.tenantInfo[tenant.slug]?.clubLogoUrl ?? tenant.clubLogoUrl).flatMap(URL.init)) { image in
                                     image.resizable().scaledToFit()
                                 } placeholder: {
                                     Image(systemName: "building.2.fill")
@@ -333,6 +342,7 @@ private struct TeamDienstenView: View {
     let tenant: DomainModel.Tenant
     let teamId: String
     @EnvironmentObject var store: AppStore
+    
     var body: some View {
         ScrollView {
             VStack(spacing: 24) {
@@ -377,7 +387,9 @@ private struct TeamDienstenView: View {
                 Spacer(minLength: 24)
             }
         }
-        .refreshable { store.refreshDiensten() }
+        .refreshable { 
+            store.refreshDiensten()
+        }
         .background(KKTheme.surface.ignoresSafeArea())
     }
     
@@ -817,7 +829,7 @@ private struct ClubsViewInternal: View {
                         SwipeableRow(onTap: { onTenantSelected(tenant.slug) }, onDelete: { store.removeTenant(tenant.slug) }) {
                             HStack(spacing: 16) {
                                 // Club logo (from tenant info)
-                                CachedAsyncImage(url: store.tenantInfo[tenant.slug]?.clubLogoUrl.flatMap(URL.init)) { image in
+                                CachedAsyncImage(url: (store.tenantInfo[tenant.slug]?.clubLogoUrl ?? tenant.clubLogoUrl).flatMap(URL.init)) { image in
                                     image.resizable().scaledToFit()
                                 } placeholder: {
                                     Image(systemName: "building.2.fill")
@@ -1096,9 +1108,11 @@ private struct EmailNotificationPreferencesView: View {
                     .italic()
             } else {
                 VStack(spacing: 8) {
-                    // Group teams by tenant - only show tenants with manager teams
+                    // Group teams by tenant - only show active tenants with manager teams
                     let managerTenants = store.model.tenants.values
-                        .filter({ tenant in tenant.teams.contains { $0.role == .manager } })
+                        .filter({ tenant in 
+                            !tenant.seasonEnded && tenant.teams.contains { $0.role == .manager }
+                        })
                         .sorted(by: { $0.name < $1.name })
                     
                     ForEach(Array(managerTenants), id: \.slug) { tenant in
