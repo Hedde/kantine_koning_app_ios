@@ -309,6 +309,7 @@ private struct TeamsView: View {
                         }
                     }
                 }
+                .padding(.horizontal, 12)
                 Spacer(minLength: 24)
             }
         }
@@ -1505,6 +1506,7 @@ private struct SeasonEndedTeamsView: View {
                         }
                     }
                 }
+                .padding(.horizontal, 12)
 
                 if enrolledTeams.isEmpty {
                     VStack(spacing: 16) {
