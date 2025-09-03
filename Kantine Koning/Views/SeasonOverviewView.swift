@@ -2,14 +2,37 @@ import SwiftUI
 
 struct SeasonOverviewView: View {
     let tenant: DomainModel.Tenant
+    let teamId: String?
     @EnvironmentObject var store: AppStore
+    
+    // Convenience initializer for backward compatibility
+    init(tenant: DomainModel.Tenant) {
+        self.tenant = tenant
+        self.teamId = nil
+    }
+    
+    // New initializer with specific team
+    init(tenant: DomainModel.Tenant, teamId: String) {
+        self.tenant = tenant
+        self.teamId = teamId
+    }
     @State private var showConfetti = false
     @State private var confettiTrigger = 0
     @State private var showResetConfirmation = false
+    @State private var selectedTeam: DomainModel.Team?
+    @State private var availableTeams: [DomainModel.Team] = []
+    @State private var seasonSummary: SeasonSummaryResponse?
+    @State private var isLoadingApiData = false
+    @State private var isUsingLocalCache = false
     
-    // Use LOCAL data from AppStore.upcoming for statistics (Personal Performance Focus)
+    // Computed property for season stats - either from API or local fallback
     private var seasonStats: SeasonStats {
-        SeasonStats.calculate(from: store.upcoming, for: tenant.slug, with: tenant)
+        if let summary = seasonSummary {
+            return summary.seasonStats.toSeasonStats(for: tenant)
+        } else {
+            // Fallback to local calculation
+            return SeasonStats.calculate(from: store.upcoming, for: tenant.slug, with: tenant)
+        }
     }
     
     var body: some View {
@@ -27,6 +50,39 @@ struct SeasonOverviewView: View {
                     Text(tenant.name)
                         .font(KKFont.title(16))
                         .foregroundStyle(KKTheme.textSecondary)
+                    
+                    // Show selected team info (always visible when team is selected)
+                    if let team = selectedTeam {
+                        VStack(spacing: 4) {
+                            Text("Jouw team")
+                                .font(KKFont.body(12))
+                                .foregroundStyle(KKTheme.textSecondary)
+                            HStack(spacing: 8) {
+                                Text(team.name)
+                                    .font(KKFont.title(18))
+                                    .fontWeight(.medium)
+                                    .foregroundStyle(KKTheme.accent)
+                                if let code = team.code {
+                                    Text("(\(code))")
+                                        .font(KKFont.body(14))
+                                        .foregroundStyle(KKTheme.textSecondary)
+                                }
+                            }
+                        }
+                        .padding(.top, 8)
+                    }
+                    
+                    // Team selection picker (only if multiple teams and no specific team provided)
+                    if teamId == nil && availableTeams.count > 1 {
+                        TeamSelectionPicker(
+                            teams: availableTeams,
+                            selectedTeam: $selectedTeam,
+                            isLoading: isLoadingApiData
+                        )
+                        .padding(.top, 8)
+                    }
+                    
+                    // Note: No data source indicator for season summaries - we always use API or show nothing
                 }
                 .multilineTextAlignment(.center)
                 .overlay(ConfettiView(trigger: confettiTrigger).allowsHitTesting(false))
@@ -61,6 +117,13 @@ struct SeasonOverviewView: View {
         .onAppear {
             // Trigger confetti celebration
             triggerConfetti()
+            // Load teams and season summary
+            loadTeamsAndSeasonSummary()
+        }
+        .onChange(of: selectedTeam) { _, newTeam in
+            if let team = newTeam {
+                loadSeasonSummary(for: team)
+            }
         }
         .alert("Seizoen Data Verwijderen", isPresented: $showResetConfirmation) {
             Button("Annuleren", role: .cancel) { }
@@ -93,6 +156,86 @@ struct SeasonOverviewView: View {
     private func resetTenant() {
         Logger.userInteraction("Reset Tenant", target: "SeasonOverview", context: ["tenant": tenant.slug])
         store.removeSeasonEndedTenant(tenant.slug)
+    }
+    
+    // MARK: - Season Summary Loading
+    
+    private func loadTeamsAndSeasonSummary() {
+        // If specific teamId is provided, use that team directly
+        if let teamId = teamId,
+           let specificTeam = tenant.teams.first(where: { $0.id == teamId }) {
+            availableTeams = [specificTeam]
+            selectedTeam = specificTeam
+            loadSeasonSummary(for: specificTeam)
+            return
+        }
+        
+        // Otherwise, find all teams user was enrolled for in this tenant (legacy behavior)
+        let enrolledTeams = store.model.enrollments.values
+            .filter { $0.tenantSlug == tenant.slug }
+            .flatMap { enrollment -> [DomainModel.Team] in
+                return tenant.teams.filter { team in
+                    enrollment.teams.contains(team.id)
+                }
+            }
+        
+        // Remove duplicates by filtering unique team IDs
+        var uniqueTeams: [DomainModel.Team] = []
+        var seenTeamIds: Set<String> = []
+        
+        for team in enrolledTeams {
+            if !seenTeamIds.contains(team.id) {
+                uniqueTeams.append(team)
+                seenTeamIds.insert(team.id)
+            }
+        }
+        
+        availableTeams = uniqueTeams
+        selectedTeam = availableTeams.first
+        
+        if let firstTeam = selectedTeam {
+            loadSeasonSummary(for: firstTeam)
+        }
+    }
+    
+    private func loadSeasonSummary(for team: DomainModel.Team) {
+        guard !isLoadingApiData else { return }
+        
+        isLoadingApiData = true
+        let teamIdentifier = team.code ?? team.id
+        let backend = BackendClient()
+        
+        Logger.debug("Loading season summary for team: \(team.name) (\(teamIdentifier))")
+        
+        backend.fetchSeasonSummary(
+            tenantSlug: tenant.slug,
+            teamCode: teamIdentifier
+        ) { result in
+            DispatchQueue.main.async {
+                self.isLoadingApiData = false
+                
+                switch result {
+                case .success(let summary):
+                    Logger.success("Season summary loaded from API")
+                    self.seasonSummary = summary
+                    self.isUsingLocalCache = false
+                    
+                case .failure(let error):
+                    Logger.error("Season summary API failed: \(error)")
+                    
+                    // Use local fallback
+                    self.useLocalSeasonSummary(for: team)
+                }
+            }
+        }
+    }
+    
+    private func useLocalSeasonSummary(for team: DomainModel.Team) {
+        Logger.info("Using local season summary fallback for team: \(team.name)")
+        
+        // Clear API summary to force use of local calculation
+        seasonSummary = nil
+        isUsingLocalCache = true
     }
 }
 
@@ -337,6 +480,81 @@ struct ResetTenantCard: View {
         }
         .kkCard()
         .padding(.horizontal, 24)
+    }
+}
+
+// MARK: - Team Selection Picker
+
+struct TeamSelectionPicker: View {
+    let teams: [DomainModel.Team]
+    @Binding var selectedTeam: DomainModel.Team?
+    let isLoading: Bool
+    
+    var body: some View {
+        if teams.count > 1 {
+            VStack(spacing: 4) {
+                Text("Team")
+                    .font(KKFont.body(10))
+                    .foregroundStyle(KKTheme.textSecondary)
+                
+                Menu {
+                    ForEach(teams, id: \.id) { team in
+                        Button(action: {
+                            selectedTeam = team
+                        }) {
+                            HStack {
+                                Text(team.name)
+                                if selectedTeam?.id == team.id {
+                                    Spacer()
+                                    Image(systemName: "checkmark")
+                                        .foregroundColor(KKTheme.accent)
+                                }
+                            }
+                        }
+                    }
+                } label: {
+                    HStack {
+                        Text(selectedTeam?.name ?? "Selecteer team")
+                            .font(KKFont.title(14))
+                            .foregroundStyle(KKTheme.textPrimary)
+                        
+                        if isLoading {
+                            ProgressView()
+                                .scaleEffect(0.8)
+                        } else {
+                            Image(systemName: "chevron.down")
+                                .font(.system(size: 12))
+                                .foregroundStyle(KKTheme.textSecondary)
+                        }
+                    }
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 8)
+                    .background(KKTheme.surfaceAlt)
+                    .cornerRadius(8)
+                }
+                .disabled(isLoading)
+            }
+        }
+    }
+}
+
+// MARK: - Data Source Indicator
+
+struct DataSourceIndicator: View {
+    let isLocal: Bool
+    
+    var body: some View {
+        HStack(spacing: 4) {
+            Image(systemName: isLocal ? "wifi.slash" : "wifi")
+                .font(.system(size: 10))
+            Text(isLocal ? "Lokale data" : "Live data")
+                .font(KKFont.body(10))
+        }
+        .foregroundStyle(isLocal ? .orange : .green)
+        .padding(.horizontal, 8)
+        .padding(.vertical, 4)
+        .background(isLocal ? Color.orange.opacity(0.1) : Color.green.opacity(0.1))
+        .cornerRadius(4)
     }
 }
 

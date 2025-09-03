@@ -58,8 +58,13 @@ struct LeaderboardHostView: View {
             if showingInfo {
                 LeaderboardInfoView()
             } else if showingMenu {
+                // Only show active tenants (not season ended) in leaderboard menu
+                let activeTenants = Array(store.model.tenants.values
+                    .filter { !$0.seasonEnded }
+                    .sorted(by: { $0.name < $1.name }))
+                
                 LeaderboardMenuView(
-                    tenants: Array(store.model.tenants.values.sorted(by: { $0.name < $1.name })),
+                    tenants: activeTenants,
                     onNationalSelected: {
                         showingMenu = false
                         selectedTenant = "global"  // Special marker for global
@@ -124,11 +129,9 @@ struct LeaderboardHostView: View {
                         } else if let globalData = store.globalLeaderboard {
                             GlobalLeaderboardView(
                                 leaderboard: globalData, 
-                                highlightedTeamCodes: Set(store.model.tenants.values.flatMap { tenant in
-                                    tenant.teams.flatMap { team in
-                                        // Include both team ID and team code for highlighting
-                                        [team.id, team.code].compactMap { $0 }
-                                    }
+                                highlightedTeamCodes: Set(store.model.enrollments.values.flatMap { enrollment in
+                                    // Only highlight teams from actual user enrollments
+                                    enrollment.teams
                                 })
                             )
                         }
@@ -213,22 +216,26 @@ struct LeaderboardHostView: View {
                         } else if let leaderboardData = store.leaderboards[tenant.slug] {
                             LocalLeaderboardView(
                                 leaderboard: leaderboardData, 
-                                highlightedTeamCodes: Set(tenant.teams.flatMap { team in
-                                    // Include both team ID and team code for highlighting
-                                    [team.id, team.code].compactMap { $0 }
-                                })
+                                highlightedTeamCodes: Set(store.model.enrollments.values
+                                    .filter { $0.tenantSlug == tenant.slug }
+                                    .flatMap { enrollment in
+                                        // Only highlight teams from actual user enrollments in this tenant
+                                        enrollment.teams
+                                    })
                             )
                             .onAppear {
-                                let enrolledTeamCodes = Set(tenant.teams.map { $0.id })  // These are actually codes
+                                let enrolledTeamIds = Set(store.model.enrollments.values
+                                    .filter { $0.tenantSlug == tenant.slug }
+                                    .flatMap { $0.teams })
                                 let leaderboardTeamIds = leaderboardData.teams.map { $0.id }
                                 
-                                Logger.debug("Enrolled team codes: \(enrolledTeamCodes)")
+                                Logger.debug("Enrolled team IDs: \(enrolledTeamIds)")
                                 Logger.debug("Leaderboard team IDs: \(leaderboardTeamIds)")
                                 
                                 // Debug: show team mapping from leaderboard response
                                 for team in leaderboardData.teams {
-                                    if enrolledTeamCodes.contains(team.code ?? "") {
-                                        Logger.leaderboard("HIGHLIGHTED: \(team.name) (code: \(team.code ?? "nil")) rank \(team.rank)")
+                                    if enrolledTeamIds.contains(team.id) || enrolledTeamIds.contains(team.code ?? "") {
+                                        Logger.leaderboard("HIGHLIGHTED: \(team.name) (id: \(team.id), code: \(team.code ?? "nil")) rank \(team.rank)")
                                     }
                                 }
                             }
@@ -260,16 +267,23 @@ struct LeaderboardHostView: View {
             }
         }
         .onAppear {
-            // Set initial values from parameters
+            // Set initial values from parameters, but filter out season ended tenants
             if selectedTenant == nil {
-                selectedTenant = initialTenant
+                if let initialTenant = initialTenant,
+                   let tenant = store.model.tenants[initialTenant],
+                   !tenant.seasonEnded {
+                    selectedTenant = initialTenant
+                } else {
+                    // Initial tenant is season ended or doesn't exist, show menu
+                    showingMenu = true
+                }
             }
             if selectedTeam == nil {
                 selectedTeam = initialTeam
             }
             
-            // Show menu if no tenant initially selected and not showing info
-            showingMenu = (initialTenant == nil && !showingInfo)
+            // Show menu if no valid tenant initially selected and not showing info
+            showingMenu = (selectedTenant == nil && !showingInfo)
         }
         .onChange(of: store.leaderboards) { _, _ in
             // Auto-disable loading when new leaderboard data arrives
@@ -279,6 +293,19 @@ struct LeaderboardHostView: View {
                     isLoading = false
                     errorMessage = nil
                 }
+            }
+        }
+        .onChange(of: store.model.tenants) { _, tenants in
+            // Check if currently selected tenant became season ended
+            if let selectedTenantSlug = selectedTenant,
+               selectedTenantSlug != "global",
+               let tenant = tenants[selectedTenantSlug],
+               tenant.seasonEnded {
+                Logger.debug("Selected tenant \(selectedTenantSlug) became season ended - returning to menu")
+                selectedTenant = nil
+                showingMenu = true
+                isLoading = false
+                errorMessage = nil
             }
         }
         .onChange(of: store.globalLeaderboard) { _, _ in
@@ -427,7 +454,7 @@ private struct LeaderboardMenuView: View {
                 // Header
                 VStack(spacing: 8) {
                     Text("LEADERBOARD")
-                        .font(KKFont.heading(28))
+                        .font(KKFont.heading(24))
                         .fontWeight(.regular)
                         .kerning(-1.0)
                         .foregroundStyle(KKTheme.textPrimary)
@@ -615,7 +642,7 @@ private struct LeaderboardWelcomeView: View {
                     
                     VStack(spacing: 8) {
                         Text("LEADERBOARD")
-                            .font(KKFont.heading(28))
+                            .font(KKFont.heading(24))
                             .fontWeight(.regular)
                             .kerning(-1.0)
                             .foregroundStyle(KKTheme.textPrimary)
@@ -714,7 +741,11 @@ private struct GlobalLeaderboardView: View {
                 ForEach(Array(leaderboard.teams.enumerated()), id: \.element.id) { index, team in
                     UnifiedTeamRowView(
                         team: team,
-                        isHighlighted: highlightedTeamCodes.contains(team.id) || highlightedTeamCodes.contains(team.code ?? ""),
+                        isHighlighted: {
+                            let highlighted = highlightedTeamCodes.contains(team.id) || highlightedTeamCodes.contains(team.code ?? "")
+                            Logger.debug("🌍 GLOBAL LEADERBOARD Team '\(team.name)' id='\(team.id)' code='\(team.code ?? "nil")' highlighted=\(highlighted) (highlightedCodes: \(highlightedTeamCodes))")
+                            return highlighted
+                        }(),
                         showClubInfo: true
                     )
                 }

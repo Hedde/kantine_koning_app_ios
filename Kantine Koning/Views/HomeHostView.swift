@@ -24,12 +24,20 @@ struct HomeHostView: View {
                         }
                     ).environmentObject(store)
                 } else if let tenantSlug = selectedTenant, let teamId = selectedTeam, let tenant = store.model.tenants[tenantSlug] {
-                    TeamDienstenView(tenant: tenant, teamId: teamId).environmentObject(store)
-                } else if let tenantSlug = selectedTenant, let tenant = store.model.tenants[tenantSlug] {
-                    // If selected tenant has season ended, show season overview
+                    // Team is selected - show appropriate view based on season status
                     if tenant.seasonEnded {
-                        SeasonOverviewView(tenant: tenant)
+                        SeasonOverviewView(tenant: tenant, teamId: teamId)
                             .environmentObject(store)
+                    } else {
+                        TeamDienstenView(tenant: tenant, teamId: teamId).environmentObject(store)
+                    }
+                } else if let tenantSlug = selectedTenant, let tenant = store.model.tenants[tenantSlug] {
+                    // Tenant selected but no team - always show team selection
+                    if tenant.seasonEnded {
+                        SeasonEndedTeamsView(tenant: tenant,
+                                           onTeamSelected: { teamId in selectedTeam = teamId },
+                                           onBack: { selectedTenant = nil })
+                        .environmentObject(store)
                     } else {
                         // Normal accessible tenant -> show teams
                         TeamsView(tenant: tenant,
@@ -42,10 +50,15 @@ struct HomeHostView: View {
                     let allTenants = Array(store.model.tenants.values)
                     let accessibleTenants = allTenants.filter { $0.isAccessible }
                     
-                    // If only ONE tenant total and it's season ended -> show directly
+                    // If only ONE tenant total and it's season ended -> still show team selection
                     if allTenants.count == 1, let singleTenant = allTenants.first, singleTenant.seasonEnded {
-                        SeasonOverviewView(tenant: singleTenant)
-                            .environmentObject(store)
+                        SeasonEndedTeamsView(tenant: singleTenant,
+                                           onTeamSelected: { teamId in 
+                                               selectedTenant = singleTenant.slug
+                                               selectedTeam = teamId 
+                                           },
+                                           onBack: { /* No back for single tenant */ })
+                        .environmentObject(store)
                     } 
                     // If multiple tenants OR single accessible tenant -> show selection
                     else if allTenants.count > 1 || !accessibleTenants.isEmpty {
@@ -67,22 +80,7 @@ struct HomeHostView: View {
                     }
                 }
 
-                // Subtle back control
-                if (selectedTenant != nil) && (selectedTeam == nil) {
-                    Button {
-                        if selectedTeam != nil { selectedTeam = nil }
-                        else if selectedTenant != nil { selectedTenant = nil }
-                    } label: {
-                        HStack(spacing: 6) {
-                            Image(systemName: "chevron.left").font(.body)
-                            Text("Terug").font(KKFont.body(12))
-                        }
-                    }
-                    .buttonStyle(.plain)
-                    .foregroundStyle(KKTheme.textSecondary)
-                    .padding(.vertical, 12)
-                    .padding(.horizontal, 24)
-                }
+                // Back navigation is handled by home button in navigation bar
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
             .background(KKTheme.surface.ignoresSafeArea())
@@ -92,7 +90,7 @@ struct HomeHostView: View {
             .onDisappear {
                 Logger.viewLifecycle("HomeHostView", event: "onDisappear")
             }
-            .onChange(of: store.model.tenants) { tenants in
+            .onChange(of: store.model.tenants) { _, tenants in
                 // Check if currently selected tenant became season ended
                 if let selectedTenantSlug = selectedTenant,
                    let tenant = tenants[selectedTenantSlug],
@@ -121,6 +119,14 @@ struct HomeHostView: View {
                             showLeaderboard = true
                             showSettings = false
                             leaderboardShowingInfo = false
+                            
+                            // If current tenant is season ended, clear selection to force menu
+                            if let tenantSlug = selectedTenant,
+                               let tenant = store.model.tenants[tenantSlug],
+                               tenant.seasonEnded {
+                                Logger.debug("Clearing season ended tenant selection for leaderboard access")
+                                // Note: Don't clear selectedTenant here, just let LeaderboardHostView handle it
+                            }
                         } else {
                             // Toggle info when already in leaderboard
                             leaderboardShowingInfo.toggle()
@@ -1374,6 +1380,180 @@ private struct EmailNotificationPreferencesView: View {
         // Fallback to enrollment team name (may be team code if enrollment was done before backend fix)
         Logger.debug("📋 Email settings: Using enrollment team name: '\(team.name)'")
         return team.name
+    }
+}
+
+// MARK: - Season Ended Teams View
+
+private struct SeasonEndedTeamsView: View {
+    let tenant: DomainModel.Tenant
+    let onTeamSelected: (String) -> Void
+    let onBack: () -> Void
+    @EnvironmentObject var store: AppStore
+    
+        // Get teams for season ended tenant - show all teams since user was enrolled for this tenant
+    private var enrolledTeams: [DomainModel.Team] {
+        Logger.debug("🔍 SeasonEndedTeams: Looking for teams in tenant '\(tenant.slug)'")
+        
+        // For season ended tenants, enrollments may have been cleared
+        // So we show ALL teams in the tenant since the user had access to this tenant
+        if tenant.seasonEnded {
+            Logger.debug("📋 SeasonEndedTeams: Season ended tenant - showing all \(tenant.teams.count) teams")
+            let teams = tenant.teams.sorted(by: { $0.name < $1.name })
+            
+            for team in teams {
+                Logger.debug("📋 SeasonEndedTeams: Available team id='\(team.id)' code='\(team.code ?? "nil")' name='\(team.name)' role=\(team.role)")
+            }
+            
+            return teams
+        }
+        
+        // For active tenants, use enrollment filtering (original logic)
+        let enrollments = store.model.enrollments.values.filter { $0.tenantSlug == tenant.slug }
+        Logger.debug("📋 SeasonEndedTeams: Found \(enrollments.count) enrollments for active tenant")
+        
+        let enrolledTeamIds = Set(enrollments.flatMap { enrollment in
+            Logger.debug("📋 SeasonEndedTeams: Enrollment has teams: \(enrollment.teams)")
+            return enrollment.teams
+        })
+        
+        Logger.debug("📋 SeasonEndedTeams: Total enrolled team IDs: \(enrolledTeamIds)")
+        
+        let teams = tenant.teams.filter { team in
+            let isEnrolled = enrolledTeamIds.contains(team.id)
+            Logger.debug("📋 SeasonEndedTeams: Team '\(team.name)' (id='\(team.id)') enrolled=\(isEnrolled)")
+            return isEnrolled
+        }.sorted(by: { $0.name < $1.name })
+
+        Logger.debug("📋 SeasonEndedTeams: Final enrolled teams count: \(teams.count)")
+        return teams
+    }
+    
+        var body: some View {
+        ScrollView {
+            VStack(spacing: 24) {
+                Spacer(minLength: 24)
+                
+                // Header - same style as TeamsView
+                VStack(spacing: 8) {
+                    Text("SELECTEER TEAM")
+                        .font(KKFont.heading(24))
+                        .fontWeight(.regular)
+                        .kerning(-1.0)
+                        .foregroundStyle(KKTheme.textPrimary)
+                    Text("Bij \(tenant.name)")
+                        .font(KKFont.title(16))
+                        .foregroundStyle(KKTheme.textSecondary)
+                }
+                .multilineTextAlignment(.center)
+                
+                // Teams list - exact same layout as TeamsView
+                VStack(spacing: 8) {
+                    ForEach(enrolledTeams.sorted(by: { 
+                        // Sort manager teams first, then by name (same as TeamsView)
+                        if $0.role != $1.role {
+                            return $0.role == .manager && $1.role == .member
+                        }
+                        return $0.name < $1.name 
+                    }), id: \.id) { team in
+                        Button(action: { onTeamSelected(team.id) }) {
+                            HStack(spacing: 16) {
+                                // Club logo (same as TeamsView)
+                                CachedAsyncImage(url: (store.tenantInfo[tenant.slug]?.clubLogoUrl ?? tenant.clubLogoUrl).flatMap(URL.init)) { image in
+                                    image.resizable().scaledToFit()
+                                } placeholder: {
+                                    Image(systemName: "building.2.fill")
+                                        .foregroundStyle(KKTheme.accent)
+                                }
+                                .frame(width: 40, height: 40)
+                                .cornerRadius(6)
+                                
+                                VStack(alignment: .leading, spacing: 4) {
+                                    HStack(spacing: 8) {
+                                        Text(teamDisplayName(for: team.id, in: tenant))
+                                            .font(KKFont.title(18))
+                                            .foregroundStyle(KKTheme.textPrimary)
+                                        if team.role == .manager {
+                                            Text("Manager")
+                                                .font(KKFont.body(10))
+                                                .padding(.horizontal, 8)
+                                                .padding(.vertical, 3)
+                                                .background(KKTheme.accent.opacity(0.12))
+                                                .foregroundStyle(KKTheme.accent)
+                                                .cornerRadius(8)
+                                        }
+                                    }
+                                    Text("Seizoen afgelopen")
+                                        .font(KKFont.body(14))
+                                        .foregroundStyle(KKTheme.textSecondary)
+                                }
+                                Spacer()
+                                
+                                Image(systemName: "chevron.right")
+                                    .foregroundStyle(KKTheme.textSecondary)
+                            }
+                            .padding(.horizontal, 20)
+                            .padding(.vertical, 16)
+                            .background(KKTheme.surfaceAlt)
+                            .cornerRadius(8)
+                        }
+                        .buttonStyle(.plain)
+                    }
+                }
+                .padding(.horizontal, 24)
+
+                if enrolledTeams.isEmpty {
+                    VStack(spacing: 16) {
+                        Text("Geen teams gevonden")
+                            .font(KKFont.title(20))
+                            .foregroundStyle(KKTheme.textPrimary)
+                        Text("Er zijn geen teams beschikbaar voor deze vereniging.")
+                            .font(KKFont.body(14))
+                            .foregroundStyle(KKTheme.textSecondary)
+                            .multilineTextAlignment(.center)
+                    }
+                    .kkCard()
+                    .padding(.horizontal, 24)
+                }
+
+                Spacer(minLength: 24)
+            }
+        }
+        .background(KKTheme.surface)
+        .navigationBarTitleDisplayMode(.inline)
+        .navigationBarBackButtonHidden(true)
+    }
+    
+    // MARK: - Team Display Name Resolution
+    
+    private func teamDisplayName(for teamId: String, in tenant: DomainModel.Tenant) -> String {
+        Logger.debug("🔍 SeasonEndedTeams: Looking for team display name with teamId: '\(teamId)' in tenant '\(tenant.name)'")
+        
+        // Check cached diensten for team name (both active and season ended can use this)
+        if let dienst = store.upcoming.first(where: { $0.teamId == teamId && $0.teamName != nil }),
+           let teamName = dienst.teamName {
+            Logger.debug("🎯 SeasonEndedTeams: Found team name from cached dienst: '\(teamName)' for teamId='\(teamId)'")
+            return teamName
+        }
+        
+        // Fallback to DomainModel - but prefer code over raw name for season ended (since name might be stale ID)
+        if let team = tenant.teams.first(where: { $0.id == teamId }) {
+            // For season ended, if team.name looks like an ID/number, prefer code
+            if tenant.seasonEnded && team.name.allSatisfy({ $0.isNumber }) && team.code != nil {
+                Logger.debug("🎯 SeasonEndedTeams: Using team code '\(team.code!)' instead of numeric name '\(team.name)' for season ended team")
+                return team.code!
+            }
+            Logger.debug("🎯 SeasonEndedTeams: Found team by ID: '\(team.name)' (id='\(team.id)' code='\(team.code ?? "nil")')")
+            return team.name
+        }
+        
+        if let team = tenant.teams.first(where: { $0.code == teamId }) {
+            Logger.debug("🎯 SeasonEndedTeams: Found team by code: '\(team.name)' (id='\(team.id)' code='\(team.code ?? "nil")')")
+            return team.name
+        }
+        
+        Logger.warning("⚠️ SeasonEndedTeams: No team found for teamId '\(teamId)' in tenant '\(tenant.name)'")
+        return teamId
     }
 }
 

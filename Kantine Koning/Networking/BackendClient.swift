@@ -138,8 +138,10 @@ final class BackendClient {
                     teams = teamsArray.compactMap { teamObj in
                         let id = teamObj["id"] as? String ?? teamObj["code"] as? String ?? ""
                         let code = teamObj["code"] as? String
-                        let name = teamObj["naam"] as? String ?? teamObj["name"] as? String ?? code ?? id
-                        Logger.debug("📝 PARSING Team: id='\(id)' code='\(code ?? "nil")' name='\(name)'")
+                        let naamField = teamObj["naam"] as? String
+                        let nameField = teamObj["name"] as? String  
+                        let name = naamField ?? nameField ?? code ?? id
+                        Logger.debug("📝 PARSING Team: id='\(id)' code='\(code ?? "nil")' naam='\(naamField ?? "nil")' name='\(nameField ?? "nil")' final='\(name)'")
                         Logger.debug("📝 RAW teamObj: \(teamObj)")
                         guard !id.isEmpty else { return nil }
                         return DomainModel.Team(id: id, code: code, name: name, role: role, email: email, enrolledAt: now)

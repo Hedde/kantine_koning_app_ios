@@ -367,13 +367,16 @@ final class AppStore: ObservableObject {
         tenantData.signedDeviceToken = nil  // Clear the revoked token
         model.tenants[tenant] = tenantData
         
-        // Clear all enrollments for this tenant (they're all revoked)
+        // Mark enrollments as revoked but keep them for season summary access
         let tenantEnrollmentIds = tenantData.enrollments
         for enrollmentId in tenantEnrollmentIds {
-            model.enrollments.removeValue(forKey: enrollmentId)
+            if var enrollment = model.enrollments[enrollmentId] {
+                // Keep enrollment but mark as revoked by clearing token (this prevents API calls)
+                // The enrollment data itself is preserved for season summary team selection
+                Logger.auth("📋 Preserving enrollment \(enrollmentId) for season summary (token will be cleared)")
+            }
         }
-        tenantData.enrollments.removeAll()
-        model.tenants[tenant] = tenantData
+        // Note: Keep tenantData.enrollments intact for season summary team selection
         
         // Persist the updated model
         enrollmentRepository.persist(model: model)
@@ -451,20 +454,26 @@ final class AppStore: ObservableObject {
     }
     
     func refreshTenantInfo() {
-        // Get active tenants only and use their tokens
-        let activeTenants = model.tenants.values.filter { !$0.seasonEnded }
+        // Get ALL tenants with tokens (not just active ones) to ensure club logos load for new enrollments
+        let availableTenants = model.tenants.values.filter { tenant in
+            // Check if we have any auth token for this tenant
+            if let firstTeam = tenant.teams.first {
+                return model.authTokenForTeam(firstTeam.id, in: tenant.slug) != nil
+            }
+            return false
+        }
         
-        guard !activeTenants.isEmpty,
-              let firstActiveTenant = activeTenants.first,
-              let authToken = model.authTokenForTeam(firstActiveTenant.teams.first?.id ?? "", in: firstActiveTenant.slug) else {
-            Logger.warning("No active tenants or auth tokens available for tenant info")
+        guard !availableTenants.isEmpty,
+              let firstTenant = availableTenants.first,
+              let authToken = model.authTokenForTeam(firstTenant.teams.first?.id ?? "", in: firstTenant.slug) else {
+            Logger.warning("No tenants with auth tokens available for tenant info")
             return
         }
         
         let backend = BackendClient()
         backend.authToken = authToken
         
-        Logger.debug("Fetching tenant info using token from active tenant \(firstActiveTenant.slug)")
+        Logger.debug("Fetching tenant info using token from tenant \(firstTenant.slug)")
         
         backend.fetchTenantInfo { [weak self] result in
             DispatchQueue.main.async {
@@ -476,7 +485,7 @@ final class AppStore: ObservableObject {
                 case .failure(let error):
                     Logger.error("Failed to fetch tenant info: \(error)")
                     // Check if this is a token revocation for the specific tenant we used
-                    self?.handlePotentialTokenRevocation(error: error, tenant: firstActiveTenant.slug)
+                    self?.handlePotentialTokenRevocation(error: error, tenant: firstTenant.slug)
                 }
             }
         }
