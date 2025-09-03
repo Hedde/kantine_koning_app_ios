@@ -2,6 +2,17 @@ import Foundation
 import Combine
 import UserNotifications
 
+enum EnrollmentError: LocalizedError {
+    case alreadyInProgress
+    
+    var errorDescription: String? {
+        switch self {
+        case .alreadyInProgress:
+            return "Enrollment already in progress for this invitation"
+        }
+    }
+}
+
 final class AppStore: ObservableObject {
     enum AppPhase: Equatable {
         case launching
@@ -33,6 +44,10 @@ final class AppStore: ObservableObject {
     private let leaderboardRepository: LeaderboardRepository
 
     private var cancellables: Set<AnyCancellable> = []
+    
+    // Duplicate enrollment prevention
+    private var pendingEnrollmentTokens: Set<String> = []
+    private var isRegisteringMember: Bool = false
 
     init(
         enrollmentRepository: EnrollmentRepository = DefaultEnrollmentRepository(),
@@ -231,11 +246,28 @@ final class AppStore: ObservableObject {
     }
 
     func completeEnrollment(token: String, completion: @escaping (Result<Void, Error>) -> Void) {
+        // Check if we're already processing this exact token
+        if pendingEnrollmentTokens.contains(token) {
+            Logger.warning("⚠️ Enrollment already in progress for token: \(token.prefix(10))...")
+            completion(.failure(EnrollmentError.alreadyInProgress))
+            return
+        }
+        
+        // Mark token as pending
+        pendingEnrollmentTokens.insert(token)
+        Logger.auth("🔄 Starting enrollment with token: \(token.prefix(10))...")
+        
         enrollmentRepository.registerDevice(enrollmentToken: token, pushToken: pushToken) { [weak self] result in
             guard let self = self else { return }
+            
+            // Always clean up pending token
+            self.pendingEnrollmentTokens.remove(token)
+            
             switch result {
             case .success(let delta):
                 DispatchQueue.main.async {
+                    Logger.success("✅ Enrollment completed for token: \(token.prefix(10))...")
+                    
                     // Merge with dedup and role precedence
                     var next = self.model
                     // Remove overlapping team IDs in same tenant when new role is manager
@@ -630,11 +662,27 @@ extension AppStore {
     }
 
     func registerMember(tenantSlug: String, tenantName: String, teamIds: [TeamID], completion: @escaping (Result<Void, Error>) -> Void) {
+        // Prevent duplicate member registration
+        if isRegisteringMember {
+            Logger.warning("⚠️ Member registration already in progress")
+            completion(.failure(EnrollmentError.alreadyInProgress))
+            return
+        }
+        
+        isRegisteringMember = true
+        Logger.auth("🔄 Starting member registration for tenant: \(tenantSlug)")
+        
         enrollmentRepository.registerMember(tenantSlug: tenantSlug, tenantName: tenantName, teamIds: teamIds, pushToken: pushToken) { [weak self] result in
             guard let self = self else { return }
+            
+            // Always clean up registration flag
+            self.isRegisteringMember = false
+            
             switch result {
             case .success(let delta):
                 DispatchQueue.main.async {
+                    Logger.success("✅ Member registration completed for tenant: \(tenantSlug)")
+                    
                     // Enforce dedup and max-5 like manager
                     var next = self.model
                     let existingCount = next.tenants.values.reduce(0) { $0 + $1.teams.count }

@@ -295,12 +295,17 @@ struct LeaderboardHostView: View {
                 }
             }
         }
-        .onChange(of: store.model.tenants) { _, tenants in
-            // Check if currently selected tenant became season ended
-            if let selectedTenantSlug = selectedTenant,
-               selectedTenantSlug != "global",
-               let tenant = tenants[selectedTenantSlug],
-               tenant.seasonEnded {
+        .onChange(of: store.model.tenants) { oldTenants, newTenants in
+            // Only react to season ended changes for the currently selected tenant
+            guard let selectedTenantSlug = selectedTenant,
+                  selectedTenantSlug != "global",
+                  let oldTenant = oldTenants[selectedTenantSlug],
+                  let newTenant = newTenants[selectedTenantSlug],
+                  oldTenant.seasonEnded != newTenant.seasonEnded else {
+                return
+            }
+            
+            if newTenant.seasonEnded {
                 Logger.debug("Selected tenant \(selectedTenantSlug) became season ended - returning to menu")
                 selectedTenant = nil
                 showingMenu = true
