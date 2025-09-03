@@ -1460,7 +1460,7 @@ private struct SeasonEndedTeamsView: View {
                         }
                         return $0.name < $1.name 
                     }), id: \.id) { team in
-                        Button(action: { onTeamSelected(team.id) }) {
+                        SwipeableRow(onTap: { onTeamSelected(team.id) }, onDelete: { store.removeTeam(team.id, from: tenant.slug) }) {
                             HStack(spacing: 16) {
                                 // Club logo (same as TeamsView)
                                 CachedAsyncImage(url: (store.tenantInfo[tenant.slug]?.clubLogoUrl ?? tenant.clubLogoUrl).flatMap(URL.init)) { image in
@@ -1495,16 +1495,16 @@ private struct SeasonEndedTeamsView: View {
                                 
                                 Image(systemName: "chevron.right")
                                     .foregroundStyle(KKTheme.textSecondary)
+                                    .font(.title2)
                             }
                             .padding(.horizontal, 20)
                             .padding(.vertical, 16)
+                            .frame(maxWidth: .infinity, alignment: .leading)
                             .background(KKTheme.surfaceAlt)
                             .cornerRadius(8)
                         }
-                        .buttonStyle(.plain)
                     }
                 }
-                .padding(.horizontal, 24)
 
                 if enrolledTeams.isEmpty {
                     VStack(spacing: 16) {
