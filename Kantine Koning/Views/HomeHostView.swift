@@ -309,7 +309,6 @@ private struct TeamsView: View {
                         }
                     }
                 }
-                .padding(.horizontal, 12)
                 Spacer(minLength: 24)
             }
         }

@@ -47,6 +47,7 @@ final class AppStore: ObservableObject {
     
     // Duplicate enrollment prevention
     private var pendingEnrollmentTokens: Set<String> = []
+    private var usedEnrollmentTokens: Set<String> = []
     private var isRegisteringMember: Bool = false
 
     init(
@@ -253,6 +254,13 @@ final class AppStore: ObservableObject {
             return
         }
         
+        // Check if this token was already used successfully
+        if usedEnrollmentTokens.contains(token) {
+            Logger.warning("⚠️ Enrollment token already used: \(token.prefix(10))...")
+            completion(.failure(EnrollmentError.alreadyInProgress))
+            return
+        }
+        
         // Mark token as pending
         pendingEnrollmentTokens.insert(token)
         Logger.auth("🔄 Starting enrollment with token: \(token.prefix(10))...")
@@ -267,6 +275,9 @@ final class AppStore: ObservableObject {
             case .success(let delta):
                 DispatchQueue.main.async {
                     Logger.success("✅ Enrollment completed for token: \(token.prefix(10))...")
+                    
+                    // Mark token as successfully used to prevent reuse
+                    self.usedEnrollmentTokens.insert(token)
                     
                     // Merge with dedup and role precedence
                     var next = self.model
