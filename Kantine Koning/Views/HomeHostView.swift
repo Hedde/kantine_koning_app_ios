@@ -987,11 +987,13 @@ private struct SettingsViewInternal: View {
                     Text("Push meldingen worden automatisch geconfigureerd bij eerste gebruik. Heb je geweigerd? Ga dan naar Instellingen > Apps > Kantine Koning om meldingen alsnog toe te staan.")
                         .font(KKFont.body(12))
                         .foregroundStyle(KKTheme.textSecondary)
+                        .fixedSize(horizontal: false, vertical: true)
                 }
+                .frame(maxWidth: .infinity, alignment: .leading)
                 .kkCard()
                 .padding(.horizontal, 24)
                 
-                // Email notification preferences per team (DUMMY)
+                // Email notification preferences per team
                 EmailNotificationPreferencesView()
                     .environmentObject(store)
                 

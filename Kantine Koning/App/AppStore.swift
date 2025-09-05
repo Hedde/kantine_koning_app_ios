@@ -30,6 +30,7 @@ final class AppStore: ObservableObject {
     @Published var onboardingScan: ScannedTenant?
     @Published var pendingCTA: CTA?
     @Published var leaderboards: [String: LeaderboardData] = [:]  // tenantSlug -> LeaderboardData
+    @Published var leaderboardErrors: [String: String] = [:]  // tenantSlug -> error message
     @Published var globalLeaderboard: GlobalLeaderboardData?
     @Published var tenantInfo: [String: TenantInfo] = [:] // tenantSlug -> TenantInfo (club logos etc.)
     
@@ -556,13 +557,36 @@ final class AppStore: ObservableObject {
                 teams: teams
             )
             
-            // Update domain model with latest tenant info (including logo URL)
+            // Update domain model with latest tenant info (including logo URL and team names)
             if var existingTenant = model.tenants[tenantData.slug] {
                 // Always update logo URL when available
                 if let logoUrl = tenantData.clubLogoUrl {
                     existingTenant.clubLogoUrl = logoUrl
-                    model.tenants[tenantData.slug] = existingTenant
                 }
+                
+                // CRITICAL: Update team names from tenant info (fix team codes showing as names)
+                for i in 0..<existingTenant.teams.count {
+                    let existingTeam = existingTenant.teams[i]
+                    // Find matching team in tenant info by ID or code
+                    if let tenantTeam = tenantData.teams.first(where: { 
+                        $0.id == existingTeam.id || $0.code == existingTeam.code || $0.code == existingTeam.id 
+                    }) {
+                        Logger.debug("🔄 Updating team name: '\(existingTeam.name)' → '\(tenantTeam.name)' for id='\(existingTeam.id)'")
+                        existingTenant.teams[i] = DomainModel.Team(
+                            id: existingTeam.id,
+                            code: tenantTeam.code,
+                            name: tenantTeam.name, // Use correct name from tenant info
+                            role: existingTeam.role,
+                            email: existingTeam.email,
+                            enrolledAt: existingTeam.enrolledAt
+                        )
+                    }
+                }
+                
+                model.tenants[tenantData.slug] = existingTenant
+                
+                // Persist team name updates
+                enrollmentRepository.persist(model: model)
                 
                 // CRITICAL: If tenant is season ended, update our domain model
                 if tenantData.seasonEnded && !existingTenant.seasonEnded {
@@ -603,10 +627,13 @@ final class AppStore: ObservableObject {
                 switch result {
                 case .success(let leaderboard):
                     Logger.success("Leaderboard fetch success, updating store")
+                    self?.leaderboardErrors[tenantSlug] = nil  // Clear any previous error
                     self?.updateLeaderboard(leaderboard, for: tenantSlug, period: period)
                 case .failure(let error):
                     Logger.error("Failed to refresh leaderboard for \(tenantSlug): \(error)")
                     Logger.error("Error details: \(error.localizedDescription)")
+                    // Store user-friendly error message
+                    self?.leaderboardErrors[tenantSlug] = self?.formatLeaderboardError(error) ?? "Kon leaderboard niet laden"
                 }
             }
         }
@@ -648,6 +675,18 @@ final class AppStore: ObservableObject {
         Logger.debug("Response tenant slug: \(response.tenant.slug)")
         Logger.debug("Parameter tenant slug: \(tenantSlug)")
         Logger.debug("Current leaderboards keys: \(Array(leaderboards.keys))")
+    }
+    
+    private func formatLeaderboardError(_ error: Error) -> String {
+        if let nsError = error as NSError? {
+            if nsError.domain == "Backend" && nsError.code == -2 {
+                return "Ongeldig antwoord ontvangen van server"
+            }
+            if nsError.localizedDescription.contains("Geen antwoord") {
+                return "Geen verbinding met server"
+            }
+        }
+        return "Kon leaderboard niet laden"
     }
 
     // MARK: - Deep links

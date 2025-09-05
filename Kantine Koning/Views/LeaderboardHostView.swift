@@ -224,7 +224,7 @@ struct LeaderboardHostView: View {
                         if isLoading {
                             ProgressView()
                                 .padding(.vertical, 32)
-                        } else if let error = errorMessage {
+                        } else if let error = errorMessage ?? store.leaderboardErrors[tenant.slug] {
                             ErrorView(message: error, onRetry: { 
                                 loadLeaderboard(for: tenant.slug)
                             })
@@ -347,6 +347,7 @@ struct LeaderboardHostView: View {
             Logger.debug("Using cached leaderboard for \(tenantSlug) while refreshing")
         }
         errorMessage = nil
+        store.leaderboardErrors[tenantSlug] = nil  // Clear any previous AppStore error
         
         // Start refresh (will use cached data immediately if available)
         store.refreshLeaderboard(for: tenantSlug, period: selectedPeriod.rawValue, teamId: selectedTeam)

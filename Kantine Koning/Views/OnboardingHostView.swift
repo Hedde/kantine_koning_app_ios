@@ -101,7 +101,7 @@ struct OnboardingHostView: View {
                                     }
                                 )
                         }
-                        .padding(.horizontal, 32)
+                        .padding(.horizontal, 24)
 
                         Button(action: scanButtonTapped) {
                             Label(scannedOnce ? "Opnieuw scannen" : "Scan QR-code", systemImage: "qrcode.viewfinder")
@@ -129,7 +129,6 @@ struct OnboardingHostView: View {
                 }
             }
             .padding(.vertical, 32)
-            .padding(.horizontal, 20)
             .frame(maxWidth: .infinity)
             .frame(minHeight: UIScreen.main.bounds.height - 1)
         }
@@ -309,7 +308,7 @@ private struct ClubEnrollContainer: View {
             }
             .kkCard()
         }
-        .padding(.horizontal, 12)
+        .padding(.horizontal, 24)
     }
 }
 
@@ -363,7 +362,7 @@ private struct ManagerVerifySection: View {
             .buttonStyle(KKSecondaryButton())
         }
         .kkCard()
-        .padding(.horizontal, 12)
+        .padding(.horizontal, 24)
     }
 }
 
@@ -433,7 +432,7 @@ private struct MemberSearchSection: View {
                             .font(KKFont.body(12))
                             .foregroundStyle(KKTheme.textSecondary)
                     }
-                    .padding(.horizontal, 12)
+                    .padding(.horizontal, 24)
                     .padding(.vertical, 8)
                     .background(KKTheme.surface)
                     .cornerRadius(6)
@@ -445,7 +444,7 @@ private struct MemberSearchSection: View {
                 .buttonStyle(KKPrimaryButton())
         }
         .kkCard()
-        .padding(.horizontal, 12)
+        .padding(.horizontal, 24)
     }
     private func toggle(_ id: TeamID) { if selected.contains(id) { selected.remove(id) } else { selected.insert(id) } }
 }
@@ -479,7 +478,7 @@ private struct ManagerTeamPickerSection: View {
                 .disabled(selected.isEmpty)
                 .buttonStyle(KKPrimaryButton())
         }
-        .padding(.horizontal, 12)
+        .padding(.horizontal, 24)
     }
 }
 

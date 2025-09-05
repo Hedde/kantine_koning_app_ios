@@ -603,7 +603,7 @@ final class BackendClient {
                 }
                 
                 let decoder = JSONDecoder()
-                decoder.keyDecodingStrategy = .convertFromSnakeCase
+                // Note: Not using .convertFromSnakeCase because we have custom CodingKeys
                 let leaderboard = try decoder.decode(LeaderboardResponse.self, from: data)
                 Logger.success("Leaderboard fetched: \(leaderboard.teams.count) teams, opt_out=\(leaderboard.tenant.leaderboardOptOut)")
                 completion(.success(leaderboard))
@@ -989,8 +989,11 @@ struct LeaderboardResponse: Codable {
         }
         
         private enum CodingKeys: String, CodingKey {
-            case rank, team, points, totalHours, recentChange, positionChange, highlighted
-            // No manual mapping needed - keyDecodingStrategy handles snake_case conversion
+            case rank, team, points
+            case totalHours = "total_hours"
+            case recentChange = "recent_change"
+            case positionChange = "position_change"
+            case highlighted
         }
     }
     
