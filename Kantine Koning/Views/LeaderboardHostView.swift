@@ -130,8 +130,10 @@ struct LeaderboardHostView: View {
                             GlobalLeaderboardView(
                                 leaderboard: globalData, 
                                 highlightedTeamCodes: Set(store.model.enrollments.values.flatMap { enrollment in
-                                    // Only highlight teams from actual user enrollments
-                                    enrollment.teams
+                                    // Create tenant-team combinations to ensure proper matching
+                                    enrollment.teams.map { teamId in
+                                        "\(enrollment.tenantSlug):\(teamId)"
+                                    }
                                 })
                             )
                         }
@@ -747,8 +749,12 @@ private struct GlobalLeaderboardView: View {
                     UnifiedTeamRowView(
                         team: team,
                         isHighlighted: {
-                            let highlighted = highlightedTeamCodes.contains(team.id) || highlightedTeamCodes.contains(team.code ?? "")
-                            Logger.debug("🌍 GLOBAL LEADERBOARD Team '\(team.name)' id='\(team.id)' code='\(team.code ?? "nil")' highlighted=\(highlighted) (highlightedCodes: \(highlightedTeamCodes))")
+                            // Check both tenant:teamId and tenant:teamCode combinations
+                            let tenantTeamId = "\(team.clubSlug):\(team.id)"
+                            let tenantTeamCode = team.code != nil ? "\(team.clubSlug):\(team.code!)" : nil
+                            let highlighted = highlightedTeamCodes.contains(tenantTeamId) || 
+                                            (tenantTeamCode != nil && highlightedTeamCodes.contains(tenantTeamCode!))
+                            Logger.debug("🌍 GLOBAL LEADERBOARD Team '\(team.name)' id='\(team.id)' code='\(team.code ?? "nil")' club='\(team.clubSlug)' highlighted=\(highlighted) (checking: \(tenantTeamId), \(tenantTeamCode ?? "nil"))")
                             return highlighted
                         }(),
                         showClubInfo: true

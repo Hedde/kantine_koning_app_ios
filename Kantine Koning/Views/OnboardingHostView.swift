@@ -20,7 +20,8 @@ struct OnboardingHostView: View {
     }
 
     var body: some View {
-        ScrollView {
+        NavigationStack {
+            ScrollView {
             VStack(spacing: 24) {
                 HeaderHero()
 
@@ -188,6 +189,7 @@ struct OnboardingHostView: View {
             submitting = false
             if case .failure(let err) = result { errorText = ErrorTranslations.translate(err) }
         }
+    }
     }
 }
 

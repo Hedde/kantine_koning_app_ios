@@ -4,7 +4,8 @@ import UIKit
 struct EnrollmentPendingHostView: View {
     @EnvironmentObject var store: AppStore
     var body: some View {
-        ScrollView {
+        NavigationStack {
+            ScrollView {
             VStack(spacing: 24) {
                 Spacer(minLength: 60)
                 BrandAssets.logoImage()
@@ -49,10 +50,11 @@ struct EnrollmentPendingHostView: View {
 
                 Spacer(minLength: 60)
             }
+            }
+            .navigationTitle("")
+            .navigationBarHidden(true)
+            .background(KKTheme.surface.ignoresSafeArea())
         }
-        .navigationTitle("")
-        .navigationBarHidden(true)
-        .background(KKTheme.surface.ignoresSafeArea())
     }
     
     @ViewBuilder
