@@ -1,5 +1,6 @@
 import SwiftUI
 import UserNotifications
+import UIKit
 
 @main
 struct Kantine_KoningApp: App {
@@ -16,6 +17,11 @@ struct Kantine_KoningApp: App {
                     UNUserNotificationCenter.current().delegate = appDelegate
                     appDelegate.store = store
                     store.configurePushNotifications()
+                }
+                .onReceive(NotificationCenter.default.publisher(for: UIApplication.willEnterForegroundNotification)) { _ in
+                    Logger.view("App entering foreground - refreshing data")
+                    store.refreshDiensten()
+                    store.refreshTenantInfo()
                 }
         }
     }

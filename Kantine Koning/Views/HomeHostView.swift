@@ -564,6 +564,9 @@ private struct DienstCardContent: View {
     @State private var newVolunteerName = ""
     @State private var showCelebration = false
     @State private var confettiTrigger = 0
+    @State private var working = false
+    @State private var errorText: String?
+    @State private var removingVolunteers: Set<String> = []
     @EnvironmentObject var store: AppStore
     
     // Computed property to always reflect current dienst data
@@ -628,9 +631,13 @@ private struct DienstCardContent: View {
                                 Spacer()
                                 if isManager {
                                     Button(action: { removeVolunteer(volunteer) }) {
-                                        Image(systemName: "minus.circle.fill").foregroundStyle(Color.red).font(.title3)
+                                        if removingVolunteers.contains(volunteer) {
+                                            ProgressView().scaleEffect(0.8)
+                                        } else {
+                                            Image(systemName: "minus.circle.fill").foregroundStyle(Color.red).font(.title3)
+                                        }
                                     }
-                                    .disabled(dienst.startTime < Date())
+                                    .disabled(dienst.startTime < Date() || removingVolunteers.contains(volunteer))
                                 }
                             }
                             .padding(.horizontal, 12).padding(.vertical, 8)
@@ -683,8 +690,14 @@ private struct DienstCardContent: View {
                     }
                     
                     HStack(spacing: 12) {
-                        Button("Annuleren") { showAddVolunteer = false; newVolunteerName = "" }.buttonStyle(KKSecondaryButton())
-                        Button("Toevoegen") { addVolunteer() }.disabled(newVolunteerName.trimmingCharacters(in: .whitespaces).isEmpty || dienst.startTime < Date()).buttonStyle(KKPrimaryButton())
+                        Button("Annuleren") { 
+                            showAddVolunteer = false
+                            newVolunteerName = ""
+                            errorText = nil
+                        }.buttonStyle(KKSecondaryButton())
+                        Button(working ? "Bezig..." : "Toevoegen") { addVolunteer() }
+                            .disabled(newVolunteerName.trimmingCharacters(in: .whitespaces).isEmpty || dienst.startTime < Date() || working)
+                            .buttonStyle(KKPrimaryButton())
                     }
                     .padding(.top, 8)
                 }
@@ -750,11 +763,14 @@ private struct DienstCardContent: View {
         }
         
         Logger.volunteer("Adding volunteer '\(name)' to dienst \(dienst.id)")
+        working = true
+        errorText = nil
         newVolunteerName = ""
         showAddVolunteer = false
         
         // Call backend API instead of local update
         store.addVolunteer(tenant: dienst.tenantId, dienstId: dienst.id, name: name) { result in
+            working = false
             switch result {
             case .success:
                 Logger.volunteer("Successfully added volunteer via API")
@@ -764,6 +780,7 @@ private struct DienstCardContent: View {
                 if newVolunteerCount >= minimumBemanning { triggerCelebration() }
             case .failure(let err):
                 Logger.volunteer("Failed to add volunteer: \(err)")
+                errorText = ErrorTranslations.translate(err)
                 // Revert UI state on failure
                 showAddVolunteer = true
                 newVolunteerName = name
@@ -783,15 +800,19 @@ private struct DienstCardContent: View {
         }
         
         Logger.volunteer("Removing volunteer '\(name)' from dienst \(dienst.id)")
+        removingVolunteers.insert(name)
+        errorText = nil
         
         // Call backend API instead of local update
         store.removeVolunteer(tenant: dienst.tenantId, dienstId: dienst.id, name: name) { result in
+            removingVolunteers.remove(name)
             switch result {
             case .success:
                 Logger.volunteer("Successfully removed volunteer via API")
                 // Note: volunteers will be updated when diensten refresh after cache invalidation
             case .failure(let err):
                 Logger.volunteer("Failed to remove volunteer: \(err)")
+                errorText = ErrorTranslations.translate(err)
             }
         }
     }
