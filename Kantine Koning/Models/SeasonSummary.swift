@@ -10,8 +10,8 @@ struct SeasonSummaryResponse: Codable {
     let calculatedAt: Date
     
     private enum CodingKeys: String, CodingKey {
-        case tenantName = "tenant_name"
-        case teamName = "team_name"
+        case tenantName = "tenant_club_name"
+        case teamName = "team_naam"
         case teamCode = "team_code"
         case seasonStats = "season_stats"
         case calculatedAt = "calculated_at"

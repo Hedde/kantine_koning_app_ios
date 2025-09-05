@@ -130,10 +130,23 @@ struct LeaderboardHostView: View {
                             GlobalLeaderboardView(
                                 leaderboard: globalData, 
                                 highlightedTeamCodes: Set(store.model.enrollments.values.flatMap { enrollment in
-                                    // Create tenant-team combinations to ensure proper matching
-                                    enrollment.teams.map { teamId in
-                                        "\(enrollment.tenantSlug):\(teamId)"
+                                    // Create tenant-team combinations for both IDs and codes
+                                    var combinations: [String] = []
+                                    
+                                    // For each enrolled team, create combinations with both team ID and code
+                                    for teamId in enrollment.teams {
+                                        combinations.append("\(enrollment.tenantSlug):\(teamId)")
+                                        
+                                        // Also try to find the actual team object to get the code
+                                        if let tenant = store.model.tenants[enrollment.tenantSlug],
+                                           let team = tenant.teams.first(where: { $0.id == teamId }),
+                                           let teamCode = team.code {
+                                            combinations.append("\(enrollment.tenantSlug):\(teamCode)")
+                                        }
                                     }
+                                    
+                                    Logger.debug("🏆 ENROLLMENT \(enrollment.id) for \(enrollment.tenantSlug): teams=\(enrollment.teams) → combinations=\(combinations)")
+                                    return combinations
                                 })
                             )
                         }
@@ -752,9 +765,16 @@ private struct GlobalLeaderboardView: View {
                             // Check both tenant:teamId and tenant:teamCode combinations
                             let tenantTeamId = "\(team.clubSlug):\(team.id)"
                             let tenantTeamCode = team.code != nil ? "\(team.clubSlug):\(team.code!)" : nil
-                            let highlighted = highlightedTeamCodes.contains(tenantTeamId) || 
-                                            (tenantTeamCode != nil && highlightedTeamCodes.contains(tenantTeamCode!))
-                            Logger.debug("🌍 GLOBAL LEADERBOARD Team '\(team.name)' id='\(team.id)' code='\(team.code ?? "nil")' club='\(team.clubSlug)' highlighted=\(highlighted) (checking: \(tenantTeamId), \(tenantTeamCode ?? "nil"))")
+                            
+                            let highlightedById = highlightedTeamCodes.contains(tenantTeamId)
+                            let highlightedByCode = tenantTeamCode != nil && highlightedTeamCodes.contains(tenantTeamCode!)
+                            let highlighted = highlightedById || highlightedByCode
+                            
+                            Logger.debug("🌍 GLOBAL LEADERBOARD Team '\(team.name)' id='\(team.id)' code='\(team.code ?? "nil")' club='\(team.clubSlug)'")
+                            Logger.debug("🔍 Checking: '\(tenantTeamId)' in codes=\(highlightedById), '\(tenantTeamCode ?? "nil")' in codes=\(highlightedByCode)")
+                            Logger.debug("✅ Final highlighted=\(highlighted)")
+                            Logger.debug("📋 All highlighted codes: \(Array(highlightedTeamCodes).sorted())")
+                            
                             return highlighted
                         }(),
                         showClubInfo: true

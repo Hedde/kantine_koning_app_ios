@@ -184,7 +184,10 @@ struct OnboardingHostView: View {
     private func submitManagerTeams() {
         guard !selectedManagerTeams.isEmpty else { return }
         submitting = true
-        store.submitEmail(email, for: tenant, selectedTeamCodes: Array(selectedManagerTeams)) { result in
+        // Convert team IDs to team codes for backend
+        let teamCodes = store.searchResults.filter { selectedManagerTeams.contains($0.id) }.compactMap { $0.code ?? $0.id }
+        Logger.debug("📋 Manager team codes to submit: \(teamCodes)")
+        store.submitEmail(email, for: tenant, selectedTeamCodes: teamCodes) { result in
             submitting = false
             if case .failure(let err) = result { errorText = ErrorTranslations.translate(err) }
         }

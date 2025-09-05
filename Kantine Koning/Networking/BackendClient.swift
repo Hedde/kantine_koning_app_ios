@@ -57,9 +57,9 @@ final class BackendClient {
                 
                 if let teams = obj?["teams"] as? [[String: Any]] {
                     let mapped: [TeamDTO] = teams.compactMap { t in
-                        guard let naam = t["naam"] as? String else { return nil }
+                        guard let id = t["id"] as? String else { return nil }
                         let code = t["code"] as? String
-                        let id = code ?? naam
+                        let naam = t["naam"] as? String ?? code ?? id
                         return TeamDTO(id: id, code: code, naam: naam)
                     }
                     Logger.enrollment("✅ allowed teams count=\(mapped.count)")
@@ -136,13 +136,11 @@ final class BackendClient {
                 if let teamsArray = obj?["teams"] as? [[String: Any]] {
                     Logger.debug("🏆 Found teams array with \(teamsArray.count) items")
                     teams = teamsArray.compactMap { teamObj in
-                        let id = teamObj["id"] as? String ?? teamObj["code"] as? String ?? ""
+                        let id = teamObj["id"] as? String ?? ""
                         let code = teamObj["code"] as? String
-                        let naamField = teamObj["naam"] as? String
-                        let nameField = teamObj["name"] as? String  
-                        let name = naamField ?? nameField ?? code ?? id
-                        Logger.debug("📝 PARSING Team: id='\(id)' code='\(code ?? "nil")' naam='\(naamField ?? "nil")' name='\(nameField ?? "nil")' final='\(name)'")
-                        Logger.debug("📝 RAW teamObj: \(teamObj)")
+                        let naam = teamObj["naam"] as? String
+                        let name = naam ?? code ?? id  // Prefer naam, fallback to code/id
+                        Logger.debug("📝 PARSING Team: id='\(id)' code='\(code ?? "nil")' naam='\(naam ?? "nil")' final_name='\(name)'")
                         guard !id.isEmpty else { return nil }
                         return DomainModel.Team(id: id, code: code, name: name, role: role, email: email, enrolledAt: now)
                     }
@@ -846,7 +844,7 @@ enum BackendError: Error, Equatable {
 
 // MARK: - DTOs
 struct DienstDTO: Codable {
-    struct TeamRef: Codable { let id: String; let code: String?; let naam: String; let pk: String? }
+    struct TeamRef: Codable { let id: String; let code: String?; let naam: String }
     let id: String
     let tenant_id: String
     let team: TeamRef?
@@ -867,6 +865,11 @@ struct TenantInfoResponse: Codable {
             let code: String
             let name: String
             let role: String
+            
+            enum CodingKeys: String, CodingKey {
+                case id, code, role
+                case name = "naam"
+            }
         }
         
         let slug: String
@@ -876,7 +879,8 @@ struct TenantInfoResponse: Codable {
         let teams: [TeamData]
         
         enum CodingKeys: String, CodingKey {
-            case slug, name, teams
+            case slug, teams
+            case name = "club_name"
             case clubLogoUrl = "club_logo_url"
             case seasonEnded = "season_ended"
         }
@@ -890,12 +894,21 @@ struct LeaderboardResponse: Codable {
         let slug: String
         let name: String
         let leaderboardOptOut: Bool
-        // No custom CodingKeys needed - keyDecodingStrategy handles snake_case conversion
+        
+        enum CodingKeys: String, CodingKey {
+            case slug
+            case name = "club_name"
+            case leaderboardOptOut = "leaderboard_opt_out"
+        }
     }
     
     struct ClubInfo: Codable {
         let name: String
         // logoUrl removed - now handled by /tenants API
+        
+        enum CodingKeys: String, CodingKey {
+            case name = "naam"
+        }
     }
     
     struct TeamEntry: Codable {
@@ -904,7 +917,7 @@ struct LeaderboardResponse: Codable {
             let name: String
             let code: String?
             
-            // Custom decoder to handle both String and Int for id
+            // Custom decoder to handle both String and Int for id, and naam vs name
             init(from decoder: Decoder) throws {
                 let container = try decoder.container(keyedBy: CodingKeys.self)
                 
@@ -922,12 +935,33 @@ struct LeaderboardResponse: Codable {
                     )
                 }
                 
-                self.name = try container.decode(String.self, forKey: .name)
+                // Handle naam vs name  
+                if let naam = try? container.decode(String.self, forKey: .naam) {
+                    self.name = naam
+                } else if let name = try? container.decode(String.self, forKey: .name) {
+                    self.name = name
+                } else {
+                    throw DecodingError.dataCorrupted(
+                        DecodingError.Context(
+                            codingPath: container.codingPath + [CodingKeys.naam],
+                            debugDescription: "Could not decode naam or name"
+                        )
+                    )
+                }
+                
                 self.code = try container.decodeIfPresent(String.self, forKey: .code)
             }
             
+            // Custom encoder for Codable conformance
+            func encode(to encoder: Encoder) throws {
+                var container = encoder.container(keyedBy: CodingKeys.self)
+                try container.encode(id, forKey: .id)
+                try container.encode(name, forKey: .naam)  // Always encode as naam
+                try container.encodeIfPresent(code, forKey: .code)
+            }
+            
             private enum CodingKeys: String, CodingKey {
-                case id, name, code
+                case id, naam, name, code
             }
         }
         
@@ -973,7 +1007,7 @@ struct GlobalLeaderboardResponse: Codable {
             let name: String
             let code: String?
             
-            // Custom decoder to handle both String and Int for id
+            // Custom decoder to handle both String and Int for id, and naam vs name
             init(from decoder: Decoder) throws {
                 let container = try decoder.container(keyedBy: CodingKeys.self)
                 
@@ -991,12 +1025,33 @@ struct GlobalLeaderboardResponse: Codable {
                     )
                 }
                 
-                self.name = try container.decode(String.self, forKey: .name)
+                // Handle naam vs name  
+                if let naam = try? container.decode(String.self, forKey: .naam) {
+                    self.name = naam
+                } else if let name = try? container.decode(String.self, forKey: .name) {
+                    self.name = name
+                } else {
+                    throw DecodingError.dataCorrupted(
+                        DecodingError.Context(
+                            codingPath: container.codingPath + [CodingKeys.naam],
+                            debugDescription: "Could not decode naam or name"
+                        )
+                    )
+                }
+                
                 self.code = try container.decodeIfPresent(String.self, forKey: .code)
             }
             
+            // Custom encoder for Codable conformance
+            func encode(to encoder: Encoder) throws {
+                var container = encoder.container(keyedBy: CodingKeys.self)
+                try container.encode(id, forKey: .id)
+                try container.encode(name, forKey: .naam)  // Always encode as naam
+                try container.encodeIfPresent(code, forKey: .code)
+            }
+            
             private enum CodingKeys: String, CodingKey {
-                case id, name, code
+                case id, naam, name, code
             }
         }
         
@@ -1005,16 +1060,39 @@ struct GlobalLeaderboardResponse: Codable {
             let slug: String
             let logoUrl: String?
             
-            enum CodingKeys: String, CodingKey {
-                case name, slug
-                case logoUrl = "logo_url"
-            }
-            
+            // Custom decoder to handle naam vs name
             init(from decoder: Decoder) throws {
                 let container = try decoder.container(keyedBy: CodingKeys.self)
-                self.name = try container.decode(String.self, forKey: .name)
+                
+                // Handle naam vs name  
+                if let naam = try? container.decode(String.self, forKey: .naam) {
+                    self.name = naam
+                } else if let name = try? container.decode(String.self, forKey: .name) {
+                    self.name = name
+                } else {
+                    throw DecodingError.dataCorrupted(
+                        DecodingError.Context(
+                            codingPath: container.codingPath + [CodingKeys.naam],
+                            debugDescription: "Could not decode club naam or name"
+                        )
+                    )
+                }
+                
                 self.slug = try container.decode(String.self, forKey: .slug)
                 self.logoUrl = try container.decodeIfPresent(String.self, forKey: .logoUrl)
+            }
+            
+            // Custom encoder for Codable conformance
+            func encode(to encoder: Encoder) throws {
+                var container = encoder.container(keyedBy: CodingKeys.self)
+                try container.encode(name, forKey: .naam)  // Always encode as naam
+                try container.encode(slug, forKey: .slug)
+                try container.encodeIfPresent(logoUrl, forKey: .logoUrl)
+            }
+            
+            private enum CodingKeys: String, CodingKey {
+                case naam, name, slug
+                case logoUrl = "logo_url"
             }
         }
         
