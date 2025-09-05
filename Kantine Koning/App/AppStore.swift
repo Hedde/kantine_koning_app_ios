@@ -413,10 +413,10 @@ final class AppStore: ObservableObject {
         // Mark enrollments as revoked but keep them for season summary access
         let tenantEnrollmentIds = tenantData.enrollments
         for enrollmentId in tenantEnrollmentIds {
-            if var enrollment = model.enrollments[enrollmentId] {
+            if let enrollment = model.enrollments[enrollmentId] {
                 // Keep enrollment but mark as revoked by clearing token (this prevents API calls)
                 // The enrollment data itself is preserved for season summary team selection
-                Logger.auth("📋 Preserving enrollment \(enrollmentId) for season summary (token will be cleared)")
+                Logger.auth("📋 Preserving enrollment \(enrollmentId) for season summary (token will be cleared for \(enrollment.teams.count) teams)")
             }
         }
         // Note: Keep tenantData.enrollments intact for season summary team selection
