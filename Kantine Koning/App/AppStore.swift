@@ -885,14 +885,29 @@ extension AppStore {
             return
         }
         
-        var dienst = upcoming[index]
+        let dienst = upcoming[index]
         var volunteers = dienst.volunteers ?? []
         
         // Add volunteer if not already present
         if !volunteers.contains(name) {
             volunteers.append(name)
-            dienst.volunteers = volunteers
-            upcoming[index] = dienst
+            
+            // Create new Dienst instance with updated volunteers
+            let updatedDienst = Dienst(
+                id: dienst.id,
+                tenantId: dienst.tenantId,
+                teamId: dienst.teamId,
+                teamName: dienst.teamName,
+                startTime: dienst.startTime,
+                endTime: dienst.endTime,
+                status: dienst.status,
+                locationName: dienst.locationName,
+                volunteers: volunteers,
+                updatedAt: dienst.updatedAt,
+                minimumBemanning: dienst.minimumBemanning
+            )
+            
+            upcoming[index] = updatedDienst
             Logger.volunteer("🚀 Optimistically added '\(name)' to dienst \(dienstId) - UI updated instantly")
         }
     }
@@ -904,14 +919,29 @@ extension AppStore {
             return
         }
         
-        var dienst = upcoming[index]
+        let dienst = upcoming[index]
         var volunteers = dienst.volunteers ?? []
         
         // Remove volunteer if present
         if let volunteerIndex = volunteers.firstIndex(of: name) {
             volunteers.remove(at: volunteerIndex)
-            dienst.volunteers = volunteers
-            upcoming[index] = dienst
+            
+            // Create new Dienst instance with updated volunteers
+            let updatedDienst = Dienst(
+                id: dienst.id,
+                tenantId: dienst.tenantId,
+                teamId: dienst.teamId,
+                teamName: dienst.teamName,
+                startTime: dienst.startTime,
+                endTime: dienst.endTime,
+                status: dienst.status,
+                locationName: dienst.locationName,
+                volunteers: volunteers,
+                updatedAt: dienst.updatedAt,
+                minimumBemanning: dienst.minimumBemanning
+            )
+            
+            upcoming[index] = updatedDienst
             Logger.volunteer("🚀 Optimistically removed '\(name)' from dienst \(dienstId) - UI updated instantly")
         }
     }
@@ -923,14 +953,29 @@ extension AppStore {
             return
         }
         
-        var dienst = upcoming[index]
+        let dienst = upcoming[index]
         var volunteers = dienst.volunteers ?? []
         
         // Remove the optimistically added volunteer
         if let volunteerIndex = volunteers.firstIndex(of: name) {
             volunteers.remove(at: volunteerIndex)
-            dienst.volunteers = volunteers
-            upcoming[index] = dienst
+            
+            // Create new Dienst instance with reverted volunteers
+            let revertedDienst = Dienst(
+                id: dienst.id,
+                tenantId: dienst.tenantId,
+                teamId: dienst.teamId,
+                teamName: dienst.teamName,
+                startTime: dienst.startTime,
+                endTime: dienst.endTime,
+                status: dienst.status,
+                locationName: dienst.locationName,
+                volunteers: volunteers,
+                updatedAt: dienst.updatedAt,
+                minimumBemanning: dienst.minimumBemanning
+            )
+            
+            upcoming[index] = revertedDienst
             Logger.volunteer("↩️ Reverted optimistic add of '\(name)' from dienst \(dienstId)")
         }
     }
@@ -942,14 +987,29 @@ extension AppStore {
             return
         }
         
-        var dienst = upcoming[index]
+        let dienst = upcoming[index]
         var volunteers = dienst.volunteers ?? []
         
         // Add the volunteer back
         if !volunteers.contains(name) {
             volunteers.append(name)
-            dienst.volunteers = volunteers
-            upcoming[index] = dienst
+            
+            // Create new Dienst instance with reverted volunteers
+            let revertedDienst = Dienst(
+                id: dienst.id,
+                tenantId: dienst.tenantId,
+                teamId: dienst.teamId,
+                teamName: dienst.teamName,
+                startTime: dienst.startTime,
+                endTime: dienst.endTime,
+                status: dienst.status,
+                locationName: dienst.locationName,
+                volunteers: volunteers,
+                updatedAt: dienst.updatedAt,
+                minimumBemanning: dienst.minimumBemanning
+            )
+            
+            upcoming[index] = revertedDienst
             Logger.volunteer("↩️ Reverted optimistic remove of '\(name)' - added back to dienst \(dienstId)")
         }
     }
