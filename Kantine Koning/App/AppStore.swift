@@ -876,6 +876,84 @@ extension AppStore {
         }
     }
     
+    // MARK: - Optimistic Updates for Snappy UX
+    
+    /// Immediately add volunteer to UI for responsive UX (before API confirmation)
+    func optimisticallyAddVolunteer(dienstId: String, name: String) {
+        guard let index = upcoming.firstIndex(where: { $0.id == dienstId }) else {
+            Logger.warning("Cannot find dienst \(dienstId) for optimistic add")
+            return
+        }
+        
+        var dienst = upcoming[index]
+        var volunteers = dienst.volunteers ?? []
+        
+        // Add volunteer if not already present
+        if !volunteers.contains(name) {
+            volunteers.append(name)
+            dienst.volunteers = volunteers
+            upcoming[index] = dienst
+            Logger.volunteer("🚀 Optimistically added '\(name)' to dienst \(dienstId) - UI updated instantly")
+        }
+    }
+    
+    /// Immediately remove volunteer from UI for responsive UX (before API confirmation)
+    func optimisticallyRemoveVolunteer(dienstId: String, name: String) {
+        guard let index = upcoming.firstIndex(where: { $0.id == dienstId }) else {
+            Logger.warning("Cannot find dienst \(dienstId) for optimistic remove")
+            return
+        }
+        
+        var dienst = upcoming[index]
+        var volunteers = dienst.volunteers ?? []
+        
+        // Remove volunteer if present
+        if let volunteerIndex = volunteers.firstIndex(of: name) {
+            volunteers.remove(at: volunteerIndex)
+            dienst.volunteers = volunteers
+            upcoming[index] = dienst
+            Logger.volunteer("🚀 Optimistically removed '\(name)' from dienst \(dienstId) - UI updated instantly")
+        }
+    }
+    
+    /// Revert optimistic add if API call fails
+    func revertOptimisticVolunteerAdd(dienstId: String, name: String) {
+        guard let index = upcoming.firstIndex(where: { $0.id == dienstId }) else {
+            Logger.warning("Cannot find dienst \(dienstId) for revert add")
+            return
+        }
+        
+        var dienst = upcoming[index]
+        var volunteers = dienst.volunteers ?? []
+        
+        // Remove the optimistically added volunteer
+        if let volunteerIndex = volunteers.firstIndex(of: name) {
+            volunteers.remove(at: volunteerIndex)
+            dienst.volunteers = volunteers
+            upcoming[index] = dienst
+            Logger.volunteer("↩️ Reverted optimistic add of '\(name)' from dienst \(dienstId)")
+        }
+    }
+    
+    /// Revert optimistic remove if API call fails
+    func revertOptimisticVolunteerRemove(dienstId: String, name: String) {
+        guard let index = upcoming.firstIndex(where: { $0.id == dienstId }) else {
+            Logger.warning("Cannot find dienst \(dienstId) for revert remove")
+            return
+        }
+        
+        var dienst = upcoming[index]
+        var volunteers = dienst.volunteers ?? []
+        
+        // Add the volunteer back
+        if !volunteers.contains(name) {
+            volunteers.append(name)
+            dienst.volunteers = volunteers
+            upcoming[index] = dienst
+            Logger.volunteer("↩️ Reverted optimistic remove of '\(name)' - added back to dienst \(dienstId)")
+        }
+    }
+    
     // MARK: - Auth token management
     // NOTE: We now use enrollment-specific tokens per operation instead of global auth tokens
     // Each operation creates its own BackendClient with the appropriate tenant-specific token

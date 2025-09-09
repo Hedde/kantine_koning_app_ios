@@ -768,20 +768,23 @@ private struct DienstCardContent: View {
         newVolunteerName = ""
         showAddVolunteer = false
         
-        // Call backend API instead of local update
+        // OPTIMISTIC UPDATE: Update UI immediately for snappy UX
+        store.optimisticallyAddVolunteer(dienstId: dienst.id, name: name)
+        
+        // Call backend API for persistence
         store.addVolunteer(tenant: dienst.tenantId, dienstId: dienst.id, name: name) { result in
             working = false
             switch result {
             case .success:
-                Logger.volunteer("Successfully added volunteer via API")
-                // Note: volunteers will be updated when diensten refresh after cache invalidation
-                // Check if dienst will be fully staffed after adding this volunteer
-                let newVolunteerCount = volunteers.count + 1
-                if newVolunteerCount >= minimumBemanning { triggerCelebration() }
+                Logger.volunteer("✅ Volunteer added successfully - optimistic update confirmed")
+                // Check if dienst is now fully staffed for celebration
+                let currentVolunteers = store.upcoming.first { $0.id == dienst.id }?.volunteers ?? []
+                if currentVolunteers.count >= minimumBemanning { triggerCelebration() }
             case .failure(let err):
-                Logger.volunteer("Failed to add volunteer: \(err)")
+                Logger.volunteer("❌ Failed to add volunteer - reverting optimistic update")
+                // REVERT: Remove optimistic update and show error
+                store.revertOptimisticVolunteerAdd(dienstId: dienst.id, name: name)
                 errorText = ErrorTranslations.translate(err)
-                // Revert UI state on failure
                 showAddVolunteer = true
                 newVolunteerName = name
             }
@@ -803,15 +806,19 @@ private struct DienstCardContent: View {
         removingVolunteers.insert(name)
         errorText = nil
         
-        // Call backend API instead of local update
+        // OPTIMISTIC UPDATE: Remove from UI immediately for snappy UX
+        store.optimisticallyRemoveVolunteer(dienstId: dienst.id, name: name)
+        
+        // Call backend API for persistence
         store.removeVolunteer(tenant: dienst.tenantId, dienstId: dienst.id, name: name) { result in
             removingVolunteers.remove(name)
             switch result {
             case .success:
-                Logger.volunteer("Successfully removed volunteer via API")
-                // Note: volunteers will be updated when diensten refresh after cache invalidation
+                Logger.volunteer("✅ Volunteer removed successfully - optimistic update confirmed")
             case .failure(let err):
-                Logger.volunteer("Failed to remove volunteer: \(err)")
+                Logger.volunteer("❌ Failed to remove volunteer - reverting optimistic update")
+                // REVERT: Add volunteer back and show error
+                store.revertOptimisticVolunteerRemove(dienstId: dienst.id, name: name)
                 errorText = ErrorTranslations.translate(err)
             }
         }
