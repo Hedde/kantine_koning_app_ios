@@ -692,6 +692,63 @@ final class BackendClient {
         }.resume()
     }
     
+    // MARK: - Banners
+    func fetchBanners(tenant: TenantID, completion: @escaping (Result<[BannerDTO], Error>) -> Void) {
+        Logger.network("Fetching banners for tenant \(tenant)")
+        
+        var comps = URLComponents(url: baseURL.appendingPathComponent("/api/mobile/v1/banners"), resolvingAgainstBaseURL: false)!
+        comps.queryItems = [
+            URLQueryItem(name: "tenant", value: tenant),
+            URLQueryItem(name: "randomize", value: "true")
+        ]
+        
+        guard let url = comps.url else { 
+            completion(.failure(NSError(domain: "Backend", code: -3, userInfo: [NSLocalizedDescriptionKey: "Invalid URL"])))
+            return 
+        }
+        
+        var req = URLRequest(url: url)
+        
+        // Add auth token if available for device enrollment filtering
+        if let token = authToken, !token.isEmpty {
+            req.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+            Logger.auth("Using authenticated request for banners")
+        }
+        
+        URLSession.shared.dataTask(with: req) { data, response, error in
+            if let error = error { 
+                let userFriendlyError = self.createUserFriendlyError(from: error, context: "banners")
+                completion(.failure(userFriendlyError))
+                return 
+            }
+            
+            guard let http = response as? HTTPURLResponse, let data = data else {
+                let userError = NSError(domain: "Backend", code: -1, userInfo: [NSLocalizedDescriptionKey: "Geen antwoord van server ontvangen"])
+                completion(.failure(userError))
+                return
+            }
+            
+            guard (200..<300).contains(http.statusCode) else {
+                let userFriendlyError = self.createUserFriendlyError(from: http.statusCode, data: data, context: "banners")
+                completion(.failure(userFriendlyError))
+                return
+            }
+            
+            do {
+                let decoder = JSONDecoder()
+                let response = try decoder.decode(BannerResponse.self, from: data)
+                Logger.success("Banners fetched: \(response.banners.count) items for tenant \(tenant)")
+                completion(.success(response.banners))
+            } catch {
+                Logger.error("banners decode error: \(error)")
+                let userError = NSError(domain: "Backend", code: -2, userInfo: [
+                    NSLocalizedDescriptionKey: "Ongeldig antwoord ontvangen van server voor banners"
+                ])
+                completion(.failure(userError))
+            }
+        }.resume()
+    }
+    
     // MARK: - Error Handling Helpers
     private func createUserFriendlyError(from error: Error, context: String) -> NSError {
         let nsError = error as NSError
@@ -1134,6 +1191,31 @@ struct GlobalLeaderboardResponse: Codable {
     
     let period: String
     let teams: [TeamEntry]
+}
+
+// MARK: - Banner DTOs
+struct BannerResponse: Codable {
+    let banners: [BannerDTO]
+}
+
+struct BannerDTO: Codable, Identifiable {
+    let id: String
+    let tenantSlug: String
+    let name: String
+    let fileUrl: String
+    let linkUrl: String?
+    let altText: String?
+    let displayOrder: Int
+    
+    enum CodingKeys: String, CodingKey {
+        case id
+        case tenantSlug = "tenant_slug"
+        case name
+        case fileUrl = "file_url"
+        case linkUrl = "link_url"
+        case altText = "alt_text"
+        case displayOrder = "display_order"
+    }
 }
 
 

@@ -43,6 +43,24 @@ struct DomainModel: Codable, Equatable {
     }
 
     enum Role: String, Codable, Equatable { case manager, member }
+    
+    struct Banner: Codable, Equatable, Identifiable {
+        let id: String
+        let tenantSlug: String
+        let name: String
+        let fileUrl: String
+        let linkUrl: String?
+        let altText: String?
+        let displayOrder: Int
+        
+        var imageURL: URL? {
+            URL(string: fileUrl)
+        }
+        
+        var hasLink: Bool {
+            linkUrl != nil && !(linkUrl?.isEmpty ?? true)
+        }
+    }
 
     var deviceID: String
     var apnsToken: String?

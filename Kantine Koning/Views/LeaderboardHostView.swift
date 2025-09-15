@@ -165,6 +165,10 @@ struct LeaderboardHostView: View {
                     VStack(spacing: 24) {
                         Spacer(minLength: 24)
                         
+                        // Tenant banners - show at top under navigation
+                        TenantBannerView(tenantSlug: tenant.slug)
+                            .environmentObject(store)
+                        
                         // Header with club info
                         VStack(spacing: 16) {
                             // Club logo

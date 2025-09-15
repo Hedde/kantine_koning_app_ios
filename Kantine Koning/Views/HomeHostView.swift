@@ -246,6 +246,11 @@ private struct TeamsView: View {
         ScrollView {
             VStack(spacing: 24) {
                 Spacer(minLength: 24)
+                
+                // Tenant banners - show at top under navigation
+                TenantBannerView(tenantSlug: tenant.slug)
+                    .environmentObject(store)
+                
                 VStack(spacing: 8) {
                     Text("SELECTEER TEAM")
                         .font(KKFont.heading(24))
@@ -358,6 +363,11 @@ private struct TeamDienstenView: View {
         ScrollView {
             VStack(spacing: 24) {
                 Spacer(minLength: 24)
+                
+                // Tenant banners - show at top under navigation
+                TenantBannerView(tenantSlug: tenant.slug)
+                    .environmentObject(store)
+                
                 VStack(spacing: 8) {
                     Text(teamDisplayName(teamId: teamId, in: tenant).uppercased())
                         .font(KKFont.heading(24))
@@ -1468,6 +1478,10 @@ private struct SeasonEndedTeamsView: View {
         ScrollView {
             VStack(spacing: 24) {
                 Spacer(minLength: 24)
+                
+                // Tenant banners - show for season ended too (they might still be active)
+                TenantBannerView(tenantSlug: tenant.slug)
+                    .environmentObject(store)
                 
                 // Header - same style as TeamsView
                 VStack(spacing: 8) {
