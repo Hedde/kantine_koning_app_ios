@@ -10,15 +10,15 @@ struct BannerCarousel: View {
     private let aspectRatio: CGFloat = 6.0 // 6:1 ratio as recommended in docs
     
     var body: some View {
-        if banners.isEmpty {
-            EmptyView()
-        } else if banners.count == 1 {
-            // Single banner - no carousel needed
-            SingleBannerView(banner: banners[0])
-                .frame(height: carouselHeight)
-        } else {
-            // Multiple banners - carousel with auto-rotation
-            VStack(spacing: 0) {
+        Group {
+            if banners.isEmpty {
+                EmptyView()
+            } else if banners.count == 1 {
+                // Single banner - no carousel needed
+                SingleBannerView(banner: banners[0])
+                    .frame(height: carouselHeight)
+            } else {
+                // Multiple banners - carousel with auto-rotation
                 TabView(selection: $currentIndex) {
                     ForEach(Array(banners.enumerated()), id: \.element.id) { index, banner in
                         SingleBannerView(banner: banner)
@@ -28,33 +28,20 @@ struct BannerCarousel: View {
                 .tabViewStyle(PageTabViewStyle(indexDisplayMode: .never))
                 .frame(height: carouselHeight)
                 .clipped()
-                
-                // Custom page indicator
-                if banners.count > 1 {
-                    HStack(spacing: 6) {
-                        ForEach(0..<banners.count, id: \.self) { index in
-                            Circle()
-                                .fill(index == currentIndex ? KKTheme.accent : KKTheme.textSecondary.opacity(0.3))
-                                .frame(width: 6, height: 6)
-                                .animation(.easeInOut(duration: 0.3), value: currentIndex)
-                        }
-                    }
-                    .padding(.top, 8)
-                }
             }
-            .onAppear {
-                startAutoRotation()
+        }
+        .onAppear {
+            startAutoRotation()
+        }
+        .onDisappear {
+            stopAutoRotation()
+        }
+        .onChange(of: banners.count) { _, newCount in
+            // Reset carousel when banners change
+            if currentIndex >= newCount {
+                currentIndex = 0
             }
-            .onDisappear {
-                stopAutoRotation()
-            }
-            .onChange(of: banners.count) { _, newCount in
-                // Reset carousel when banners change
-                if currentIndex >= newCount {
-                    currentIndex = 0
-                }
-                restartAutoRotation()
-            }
+            restartAutoRotation()
         }
     }
     

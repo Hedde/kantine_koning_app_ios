@@ -16,6 +16,10 @@ struct TenantBannerView: View {
         } else {
             // No banners available - show nothing (fail silently)
             EmptyView()
+                .onAppear {
+                    // Trigger lazy loading of banners for this tenant
+                    store.refreshBannersForTenant(tenantSlug)
+                }
         }
     }
 }

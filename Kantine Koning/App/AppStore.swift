@@ -501,56 +501,67 @@ final class AppStore: ObservableObject {
         }
     }
     
-    func refreshBanners() {
+    func refreshBannersForTenant(_ tenantSlug: String) {
         // Only fetch banners for active (non-season ended) tenants
-        let activeTenants = model.tenants.values.filter { !$0.seasonEnded }
-        
-        guard !activeTenants.isEmpty else {
-            Logger.debug("No active tenants - skipping banner refresh")
+        guard let tenant = model.tenants[tenantSlug], !tenant.seasonEnded else {
+            Logger.debug("Tenant \(tenantSlug) is season ended - skipping banner fetch")
             return
         }
         
-        Logger.debug("Refreshing banners for \(activeTenants.count) active tenants")
+        // Don't refetch if we already have banners cached for this tenant
+        if banners[tenantSlug] != nil {
+            Logger.debug("Banners already cached for tenant \(tenantSlug)")
+            return
+        }
         
-        for tenant in activeTenants {
-            // Get tenant-specific auth token
-            guard let authToken = model.authTokenForTeam(tenant.teams.first?.id ?? "", in: tenant.slug) else {
-                Logger.warning("No auth token for tenant \(tenant.slug) - skipping banner fetch")
-                continue
-            }
-            
-            let backend = BackendClient()
-            backend.authToken = authToken
-            
-            backend.fetchBanners(tenant: tenant.slug) { [weak self] result in
-                DispatchQueue.main.async {
-                    switch result {
-                    case .success(let bannerDTOs):
-                        Logger.success("Received \(bannerDTOs.count) banners for tenant \(tenant.slug)")
-                        
-                        // Convert DTOs to domain models
-                        let banners = bannerDTOs.map { dto in
-                            DomainModel.Banner(
-                                id: dto.id,
-                                tenantSlug: dto.tenantSlug,
-                                name: dto.name,
-                                fileUrl: dto.fileUrl,
-                                linkUrl: dto.linkUrl,
-                                altText: dto.altText,
-                                displayOrder: dto.displayOrder
-                            )
-                        }
-                        
-                        self?.banners[tenant.slug] = banners
-                        
-                    case .failure(let error):
-                        Logger.warning("Failed to fetch banners for tenant \(tenant.slug): \(error.localizedDescription)")
-                        // Don't crash the app - banners are non-critical
-                        // Keep existing cached banners if any
-                    }
+        // Get tenant-specific auth token
+        guard let authToken = model.authTokenForTeam(tenant.teams.first?.id ?? "", in: tenantSlug) else {
+            Logger.warning("No auth token for tenant \(tenantSlug) - skipping banner fetch")
+            return
+        }
+        
+        Logger.debug("Fetching banners for tenant \(tenantSlug)")
+        
+        let backend = BackendClient()
+        backend.authToken = authToken
+        
+        backend.fetchBanners(tenant: tenantSlug) { [weak self] result in
+            DispatchQueue.main.async {
+                switch result {
+                case .success(let bannerDTOs):
+                    Logger.success("Received \(bannerDTOs.count) banners for tenant \(tenantSlug)")
+                    
+                    // Convert DTOs to domain models and sort by display order
+                    let banners = bannerDTOs.map { dto in
+                        DomainModel.Banner(
+                            id: dto.id,
+                            tenantSlug: dto.tenantSlug,
+                            name: dto.name,
+                            fileUrl: dto.fileUrl,
+                            linkUrl: dto.linkUrl,
+                            altText: dto.altText,
+                            displayOrder: dto.displayOrder
+                        )
+                    }.sorted { $0.displayOrder < $1.displayOrder }
+                    
+                    // Cache the banners for this specific tenant
+                    self?.banners[tenantSlug] = banners
+                    Logger.success("Cached \(banners.count) banners for tenant \(tenantSlug)")
+                    
+                case .failure(let error):
+                    Logger.warning("Failed to fetch banners for tenant \(tenantSlug): \(error.localizedDescription)")
+                    // Don't crash the app - banners are non-critical
+                    // Set empty array to prevent repeated fetch attempts
+                    self?.banners[tenantSlug] = []
                 }
             }
         }
+    }
+    
+    // Legacy method for backward compatibility - now triggers on-demand loading
+    func refreshBanners() {
+        // This method is called from refreshDiensten() but we'll use lazy loading instead
+        Logger.debug("Banner refresh triggered - will use on-demand loading per tenant")
     }
     
     func refreshTenantInfo() {

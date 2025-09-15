@@ -709,7 +709,7 @@ final class BackendClient {
         
         var req = URLRequest(url: url)
         
-        // Add auth token if available for device enrollment filtering
+        // Add auth token for device enrollment verification
         if let token = authToken, !token.isEmpty {
             req.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
             Logger.auth("Using authenticated request for banners")
