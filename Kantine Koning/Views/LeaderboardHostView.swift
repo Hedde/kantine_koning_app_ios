@@ -163,11 +163,10 @@ struct LeaderboardHostView: View {
             } else if let tenantSlug = selectedTenant, let tenant = store.model.tenants[tenantSlug] {
                 ScrollView {
                     VStack(spacing: 24) {
-                        Spacer(minLength: 16) // Consistent top spacing from navigation
-                        
-                        // Tenant banners - positioned right under navigation with consistent spacing
+                        // Tenant banners - positioned right under navigation with minimal spacing
                         TenantBannerView(tenantSlug: tenant.slug)
                             .environmentObject(store)
+                            .padding(.top, 8) // Minimal spacing from navigation
                         
                         // Header with club info
                         VStack(spacing: 16) {
