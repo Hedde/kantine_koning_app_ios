@@ -7,19 +7,23 @@ struct TenantBannerView: View {
     @EnvironmentObject var store: AppStore
     
     var body: some View {
-        if let banners = store.banners[tenantSlug], !banners.isEmpty {
-            BannerCarousel(banners: banners)
-                .padding(.horizontal, 16)
-                .onAppear {
-                    Logger.debug("Showing \(banners.count) banners for tenant \(tenantSlug)")
-                }
-        } else {
-            // No banners available - show nothing (fail silently)
-            EmptyView()
-                .onAppear {
-                    // Trigger lazy loading of banners for this tenant
-                    store.refreshBannersForTenant(tenantSlug)
-                }
+        VStack(spacing: 0) {
+            if let banners = store.banners[tenantSlug], !banners.isEmpty {
+                BannerCarousel(banners: banners)
+                    .padding(.horizontal, 16)
+                    .onAppear {
+                        Logger.debug("🎯 Showing \(banners.count) banners for tenant \(tenantSlug)")
+                    }
+            } else {
+                // Always show a minimal container to ensure onAppear triggers
+                Color.clear
+                    .frame(height: 1) // Minimal height to ensure the view exists
+                    .onAppear {
+                        // Trigger lazy loading of banners for this tenant
+                        Logger.debug("🔄 Triggering banner load for tenant \(tenantSlug)")
+                        store.refreshBannersForTenant(tenantSlug)
+                    }
+            }
         }
     }
 }

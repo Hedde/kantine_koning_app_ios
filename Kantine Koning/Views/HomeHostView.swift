@@ -245,10 +245,11 @@ private struct TeamsView: View {
     var body: some View {
         ScrollView {
             VStack(spacing: 24) {
+                Spacer(minLength: 16) // Consistent top spacing from navigation
+                
                 // Tenant banners - positioned right under navigation with consistent spacing
                 TenantBannerView(tenantSlug: tenant.slug)
                     .environmentObject(store)
-                    .padding(.top, 16) // Same spacing as horizontal padding
                 
                 VStack(spacing: 8) {
                     Text("SELECTEER TEAM")
@@ -361,10 +362,11 @@ private struct TeamDienstenView: View {
     var body: some View {
         ScrollView {
             VStack(spacing: 24) {
+                Spacer(minLength: 16) // Consistent top spacing from navigation
+                
                 // Tenant banners - positioned right under navigation with consistent spacing
                 TenantBannerView(tenantSlug: tenant.slug)
                     .environmentObject(store)
-                    .padding(.top, 16) // Same spacing as horizontal padding
                 
                 VStack(spacing: 8) {
                     Text(teamDisplayName(teamId: teamId, in: tenant).uppercased())
@@ -1475,10 +1477,11 @@ private struct SeasonEndedTeamsView: View {
         var body: some View {
         ScrollView {
             VStack(spacing: 24) {
+                Spacer(minLength: 16) // Consistent top spacing from navigation
+                
                 // Tenant banners - positioned right under navigation with consistent spacing
                 TenantBannerView(tenantSlug: tenant.slug)
                     .environmentObject(store)
-                    .padding(.top, 16) // Same spacing as horizontal padding
                 
                 // Header - same style as TeamsView
                 VStack(spacing: 8) {
