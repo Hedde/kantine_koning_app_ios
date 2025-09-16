@@ -1138,18 +1138,11 @@ extension AppStore {
             "context": "post_confetti_success"
         ])
         
-        // Delay until after confetti animation completes
-        DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) {
-            if #available(iOS 18.0, *) {
-                if let scene = UIApplication.shared.connectedScenes.first as? UIWindowScene {
-                    StoreKit.AppStore.requestReview(in: scene)
-                }
-            } else {
-                // Fallback for iOS 17 and earlier
-                if let scene = UIApplication.shared.connectedScenes.first as? UIWindowScene {
-                    SKStoreReviewController.requestReview(in: scene)
-                }
-            }
+        // Request review immediately (like TopoVlucht working implementation)
+        if let scene = UIApplication.shared.connectedScenes.first as? UIWindowScene {
+            SKStoreReviewController.requestReview(in: scene)
+        } else {
+            Logger.error("[ReviewRequest] No window scene available for review request")
         }
     }
     
