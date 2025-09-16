@@ -139,12 +139,11 @@ private struct SingleBannerView: View {
             }
         }
         .buttonStyle(.plain)
-        .disabled(!banner.hasLink) // Only tappable if it has a link
     }
     
     private func handleBannerTap() {
         guard banner.hasLink, let linkUrlString = banner.linkUrl, let url = URL(string: linkUrlString) else {
-            Logger.debug("Banner '\(banner.name)' tapped but has no valid link")
+            // Banner has no link - do nothing silently
             return
         }
         

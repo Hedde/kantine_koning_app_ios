@@ -248,7 +248,7 @@ private struct TeamsView: View {
                 // Tenant banners - positioned right under navigation with minimal spacing
                 TenantBannerView(tenantSlug: tenant.slug)
                     .environmentObject(store)
-                    .padding(.top, 8) // Minimal spacing from navigation
+                    .padding(.top, 4) // Minimal spacing from navigation
                 
                 VStack(spacing: 8) {
                     Text("SELECTEER TEAM")
@@ -364,7 +364,7 @@ private struct TeamDienstenView: View {
                 // Tenant banners - positioned right under navigation with minimal spacing
                 TenantBannerView(tenantSlug: tenant.slug)
                     .environmentObject(store)
-                    .padding(.top, 8) // Minimal spacing from navigation
+                    .padding(.top, 4) // Minimal spacing from navigation
                 
                 VStack(spacing: 8) {
                     Text(teamDisplayName(teamId: teamId, in: tenant).uppercased())
@@ -1478,7 +1478,7 @@ private struct SeasonEndedTeamsView: View {
                 // Tenant banners - positioned right under navigation with minimal spacing
                 TenantBannerView(tenantSlug: tenant.slug)
                     .environmentObject(store)
-                    .padding(.top, 8) // Minimal spacing from navigation
+                    .padding(.top, 4) // Minimal spacing from navigation
                 
                 // Header - same style as TeamsView
                 VStack(spacing: 8) {
