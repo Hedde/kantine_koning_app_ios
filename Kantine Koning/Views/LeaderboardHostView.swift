@@ -166,8 +166,7 @@ struct LeaderboardHostView: View {
                         // Tenant banners - positioned right under navigation with minimal spacing
                         TenantBannerView(tenantSlug: tenant.slug)
                             .environmentObject(store)
-                            .padding(.top, 4) // Minimal spacing from navigation
-                        
+
                         // Header with club info
                         VStack(spacing: 16) {
                             // Club logo
