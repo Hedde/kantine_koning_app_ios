@@ -1008,12 +1008,15 @@ private struct SettingsViewInternal: View {
                 .kkCard()
                 .padding(.horizontal, 24)
                 
-                // Email notification preferences per team
-                EmailNotificationPreferencesView()
-                    .environmentObject(store)
+                // Email notification preferences per team - only show if user has manager teams
+                let hasManagerTeams = store.model.tenants.values.contains { tenant in
+                    tenant.teams.contains { $0.role == .manager }
+                }
                 
-                // Development/Testing features
-                developmentFeaturesCard()
+                if hasManagerTeams {
+                    EmailNotificationPreferencesView()
+                        .environmentObject(store)
+                }
                 
                 // Destructive reset card
                 VStack(alignment: .leading, spacing: 12) {
@@ -1065,67 +1068,6 @@ private struct SettingsViewInternal: View {
         }
     }
     
-    // MARK: - Development Features
-    @ViewBuilder
-    private func developmentFeaturesCard() -> some View {
-        #if DEBUG
-        developmentCard()
-        #elseif ENABLE_LOGGING
-        // Release Testing scheme with logging enabled
-        developmentCard()
-        #endif
-    }
-    
-    private func developmentCard() -> some View {
-        VStack(alignment: .leading, spacing: 12) {
-            Text("🧪 Development Features")
-                .font(KKFont.body(12))
-                .foregroundStyle(KKTheme.textSecondary)
-            
-            Text("Tijdelijke test functies voor ontwikkeling")
-                .font(KKFont.body(10))
-                .foregroundStyle(KKTheme.textSecondary)
-                .italic()
-            
-            VStack(spacing: 8) {
-                // Force Season End for any tenant
-                ForEach(Array(store.model.tenants.values), id: \.slug) { tenant in
-                    Button {
-                        simulateSeasonEnd(for: tenant)
-                    } label: {
-                        if tenant.seasonEnded {
-                            Label("Season Ended: \(tenant.name)", systemImage: "checkmark.circle.fill")
-                                .foregroundStyle(.gray)
-                        } else {
-                            Label("🏁 Force Season End: \(tenant.name)", systemImage: "stop.circle.fill")
-                                .foregroundStyle(.orange)
-                        }
-                    }
-                    .buttonStyle(KKSecondaryButton())
-                    .disabled(tenant.seasonEnded)
-                }
-                
-                if store.model.tenants.isEmpty {
-                    Text("Geen tenants beschikbaar voor season end test")
-                        .font(KKFont.body(10))
-                        .foregroundStyle(KKTheme.textSecondary)
-                        .italic()
-                }
-            }
-        }
-        .kkCard()
-        .padding(.horizontal, 24)
-    }
-    
-
-    private func simulateSeasonEnd(for tenant: DomainModel.Tenant) {
-        Logger.debug("🧪 [DEV] Simulating season end for tenant: \(tenant.name)")
-        
-        // Simulate the token revocation scenario
-        store.handleTokenRevocation(for: tenant.slug, reason: "dev_simulation")
-        
-        Logger.debug("🧪 [DEV] Season end simulation completed - tenant marked as ended")
-    }
 }
 
 // MARK: - Email Notification Preferences
@@ -1141,22 +1083,7 @@ private struct EmailNotificationPreferencesView: View {
                 .font(KKFont.body(12))
                 .foregroundStyle(KKTheme.textSecondary)
             
-            let hasManagerTeams = store.model.tenants.values.contains { tenant in
-                tenant.teams.contains { $0.role == .manager }
-            }
-            
-            if store.model.tenants.isEmpty {
-                Text("Geen teams gevonden. Voeg eerst een team toe om e-mail voorkeuren in te stellen.")
-                    .font(KKFont.body(12))
-                    .foregroundStyle(KKTheme.textSecondary)
-                    .italic()
-            } else if !hasManagerTeams {
-                Text("Geen manager teams gevonden. E-mail voorkeuren zijn alleen beschikbaar voor teams waarbij je manager bent.")
-                    .font(KKFont.body(12))
-                    .foregroundStyle(KKTheme.textSecondary)
-                    .italic()
-            } else {
-                VStack(spacing: 8) {
+            VStack(spacing: 8) {
                     // Group teams by tenant - only show active tenants with manager teams
                     let managerTenants = store.model.tenants.values
                         .filter({ tenant in 
@@ -1257,44 +1184,43 @@ private struct EmailNotificationPreferencesView: View {
                             .padding(.vertical, 4)
                         }
                     }
+            }
+            
+
+            // Info text
+            VStack(alignment: .leading, spacing: 4) {
+                HStack(spacing: 6) {
+                    Image(systemName: "info.circle")
+                        .foregroundStyle(KKTheme.accent)
+                        .font(.caption)
+                    Text("E-mail meldingen uitschakelen")
+                        .font(KKFont.body(11))
+                        .fontWeight(.medium)
+                        .foregroundStyle(KKTheme.textPrimary)
+                    Spacer()
                 }
                 
-
-                // Info text
                 VStack(alignment: .leading, spacing: 4) {
-                    HStack(spacing: 6) {
-                        Image(systemName: "info.circle")
-                            .foregroundStyle(KKTheme.accent)
-                            .font(.caption)
-                        Text("E-mail meldingen uitschakelen")
-                            .font(KKFont.body(11))
-                            .fontWeight(.medium)
-                            .foregroundStyle(KKTheme.textPrimary)
-                        Spacer()
-                    }
+                    Text("Schakel e-mail meldingen uit als je liever alleen push-meldingen ontvangt in de app. Teammanagers kunnen email alleen uitschakelen als push-meldingen werken. Anders blijft email geforceerd aan voor je veiligheid.")
+                        .font(KKFont.body(10))
+                        .foregroundStyle(KKTheme.textSecondary)
+                        .fixedSize(horizontal: false, vertical: true)
                     
-                    VStack(alignment: .leading, spacing: 4) {
-                        Text("Schakel e-mail meldingen uit als je liever alleen push-meldingen ontvangt in de app. Teammanagers kunnen email alleen uitschakelen als push-meldingen werken. Anders blijft email geforceerd aan voor je veiligheid.")
-                            .font(KKFont.body(10))
-                            .foregroundStyle(KKTheme.textSecondary)
+                    if !store.isOnline {
+                        Text("🌐 Offline: E-mail voorkeuren kunnen niet worden gewijzigd zonder internetverbinding.")
+                            .font(KKFont.body(9))
+                            .foregroundStyle(Color.red)
                             .fixedSize(horizontal: false, vertical: true)
-                        
-                        if !store.isOnline {
-                            Text("🌐 Offline: E-mail voorkeuren kunnen niet worden gewijzigd zonder internetverbinding.")
-                                .font(KKFont.body(9))
-                                .foregroundStyle(Color.red)
-                                .fixedSize(horizontal: false, vertical: true)
-                        }
                     }
-                    .frame(maxWidth: .infinity, alignment: .leading)
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
-                .padding(.top, 8)
-                .padding(.horizontal, 12)
-                .padding(.vertical, 10)
-                .background(KKTheme.accent.opacity(0.05))
-                .cornerRadius(6)
             }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(.top, 8)
+            .padding(.horizontal, 12)
+            .padding(.vertical, 10)
+            .background(KKTheme.accent.opacity(0.05))
+            .cornerRadius(6)
         }
         .kkCard()
         .padding(.horizontal, 24)
