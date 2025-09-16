@@ -1,6 +1,7 @@
 import Foundation
 import Combine
 import UserNotifications
+import StoreKit
 
 enum EnrollmentError: LocalizedError {
     case alreadyInProgress
@@ -1084,6 +1085,81 @@ extension AppStore {
     // MARK: - Auth token management
     // NOTE: We now use enrollment-specific tokens per operation instead of global auth tokens
     // Each operation creates its own BackendClient with the appropriate tenant-specific token
+}
+
+// MARK: - Review Request System
+struct ReviewRequestTracker: Codable {
+    private static let key = "kk_review_tracker"
+    
+    var requestCount: Int = 0
+    var lastRequestDate: Date?
+    var hasEverReviewed: Bool = false
+    
+    static func load() -> ReviewRequestTracker {
+        guard let data = UserDefaults.standard.data(forKey: key),
+              let tracker = try? JSONDecoder().decode(ReviewRequestTracker.self, from: data) else {
+            return ReviewRequestTracker()
+        }
+        return tracker
+    }
+    
+    func save() {
+        if let data = try? JSONEncoder().encode(self) {
+            UserDefaults.standard.set(data, forKey: ReviewRequestTracker.key)
+        }
+    }
+}
+
+extension AppStore {
+    static func requestReviewIfAppropriate() {
+        var tracker = ReviewRequestTracker.load()
+        
+        // Never ask if they've already reviewed
+        guard !tracker.hasEverReviewed else { return }
+        
+        // If we've used all 3 attempts, wait a full year
+        if tracker.requestCount >= 3 {
+            if let lastRequest = tracker.lastRequestDate {
+                let daysSinceLastRequest = Calendar.current.dateComponents([.day], from: lastRequest, to: Date()).day ?? 0
+                guard daysSinceLastRequest >= 365 else { return }
+                
+                // Reset after a year
+                tracker.requestCount = 0
+            }
+        }
+        
+        // Make the request
+        tracker.requestCount += 1
+        tracker.lastRequestDate = Date()
+        tracker.save()
+        
+        Logger.userInteraction("Review Request", target: "SKStoreReviewController", context: [
+            "attempt": tracker.requestCount,
+            "context": "post_confetti_success"
+        ])
+        
+        // Delay until after confetti animation completes
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) {
+            if #available(iOS 18.0, *) {
+                if let scene = UIApplication.shared.connectedScenes.first as? UIWindowScene {
+                    StoreKit.AppStore.requestReview(in: scene)
+                }
+            } else {
+                // Fallback for iOS 17 and earlier
+                if let scene = UIApplication.shared.connectedScenes.first as? UIWindowScene {
+                    SKStoreReviewController.requestReview(in: scene)
+                }
+            }
+        }
+    }
+    
+    // Optional: Mark as reviewed if user goes to App Store
+    static func markAsReviewed() {
+        var tracker = ReviewRequestTracker.load()
+        tracker.hasEverReviewed = true
+        tracker.save()
+        Logger.userInteraction("User Reviewed", target: "AppStore", context: [:])
+    }
 }
 
 // MARK: - CTA

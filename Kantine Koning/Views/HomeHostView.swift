@@ -785,7 +785,11 @@ private struct DienstCardContent: View {
                 Logger.volunteer("✅ Volunteer added successfully - optimistic update confirmed")
                 // Check if dienst is now fully staffed for celebration
                 let currentVolunteers = store.upcoming.first { $0.id == dienst.id }?.volunteers ?? []
-                if currentVolunteers.count >= minimumBemanning { triggerCelebration() }
+                if currentVolunteers.count >= minimumBemanning { 
+                    triggerCelebration()
+                    // Request review at peak happiness moment (after successful completion)
+                    AppStore.requestReviewIfAppropriate()
+                }
             case .failure(let err):
                 Logger.volunteer("❌ Failed to add volunteer - reverting optimistic update")
                 // REVERT: Remove optimistic update and show error
