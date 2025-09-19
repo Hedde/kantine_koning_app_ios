@@ -152,7 +152,66 @@ final class AppStore: ObservableObject {
         }
     }
     func handlePushRegistrationFailure(_ error: Error) { Logger.error("APNs failure: \(error)") }
-    func handleNotification(userInfo: [AnyHashable: Any]) { /* map to actions if needed */ }
+    func handleNotification(userInfo: [AnyHashable: Any]) {
+        // CRITICAL: Only handle navigation when app is in registered state
+        // Prevents navigation during onboarding/enrollment flows
+        guard appPhase == .registered else {
+            Logger.push("🚫 Push navigation ignored - app not registered (phase: \(appPhase))")
+            return
+        }
+        
+        // Extract navigation metadata with strict validation
+        guard let tenantSlug = userInfo["tenant_slug"] as? String,
+              !tenantSlug.isEmpty,
+              let teamCode = userInfo["team_code"] as? String,
+              !teamCode.isEmpty else {
+            Logger.push("🚫 Push navigation ignored - missing or invalid navigation data")
+            Logger.push("   tenant_slug: \(userInfo["tenant_slug"] ?? "nil")")
+            Logger.push("   team_code: \(userInfo["team_code"] ?? "nil")")
+            return
+        }
+        
+        // Validate user has access to the requested tenant
+        guard model.tenants[tenantSlug] != nil else {
+            Logger.push("🚫 Push navigation denied - no access to tenant: '\(tenantSlug)'")
+            Logger.push("   Available tenants: \(Array(model.tenants.keys))")
+            return
+        }
+        
+        // Additional safety: Validate team exists within tenant
+        if let tenant = model.tenants[tenantSlug] {
+            let hasTeamAccess = tenant.teams.contains { team in
+                team.id == teamCode || team.code == teamCode
+            }
+            
+            if !hasTeamAccess {
+                Logger.push("🚫 Push navigation denied - no access to team '\(teamCode)' in tenant '\(tenantSlug)'")
+                Logger.push("   Available teams: \(tenant.teams.map { "id=\($0.id) code=\($0.code ?? "nil")" })")
+                return
+            }
+        }
+        
+        Logger.push("✅ Push navigation approved: tenant='\(tenantSlug)' team='\(teamCode)'")
+        
+        // Trigger navigation with delay to avoid race conditions with user actions
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+            // Final safety check - only navigate if app is still in registered state
+            guard self.appPhase == .registered else {
+                Logger.push("🚫 Navigation cancelled - app phase changed during processing")
+                return
+            }
+            
+            NotificationCenter.default.post(
+                name: .pushNavigationRequested,
+                object: nil,
+                userInfo: [
+                    "tenant": tenantSlug,
+                    "team": teamCode,
+                    "source": "push_notification"
+                ]
+            )
+        }
+    }
 
     func configurePushNotifications() {
         pushService.requestAuthorization()
@@ -1138,9 +1197,17 @@ extension AppStore {
             "context": "post_confetti_success"
         ])
         
-        // Request review immediately (like TopoVlucht working implementation)
+        // Request review using modern API with fallback
         if let scene = UIApplication.shared.connectedScenes.first as? UIWindowScene {
-            SKStoreReviewController.requestReview(in: scene)
+            if #available(iOS 18.0, *) {
+                // Use new StoreKit.AppStore API for iOS 18+
+                Task {
+                    await StoreKit.AppStore.requestReview(in: scene)
+                }
+            } else {
+                // Use legacy API for iOS 16-17
+                SKStoreReviewController.requestReview(in: scene)
+            }
         } else {
             Logger.error("[ReviewRequest] No window scene available for review request")
         }

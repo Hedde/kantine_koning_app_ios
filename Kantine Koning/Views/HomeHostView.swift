@@ -104,6 +104,49 @@ struct HomeHostView: View {
                     selectedTeam = nil // This will trigger navigation to SeasonOverviewView
                 }
             }
+            .onReceive(NotificationCenter.default.publisher(for: .pushNavigationRequested)) { notification in
+                // Handle push notification navigation with defensive programming
+                guard let userInfo = notification.userInfo,
+                      let tenantSlug = userInfo["tenant"] as? String,
+                      let teamCode = userInfo["team"] as? String,
+                      let source = userInfo["source"] as? String,
+                      source == "push_notification" else {
+                    Logger.push("🚫 HomeHostView: Invalid push navigation data received")
+                    return
+                }
+                
+                // Enhanced safety: Don't override user's recent manual navigation
+                let userHasNavigated = (selectedTenant != nil || selectedTeam != nil)
+                if userHasNavigated {
+                    Logger.push("🚫 HomeHostView: User already navigated manually - skipping push navigation")
+                    Logger.push("   Current state: tenant=\(selectedTenant ?? "nil") team=\(selectedTeam ?? "nil")")
+                    return
+                }
+                
+                // Additional safety: Verify user has correct role access for this team
+                if let tenant = store.model.tenants[tenantSlug] {
+                    let correctTeamAccess = tenant.teams.contains { team in
+                        (team.id == teamCode || team.code == teamCode)
+                    }
+                    
+                    if !correctTeamAccess {
+                        Logger.push("🚫 HomeHostView: Team access verification failed for '\(teamCode)' in tenant '\(tenantSlug)'")
+                        return
+                    }
+                }
+                
+                // Double-check tenant access (redundant safety check)
+                guard store.model.tenants[tenantSlug] != nil else {
+                    Logger.push("🚫 HomeHostView: Push navigation denied - tenant '\(tenantSlug)' not accessible")
+                    return
+                }
+                
+                Logger.push("✅ HomeHostView: Applying push navigation - tenant='\(tenantSlug)' team='\(teamCode)'")
+                
+                // Apply navigation state
+                selectedTenant = tenantSlug
+                selectedTeam = teamCode
+            }
                             .safeAreaInset(edge: .top) {
                 TopNavigationBar(
                     onHomeAction: {

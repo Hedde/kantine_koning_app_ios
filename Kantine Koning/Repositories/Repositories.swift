@@ -314,6 +314,7 @@ extension DienstRepository {
 
 extension Notification.Name {
     static let tokenRevoked = Notification.Name("TokenRevoked")
+    static let pushNavigationRequested = Notification.Name("PushNavigationRequested")
 }
 
 
