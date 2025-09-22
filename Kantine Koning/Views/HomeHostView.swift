@@ -987,7 +987,7 @@ private struct SwipeableRow<Content: View>: View {
         .alert("Bevestig verwijdering", isPresented: $showingDeleteConfirmation) {
             Button("Annuleren", role: .cancel) { }
             Button("Verwijderen", role: .destructive) { withAnimation(.spring()) { offset = 0; onDelete() } }
-        } message: { Text("Weet je zeker dat je deze enrollment wilt verwijderen?") }
+        } message: { Text("Weet je zeker dat je dit team wilt verwijderen?") }
     }
 }
 
@@ -1109,7 +1109,7 @@ private struct SettingsViewInternal: View {
             Button("Annuleren", role: .cancel) { }
             Button("Reset", role: .destructive) { store.resetAll() }
         } message: {
-            Text("Dit verwijdert alle lokale enrollments en gegevens van dit apparaat.")
+            Text("Dit verwijdert alle teams en gegevens van dit apparaat.")
         }
     }
     
