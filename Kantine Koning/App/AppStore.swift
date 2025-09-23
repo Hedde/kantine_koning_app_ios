@@ -39,6 +39,10 @@ final class AppStore: ObservableObject {
     // Network connectivity
     @Published var isOnline: Bool = true
     let networkMonitor = NetworkMonitor.shared
+    
+    // Reactive push navigation state
+    private var pendingPushNavigation: (tenant: String, team: String)?
+    private var pushNavigationCancellable: AnyCancellable?
 
     // Services
     private let enrollmentRepository: EnrollmentRepository
@@ -108,6 +112,7 @@ final class AppStore: ObservableObject {
     
     deinit {
         NotificationCenter.default.removeObserver(self)
+        pushNavigationCancellable?.cancel()
     }
     
     // MARK: - Network Monitoring
@@ -130,6 +135,70 @@ final class AppStore: ObservableObject {
     func handleIncomingURL(_ url: URL) {
         if DeepLink.isEnrollment(url) { handleEnrollmentDeepLink(url) }
         else if DeepLink.isCTA(url) { handleCTALink(url) }
+    }
+    
+    // MARK: - Reactive Push Navigation
+    private func triggerReactivePushNavigation(tenant: String, team: String) {
+        // Cancel any previous pending navigation
+        pushNavigationCancellable?.cancel()
+        
+        // Store navigation request
+        pendingPushNavigation = (tenant: tenant, team: team)
+        Logger.push("🎯 Reactive navigation queued for tenant='\(tenant)' team='\(team)'")
+        
+        // Start data refresh immediately (non-blocking)
+        Logger.push("🔄 Starting data refresh for push navigation")
+        refreshDiensten()
+        
+        // Create reactive publisher that waits for fresh data OR timeout
+        pushNavigationCancellable = $upcoming
+            .dropFirst() // Skip current stale value
+            .timeout(.seconds(2.0), scheduler: DispatchQueue.main) // Max 2s wait
+            .sink(
+                receiveCompletion: { [weak self] completion in
+                    switch completion {
+                    case .finished:
+                        Logger.push("⏱️ Reactive navigation finished waiting - proceeding (no error)")
+                        self?.executePendingNavigation()
+                    case .failure:
+                        Logger.push("⏰ Reactive navigation timeout - proceeding with cached data")
+                        self?.executePendingNavigation()
+                    }
+                },
+                receiveValue: { [weak self] diensten in
+                    Logger.push("📊 Fresh data received (\(diensten.count) diensten) - executing navigation")
+                    self?.executePendingNavigation()
+                }
+            )
+    }
+    
+    private func executePendingNavigation() {
+        guard let navigation = pendingPushNavigation else {
+            Logger.push("🚫 No pending navigation to execute")
+            return
+        }
+        
+        // Clear pending state
+        pendingPushNavigation = nil
+        pushNavigationCancellable?.cancel()
+        
+        // Final safety check
+        guard appPhase == .registered else {
+            Logger.push("🚫 Navigation cancelled - app not in registered state")
+            return
+        }
+        
+        Logger.push("🚀 Executing push navigation to tenant='\(navigation.tenant)' team='\(navigation.team)'")
+        
+        NotificationCenter.default.post(
+            name: .pushNavigationRequested,
+            object: nil,
+            userInfo: [
+                "tenant": navigation.tenant,
+                "team": navigation.team,
+                "source": "push_notification"
+            ]
+        )
     }
 
     func setPushToken(_ token: String) { 
@@ -193,24 +262,8 @@ final class AppStore: ObservableObject {
         
         Logger.push("✅ Push navigation approved: tenant='\(tenantSlug)' team='\(teamCode)'")
         
-        // Trigger navigation with delay to avoid race conditions with user actions
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
-            // Final safety check - only navigate if app is still in registered state
-            guard self.appPhase == .registered else {
-                Logger.push("🚫 Navigation cancelled - app phase changed during processing")
-                return
-            }
-            
-            NotificationCenter.default.post(
-                name: .pushNavigationRequested,
-                object: nil,
-                userInfo: [
-                    "tenant": tenantSlug,
-                    "team": teamCode,
-                    "source": "push_notification"
-                ]
-            )
-        }
+        // Use reactive navigation that waits for fresh data
+        triggerReactivePushNavigation(tenant: tenantSlug, team: teamCode)
     }
 
     func configurePushNotifications() {
