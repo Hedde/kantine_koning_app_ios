@@ -240,7 +240,8 @@ private extension OnboardingHostView {
         // Accept direct formats: 
         //  - kantinekoning://tenant?slug=&name=
         //  - kantinekoning://invite?tenant=&tenant_name=
-        if let url = URL(string: code), url.scheme == "kantinekoning" {
+        //  - https://kantinekoning.com/invite?tenant=&tenant_name=
+        if let url = URL(string: code), (url.scheme == "kantinekoning" || (url.scheme == "https" && url.host?.contains("kantinekoning.com") == true)) {
             Logger.qr("Direct scheme host=\(url.host ?? "nil") path=\(url.path)")
             let comps = URLComponents(url: url, resolvingAgainstBaseURL: false)
             if url.host == "tenant",
@@ -251,15 +252,11 @@ private extension OnboardingHostView {
                 store.handleQRScan(slug: slug, name: name)
                 return
             }
-            if url.host == "invite",
-               let slug = comps?.queryItems?.first(where: { $0.name == "tenant" })?.value,
-               var name = comps?.queryItems?.first(where: { $0.name == "tenant_name" })?.value {
-                // Replace '+' with space, then percent-decode
-                name = name.replacingOccurrences(of: "+", with: " ")
-                let decodedName = name.removingPercentEncoding ?? name
-                Logger.qr("✅ Parsed invite slug=\(slug) name=\(decodedName)")
-                tenant = slug
-                store.handleQRScan(slug: slug, name: decodedName)
+            if (url.host == "invite" || url.path.contains("invite")),
+               let params = DeepLink.extractInviteParams(from: url) {
+                Logger.qr("✅ Parsed invite slug=\(params.tenant) name=\(params.tenantName)")
+                tenant = params.tenant
+                store.handleQRScan(slug: params.tenant, name: params.tenantName)
                 return
             }
             if let items = comps?.queryItems {
