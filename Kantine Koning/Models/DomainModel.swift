@@ -221,10 +221,13 @@ enum DeepLink {
     static func extractInviteParams(from url: URL) -> (tenant: String, tenantName: String)? {
         guard let components = URLComponents(url: url, resolvingAgainstBaseURL: false),
               let tenant = components.queryItems?.first(where: { $0.name == "tenant" })?.value,
-              let tenantName = components.queryItems?.first(where: { $0.name == "tenant_name" })?.value else {
+              let tenantNameRaw = components.queryItems?.first(where: { $0.name == "tenant_name" })?.value else {
             return nil
         }
-        return (tenant: tenant, tenantName: tenantName.removingPercentEncoding ?? tenantName)
+        // Normalize '+' to spaces for query params, then percent-decode
+        let plusNormalized = tenantNameRaw.replacingOccurrences(of: "+", with: " ")
+        let tenantName = plusNormalized.removingPercentEncoding ?? plusNormalized
+        return (tenant: tenant, tenantName: tenantName)
     }
 }
 
