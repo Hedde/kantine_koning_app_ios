@@ -135,6 +135,7 @@ final class AppStore: ObservableObject {
     func handleIncomingURL(_ url: URL) {
         if DeepLink.isEnrollment(url) { handleEnrollmentDeepLink(url) }
         else if DeepLink.isCTA(url) { handleCTALink(url) }
+        else if DeepLink.isInvite(url) { handleInviteLink(url) }
     }
     
     // MARK: - Reactive Push Navigation
@@ -879,6 +880,17 @@ final class AppStore: ObservableObject {
         // Example: kantinekoning://cta/shift-volunteer?token=...
         guard let token = DeepLink.extractToken(from: url) else { return }
         pendingCTA = .shiftVolunteer(token: token)
+    }
+    
+    private func handleInviteLink(_ url: URL) {
+        // Handle both kantinekoning://invite?... and https://kantinekoning.com/invite?...
+        guard let params = DeepLink.extractInviteParams(from: url) else { return }
+        Logger.userInteraction("Invite Link Received", target: "AppStore", context: [
+            "tenant": params.tenant,
+            "tenant_name": params.tenantName,
+            "url_scheme": url.scheme ?? "unknown"
+        ])
+        handleQRScan(slug: params.tenant, name: params.tenantName)
     }
 }
 

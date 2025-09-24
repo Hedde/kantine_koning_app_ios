@@ -216,7 +216,16 @@ struct EnrollmentDelta {
 enum DeepLink {
     static func isEnrollment(_ url: URL) -> Bool { (url.scheme == "kantinekoning" && url.host == "device-enroll") || (url.host?.contains("kantinekoning.com") == true && url.path.contains("device-enroll")) }
     static func isCTA(_ url: URL) -> Bool { (url.scheme == "kantinekoning" && url.host == "cta") || (url.host?.contains("kantinekoning.com") == true && url.path.contains("cta")) }
+    static func isInvite(_ url: URL) -> Bool { (url.scheme == "kantinekoning" && url.host == "invite") || (url.host?.contains("kantinekoning.com") == true && url.path.contains("invite")) }
     static func extractToken(from url: URL) -> String? { URLComponents(url: url, resolvingAgainstBaseURL: false)?.queryItems?.first(where: { $0.name == "token" })?.value }
+    static func extractInviteParams(from url: URL) -> (tenant: String, tenantName: String)? {
+        guard let components = URLComponents(url: url, resolvingAgainstBaseURL: false),
+              let tenant = components.queryItems?.first(where: { $0.name == "tenant" })?.value,
+              let tenantName = components.queryItems?.first(where: { $0.name == "tenant_name" })?.value else {
+            return nil
+        }
+        return (tenant: tenant, tenantName: tenantName.removingPercentEncoding ?? tenantName)
+    }
 }
 
 // MARK: - Onboarding types
