@@ -8,11 +8,13 @@
 
 /* Begin PBXBuildFile section */
 		FCC66FC22E510BC100CA6189 /* Launch Screen.storyboard in Resources */ = {isa = PBXBuildFile; fileRef = FCC66FC12E510BC100CA6189 /* Launch Screen.storyboard */; };
+		FCE394E82E83DBEF00309E9C /* EventKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = FCE394E72E83DBEF00309E9C /* EventKit.framework */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
 		FCC66F6F2E50D45500CA6189 /* Kantine Koning.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = "Kantine Koning.app"; sourceTree = BUILT_PRODUCTS_DIR; };
 		FCC66FC12E510BC100CA6189 /* Launch Screen.storyboard */ = {isa = PBXFileReference; lastKnownFileType = file.storyboard; path = "Launch Screen.storyboard"; sourceTree = "<group>"; };
+		FCE394E72E83DBEF00309E9C /* EventKit.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = EventKit.framework; path = System/Library/Frameworks/EventKit.framework; sourceTree = SDKROOT; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedRootGroup section */
@@ -28,6 +30,7 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				FCE394E82E83DBEF00309E9C /* EventKit.framework in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -39,6 +42,7 @@
 			children = (
 				FCC66FC12E510BC100CA6189 /* Launch Screen.storyboard */,
 				FCC66F712E50D45500CA6189 /* Kantine Koning */,
+				FCE394E62E83DBEE00309E9C /* Frameworks */,
 				FCC66F702E50D45500CA6189 /* Products */,
 			);
 			sourceTree = "<group>";
@@ -49,6 +53,14 @@
 				FCC66F6F2E50D45500CA6189 /* Kantine Koning.app */,
 			);
 			name = Products;
+			sourceTree = "<group>";
+		};
+		FCE394E62E83DBEE00309E9C /* Frameworks */ = {
+			isa = PBXGroup;
+			children = (
+				FCE394E72E83DBEF00309E9C /* EventKit.framework */,
+			);
+			name = Frameworks;
 			sourceTree = "<group>";
 		};
 /* End PBXGroup section */
@@ -281,7 +293,7 @@
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				MARKETING_VERSION = 1.7.9;
+				MARKETING_VERSION = 1.8.1;
 				ONLY_ACTIVE_ARCH = YES;
 				PRODUCT_BUNDLE_IDENTIFIER = "hvdh.Kantine-Koning";
 				PRODUCT_NAME = "$(TARGET_NAME)";
@@ -317,7 +329,7 @@
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				MARKETING_VERSION = 1.7.9;
+				MARKETING_VERSION = 1.8.1;
 				ONLY_ACTIVE_ARCH = NO;
 				PRODUCT_BUNDLE_IDENTIFIER = "hvdh.Kantine-Koning";
 				PRODUCT_NAME = "$(TARGET_NAME)";

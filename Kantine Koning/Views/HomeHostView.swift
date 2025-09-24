@@ -616,6 +616,9 @@ private struct DienstCardContent: View {
     @State private var working = false
     @State private var errorText: String?
     @State private var removingVolunteers: Set<String> = []
+    @State private var calendarService = CalendarService()
+    @State private var showingCalendarSuccess = false
+    @State private var calendarError: String?
     @EnvironmentObject var store: AppStore
     
     // Computed property to always reflect current dienst data
@@ -630,9 +633,21 @@ private struct DienstCardContent: View {
                         .font(KKFont.title(18))
                         .foregroundStyle(KKTheme.textPrimary)
                     Spacer()
+                    
+                    // Calendar button (only for future diensten)
+                    if dienst.startTime >= Date() && calendarService.isCalendarAvailable {
+                        Button(action: { addToCalendar() }) {
+                            Image(systemName: showingCalendarSuccess ? "calendar.badge.checkmark" : "calendar.badge.plus")
+                                .font(.system(size: 20, weight: .medium))
+                                .foregroundStyle(showingCalendarSuccess ? Color.green : KKTheme.accent)
+                        }
+                        .accessibilityLabel("Toevoegen aan agenda")
+                        .disabled(showingCalendarSuccess)
+                    }
+                    
                     // Location badge
                     HStack(spacing: 4) {
-                        Image(systemName: "location.fill").font(.caption)
+                        Image(systemName: "location.fill").font(.system(size: 12))
                         Text(locationText).font(KKFont.body(12))
                     }
                     .padding(.horizontal, 8)
@@ -769,6 +784,21 @@ private struct DienstCardContent: View {
         .background(KKTheme.surfaceAlt)
         .cornerRadius(12)
         .overlay(ConfettiView(trigger: confettiTrigger).allowsHitTesting(false))
+        .alert("Agenda", isPresented: $showingCalendarSuccess) {
+            Button("OK") { 
+                showingCalendarSuccess = false 
+            }
+        } message: {
+            Text("Dienst toegevoegd aan je agenda!")
+        }
+        .alert("Agenda Fout", isPresented: Binding<Bool>(
+            get: { calendarError != nil },
+            set: { _ in calendarError = nil }
+        )) {
+            Button("OK") { calendarError = nil }
+        } message: {
+            Text(calendarError ?? "")
+        }
 
     }
     
@@ -796,6 +826,36 @@ private struct DienstCardContent: View {
         let minutes = Int(dienst.endTime.timeIntervalSince(dienst.startTime) / 60)
         let h = minutes / 60, m = minutes % 60
         return h > 0 ? "\(h)h\(m > 0 ? " \(m)m" : "")" : "\(m)m"
+    }
+    
+    private func addToCalendar() {
+        Logger.userInteraction("Add to Calendar", target: "DienstCard", context: ["dienst_id": dienst.id])
+        
+        calendarService.addDienstToCalendar(dienst) { result in
+            DispatchQueue.main.async {
+                switch result {
+                case .success:
+                    showingCalendarSuccess = true
+                    calendarError = nil
+                    
+                    // Haptic feedback for success
+                    let feedback = UINotificationFeedbackGenerator()
+                    feedback.notificationOccurred(.success)
+                    
+                    Logger.success("Calendar event created successfully")
+                    
+                case .failure(let error):
+                    calendarError = error.localizedDescription
+                    showingCalendarSuccess = false
+                    
+                    // Haptic feedback for error
+                    let feedback = UINotificationFeedbackGenerator()
+                    feedback.notificationOccurred(.error)
+                    
+                    Logger.error("Calendar add failed: \(error)")
+                }
+            }
+        }
     }
     
     private func addVolunteer() {

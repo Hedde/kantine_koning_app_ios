@@ -1,6 +1,7 @@
 import Foundation
 import UserNotifications
 import UIKit
+import EventKit
 
 protocol PushService {
     func requestAuthorization()
