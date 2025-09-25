@@ -4,7 +4,7 @@ import AVFoundation
 struct OnboardingHostView: View {
     @EnvironmentObject var store: AppStore
     @State private var email: String = ""
-    @State private var tenant: TenantID = "vvwilhelmus"
+    @State private var tenant: TenantID = "" // Only used as fallback, should not happen in normal flow
     @State private var submitting = false
     @State private var errorText: String?
     @State private var searchQuery: String = ""
@@ -44,7 +44,7 @@ struct OnboardingHostView: View {
                             ManagerVerifySection(email: $email, isLoading: submitting, errorText: $errorText, onSubmit: {
                                 submitting = true
                                 errorText = nil
-                                store.submitEmail(email, for: tenant, selectedTeamCodes: []) { result in
+                                store.submitEmail(email, for: scanned.slug, selectedTeamCodes: []) { result in
                                     submitting = false
                                     if case .failure(let err) = result { errorText = ErrorTranslations.translate(err) }
                                 }
@@ -57,7 +57,7 @@ struct OnboardingHostView: View {
                             ManagerTeamPickerSection(allowed: sortedAllowedTeams(),
                                                      selected: $selectedManagerTeams,
                                                      onSubmit: submitManagerTeams,
-                                                     enrolledIds: enrolledTeamIdsForTenant(tenant))
+                                                     enrolledIds: enrolledTeamIdsForTenant(scanned.slug))
                             .padding(.bottom, 8)
                             // Terug - want misschien andere teams willen of email wijzigen
                             SubtleActionButton(icon: "chevron.left", text: "Terug") { 
@@ -68,11 +68,11 @@ struct OnboardingHostView: View {
                     } else if step == .member {
                         // Step 2c: Member team search
                         MemberSearchSection(
-                            tenant: tenant,
+                            tenant: scanned.slug,
                             searchQuery: $searchQuery,
                             results: store.searchResults,
                             selected: $selectedMemberTeams,
-                            onSearch: { q in store.searchTeams(tenant: tenant, query: q) },
+                            onSearch: { q in store.searchTeams(tenant: scanned.slug, query: q) },
                             onSubmit: registerMember
                         )
                         .padding(.bottom, 8)
@@ -149,7 +149,12 @@ struct OnboardingHostView: View {
 
     private func request() {
         submitting = true
-        store.submitEmail(email, for: tenant, selectedTeamCodes: []) { result in
+        guard let tenantSlug = store.onboardingScan?.slug else {
+            Logger.error("No tenant found in onboardingScan - this should not happen in normal flow")
+            errorText = "Er is een probleem opgetreden. Probeer opnieuw te scannen."
+            return
+        }
+        store.submitEmail(email, for: tenantSlug, selectedTeamCodes: []) { result in
             submitting = false
             switch result {
             case .success:
@@ -175,7 +180,13 @@ struct OnboardingHostView: View {
         // Use team codes, not IDs for backend
         let teamCodes = store.searchResults.filter { selectedMemberTeams.contains($0.id) }.compactMap { $0.code ?? $0.id }
         Logger.debug("📋 Team codes to register: \(teamCodes)")
-        store.registerMember(tenantSlug: tenant, tenantName: store.onboardingScan?.name ?? tenant, teamIds: teamCodes) { result in
+        guard let tenantSlug = store.onboardingScan?.slug,
+              let tenantName = store.onboardingScan?.name else {
+            Logger.error("No tenant found in onboardingScan - this should not happen in normal flow")
+            errorText = "Er is een probleem opgetreden. Probeer opnieuw te scannen."
+            return
+        }
+        store.registerMember(tenantSlug: tenantSlug, tenantName: tenantName, teamIds: teamCodes) { result in
             if case .failure(let err) = result { errorText = ErrorTranslations.translate(err) }
         }
     }
@@ -186,7 +197,13 @@ struct OnboardingHostView: View {
         // Convert team IDs to team codes for backend
         let teamCodes = store.searchResults.filter { selectedManagerTeams.contains($0.id) }.compactMap { $0.code ?? $0.id }
         Logger.debug("📋 Manager team codes to submit: \(teamCodes)")
-        store.submitEmail(email, for: tenant, selectedTeamCodes: teamCodes) { result in
+        guard let tenantSlug = store.onboardingScan?.slug else {
+            Logger.error("No tenant found in onboardingScan - this should not happen in normal flow")
+            errorText = "Er is een probleem opgetreden. Probeer opnieuw te scannen."
+            submitting = false
+            return
+        }
+        store.submitEmail(email, for: tenantSlug, selectedTeamCodes: teamCodes) { result in
             submitting = false
             if case .failure(let err) = result { errorText = ErrorTranslations.translate(err) }
         }
