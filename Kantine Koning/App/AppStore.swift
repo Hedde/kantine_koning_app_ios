@@ -890,6 +890,16 @@ final class AppStore: ObservableObject {
             "tenant_name": params.tenantName,
             "url_scheme": url.scheme ?? "unknown"
         ])
+        
+        // Always show enrollment flow for direct links - user might want to add more teams
+        // Force the app to onboarding mode to show enrollment screen
+        Logger.userInteraction("Invite Link - Forcing Enrollment Flow", target: "AppStore", context: [
+            "tenant": params.tenant,
+            "action": "forcing_enrollment_display"
+        ])
+        
+        // Set app phase to onboarding to ensure enrollment screen is shown
+        appPhase = .onboarding
         handleQRScan(slug: params.tenant, name: params.tenantName)
     }
 }
