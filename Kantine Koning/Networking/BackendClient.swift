@@ -117,8 +117,21 @@ final class BackendClient {
                 Logger.debug("📄 FULL ENROLLMENT RESPONSE:")
                 Logger.debug("\(String(data: data, encoding: .utf8) ?? "<decode failed>")")
                 
-                let tenantSlug = obj?["tenant_slug"] as? String ?? "tenant_demo"
-                let tenantName = obj?["tenant_name"] as? String ?? "Demo Club"
+                // CRITICAL: Validate required fields - no silent fallbacks to demo data
+                guard let tenantSlug = obj?["tenant_slug"] as? String, !tenantSlug.isEmpty else {
+                    Logger.error("❌ Missing or empty tenant_slug in enrollment response")
+                    Logger.error("Response: \(String(data: data, encoding: .utf8) ?? "nil")")
+                    completion(.failure(AppError.validationFailed("Missing tenant_slug in API response")))
+                    return
+                }
+                
+                guard let tenantName = obj?["tenant_name"] as? String, !tenantName.isEmpty else {
+                    Logger.error("❌ Missing or empty tenant_name in enrollment response")
+                    Logger.error("Response: \(String(data: data, encoding: .utf8) ?? "nil")")
+                    completion(.failure(AppError.validationFailed("Missing tenant_name in API response")))
+                    return
+                }
+                
                 let teamCodes = obj?["team_codes"] as? [String] ?? []
                 let email = obj?["email"] as? String
                 let roleRaw = obj?["role"] as? String ?? "manager"
