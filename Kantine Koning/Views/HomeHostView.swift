@@ -754,10 +754,15 @@ private struct DienstCardContent: View {
                     }
                     
                     HStack(spacing: 12) {
-                        Button("Annuleren") { 
+                        Button {
                             showAddVolunteer = false
                             newVolunteerName = ""
                             errorText = nil
+                        } label: {
+                            HStack(spacing: 6) {
+                                Image(systemName: "chevron.left")
+                                Text("Terug")
+                            }
                         }.buttonStyle(KKSecondaryButton())
                         Button(working ? "Bezig..." : "Toevoegen") { addVolunteer() }
                             .disabled(newVolunteerName.trimmingCharacters(in: .whitespaces).isEmpty || dienst.startTime < Date() || working)

@@ -28,6 +28,7 @@ final class AppStore: ObservableObject {
     @Published private(set) var model: DomainModel = .empty
     @Published var upcoming: [Dienst] = []
     @Published var searchResults: [SearchTeam] = []
+    @Published var tenantSearchResults: [TenantSearchResult] = []
     @Published var onboardingScan: ScannedTenant?
     @Published var pendingCTA: CTA?
     @Published var leaderboards: [String: LeaderboardData] = [:]  // tenantSlug -> LeaderboardData
@@ -910,6 +911,16 @@ extension AppStore {
     func searchTeams(tenant: TenantID, query: String) {
         enrollmentRepository.searchTeams(tenant: tenant, query: query) { [weak self] result in
             DispatchQueue.main.async { if case .success(let items) = result { self?.searchResults = items } }
+        }
+    }
+    
+    func searchTenants(query: String) {
+        enrollmentRepository.searchTenants(query: query) { [weak self] result in
+            DispatchQueue.main.async { 
+                if case .success(let items) = result { 
+                    self?.tenantSearchResults = items 
+                }
+            }
         }
     }
 

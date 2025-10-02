@@ -3,6 +3,7 @@ import AVFoundation
 
 struct OnboardingHostView: View {
     @EnvironmentObject var store: AppStore
+    var namespace: Namespace.ID?
     @State private var email: String = ""
     @State private var tenant: TenantID = "" // Only used as fallback, should not happen in normal flow
     @State private var submitting = false
@@ -15,14 +16,88 @@ struct OnboardingHostView: View {
     @State private var step: EnrollStep? = nil
     @State private var selectedRole: EnrollStep? = nil
     @State private var keyboardHeight: CGFloat = 0
+    @State private var showingQRScanner = false
+    @State private var tenantSearchQuery: String = ""
     private var safeAreaBottom: CGFloat {
         (UIApplication.shared.connectedScenes.first as? UIWindowScene)?.keyWindow?.safeAreaInsets.bottom ?? 0
     }
 
     var body: some View {
-        ScrollView {
-            VStack(spacing: 24) {
-                HeaderHero()
+        ZStack(alignment: .top) {
+            // Witte achtergrond voor hele app
+            Color.white.ignoresSafeArea()
+            
+            ScrollView {
+                VStack(spacing: 0) {
+                    // Tap anywhere to dismiss keyboard
+                    Color.clear
+                        .contentShape(Rectangle())
+                        .onTapGesture {
+                            hideKeyboard()
+                        }
+                        .frame(height: 0)
+                    
+                    // Background afbeelding helemaal bovenaan (onder status bar) - ZONDER overlay
+                    GeometryReader { geo in
+                        let minY = geo.frame(in: .global).minY
+                        let imageHeight = max(0, 170 + minY)
+                        
+                        Image("Background")
+                            .resizable()
+                            .scaledToFill()
+                            .frame(width: geo.size.width, height: imageHeight)
+                            .offset(y: -minY)
+                            .mask(
+                                DiagonalShape()
+                                    .frame(height: imageHeight)
+                                    .offset(y: -minY)
+                            )
+                    }
+                    .frame(height: 120)
+                    
+                    // Extra ruimte tussen background en logo
+                    Spacer().frame(height: 40)
+                    
+                    // Content container
+                    VStack(spacing: 24) {
+                        // Logo en titel (altijd tonen)
+                        VStack(spacing: 24) {
+                            BrandAssets.logoImage()
+                                .resizable()
+                                .scaledToFit()
+                                .frame(width: 72, height: 72)
+
+                            VStack(spacing: -2) {
+                                Text("KANTINEDIENSTEN")
+                                    .font(KKFont.heading(30))
+                                    .fontWeight(.regular)
+                                    .kerning(-1.2)
+                                    .foregroundStyle(KKTheme.textPrimary)
+                                ZigZagWebsiteWord("EENVOUDIG")
+                                    .padding(.vertical, -6)
+                                Text("PLANNEN.")
+                                    .font(KKFont.heading(30))
+                                    .fontWeight(.regular)
+                                    .kerning(-1.2)
+                                    .foregroundStyle(KKTheme.textPrimary)
+                            }
+                            .multilineTextAlignment(.center)
+                        }
+                        
+                        // Instructietekst (context-afhankelijk)
+                        if showingQRScanner {
+                            Text("Scan de QR-code van je club")
+                                .font(KKFont.body(16))
+                                .multilineTextAlignment(.center)
+                                .foregroundStyle(KKTheme.textSecondary)
+                                .padding(.horizontal, 24)
+                        } else {
+                            Text("Zoek je club of scan de QR-code om je team(s) te kiezen en meldingen te ontvangen wanneer jouw team is ingedeeld.")
+                                .font(KKFont.body(16))
+                                .multilineTextAlignment(.center)
+                                .foregroundStyle(KKTheme.textSecondary)
+                                .padding(.horizontal, 24)
+                        }
 
                 if let scanned = store.onboardingScan {
                     if step == nil {
@@ -33,10 +108,11 @@ struct OnboardingHostView: View {
                             onContinue: { if let sel = selectedRole { step = sel } }
                         )
                         .padding(.bottom, 8)
-                        // Opnieuw scannen - want misschien verkeerde QR gescand
-                        SubtleActionButton(icon: "qrcode.viewfinder", text: "Opnieuw scannen") {
+                        // Terug naar welkom scherm
+                        SubtleActionButton(icon: "chevron.left", text: "Terug") {
                             store.onboardingScan = nil
-                            scanning = true
+                            showingQRScanner = false
+                            scanning = false
                         }
                     } else if step == .manager {
                         if store.searchResults.isEmpty {
@@ -79,8 +155,8 @@ struct OnboardingHostView: View {
                         // Terug - want misschien toch teammanager willen worden
                         SubtleActionButton(icon: "chevron.left", text: "Terug") { step = nil }
                     }
-                } else {
-                    // Old design: square scanner container with overlay
+                } else if showingQRScanner {
+                    // QR Scanner (when explicitly chosen)
                     VStack(spacing: 16) {
                         ZStack {
                             RoundedRectangle(cornerRadius: 16, style: .continuous)
@@ -108,31 +184,44 @@ struct OnboardingHostView: View {
                         }
                             .buttonStyle(KKPrimaryButton())
                         .padding(.horizontal, 24)
+                        
+                        // Terug naar welkom scherm
+                        SubtleActionButton(icon: "chevron.left", text: "Terug") {
+                            showingQRScanner = false
+                            scanning = false
+                        }
                     }
+                } else {
+                    // Welkom scherm met tenant search
+                    TenantSearchSection(
+                        searchQuery: $tenantSearchQuery,
+                        results: store.tenantSearchResults,
+                        onTenantSelected: { tenant in
+                            // Simuleer QR scan met gekozen tenant
+                            store.handleQRScan(slug: tenant.slug, name: tenant.name)
+                        },
+                        onQRScanTapped: {
+                            showingQRScanner = true
+                            scanning = true
+                        }
+                    )
                 }
 
 
                 
-                // Show cancel only if there are existing enrollments AND we're not in a scanned state
+                // Show back button only if there are existing enrollments AND we're not in a scanned state
                 if !store.model.tenants.isEmpty && store.onboardingScan == nil {
-                    Button {
+                    SubtleActionButton(icon: "chevron.left", text: "Terug") {
                         store.appPhase = .registered
-                    } label: {
-                        HStack(spacing: 6) {
-                            Image(systemName: "xmark.circle.fill")
-                            Text("Annuleren")
-                        }
                     }
-                    .buttonStyle(.plain)
-                    .foregroundStyle(KKTheme.textSecondary)
                     .padding(.top, 16)
                 }
+                    }
+                    .padding(.vertical, 32)
+                    .frame(maxWidth: .infinity)
+                }
             }
-            .padding(.vertical, 32)
-            .frame(maxWidth: .infinity)
-            .frame(minHeight: UIScreen.main.bounds.height - 1)
         }
-        .background(KKTheme.surface)
         .safeAreaInset(edge: .bottom) {
             Color.clear.frame(height: keyboardHeight)
         }
@@ -145,6 +234,16 @@ struct OnboardingHostView: View {
         .onReceive(NotificationCenter.default.publisher(for: UIResponder.keyboardWillHideNotification)) { _ in
             withAnimation(.easeOut(duration: 0.2)) { keyboardHeight = 0 }
         }
+        .simultaneousGesture(
+            // Tap gesture op hele view om keyboard te sluiten
+            TapGesture().onEnded { _ in
+                hideKeyboard()
+            }
+        )
+    }
+    
+    private func hideKeyboard() {
+        UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
     }
 
     private func request() {
@@ -515,6 +614,8 @@ private extension OnboardingHostView {
     }
 }
 private struct HeaderHero: View {
+    var showBackground: Bool = true
+    
     var body: some View {
         VStack(spacing: 24) {
             BrandAssets.logoImage()
@@ -538,7 +639,7 @@ private struct HeaderHero: View {
             }
             .multilineTextAlignment(.center)
 
-            Text("Scan de QR-code van je club om je team(s) te kiezen en meldingen te ontvangen wanneer jou team is ingedeeld.")
+            Text("Zoek je club of scan de QR-code om je team(s) te kiezen en meldingen te ontvangen wanneer jouw team is ingedeeld.")
                 .font(KKFont.body(16))
                 .multilineTextAlignment(.center)
                 .foregroundStyle(KKTheme.textSecondary)
@@ -766,6 +867,191 @@ private struct SubtleActionButton: View {
         .buttonStyle(.plain)
         .foregroundStyle(KKTheme.textSecondary)
         .padding(.horizontal, 24)
+    }
+}
+
+// MARK: - Tenant Search Section
+private struct TenantSearchSection: View {
+    @EnvironmentObject var store: AppStore
+    @Binding var searchQuery: String
+    let results: [TenantSearchResult]
+    let onTenantSelected: (TenantSearchResult) -> Void
+    let onQRScanTapped: () -> Void
+    
+    private let maxDisplayedResults = 3
+    
+    private var limitedResults: [TenantSearchResult] {
+        Array(results.prefix(maxDisplayedResults))
+    }
+    
+    private var hasMoreResults: Bool {
+        results.count > maxDisplayedResults
+    }
+    
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            // Header met QR scan icoon
+            HStack {
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("Zoek je vereniging")
+                        .font(KKFont.body(12))
+                        .foregroundStyle(KKTheme.textSecondary)
+                    
+                    // Helpful instruction text
+                    if searchQuery.isEmpty {
+                        Text("Typ de naam van je sportvereniging")
+                            .font(KKFont.body(11))
+                            .foregroundStyle(KKTheme.textSecondary)
+                            .italic()
+                    }
+                }
+                
+                Spacer()
+                
+                // QR scan icoon (zoals bankieren apps)
+                Button(action: onQRScanTapped) {
+                    Image(systemName: "qrcode.viewfinder")
+                        .font(.system(size: 28))
+                        .foregroundStyle(KKTheme.accent)
+                        .frame(width: 44, height: 44)
+                        .contentShape(Rectangle())
+                }
+            }
+            
+            TextField("Bijv. VV Wilhelmus", text: $searchQuery)
+                .kkTextField()
+                .onChange(of: searchQuery) { _, newValue in 
+                    store.searchTenants(query: newValue)
+                }
+            
+            VStack(spacing: 8) {
+                ForEach(limitedResults) { tenant in
+                    TenantRow(
+                        tenant: tenant,
+                        isEnabled: tenant.enrollmentOpen,
+                        action: {
+                            guard tenant.enrollmentOpen else { return }
+                            onTenantSelected(tenant)
+                        }
+                    )
+                }
+                
+                // Show message when there are more results
+                if hasMoreResults {
+                    HStack {
+                        Image(systemName: "magnifyingglass")
+                            .foregroundStyle(KKTheme.textSecondary)
+                        Text("Er zijn \(results.count - maxDisplayedResults) meer resultaten. Typ meer letters voor een specifiekere zoekopdracht.")
+                            .font(KKFont.body(12))
+                            .foregroundStyle(KKTheme.textSecondary)
+                    }
+                    .padding(.horizontal, 24)
+                    .padding(.vertical, 8)
+                    .background(KKTheme.surface)
+                    .cornerRadius(6)
+                }
+            }
+        }
+        .kkCard()
+        .padding(.horizontal, 24)
+    }
+}
+
+// MARK: - Tenant Row
+private struct TenantRow: View {
+    let tenant: TenantSearchResult
+    let isEnabled: Bool
+    let action: () -> Void
+    
+    var body: some View {
+        Button(action: action) {
+            VStack(alignment: .leading, spacing: 4) {
+                HStack(spacing: 12) {
+                    // Club logo
+                    if let logoUrlString = tenant.clubLogoUrl,
+                       !logoUrlString.isEmpty,
+                       let logoUrl = URL(string: logoUrlString) {
+                        CachedAsyncImage(url: logoUrl) { image in
+                            image
+                                .resizable()
+                                .scaledToFit()
+                        } placeholder: {
+                            Image(systemName: "building.2")
+                                .foregroundStyle(KKTheme.textSecondary)
+                        }
+                        .frame(width: 40, height: 40)
+                        .cornerRadius(8)
+                    } else {
+                        // Fallback icon als geen logo (exact dezelfde styling voor uitlijning)
+                        Image(systemName: "building.2")
+                            .foregroundStyle(KKTheme.textSecondary)
+                            .frame(width: 40, height: 40)
+                            .cornerRadius(8)
+                    }
+                    
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(tenant.name)
+                            .font(KKFont.body(16))
+                            .foregroundStyle(isEnabled ? KKTheme.textPrimary : KKTheme.textSecondary)
+                        
+                        Text(tenant.slug)
+                            .font(KKFont.body(12))
+                            .foregroundStyle(KKTheme.textSecondary)
+                    }
+                    
+                    Spacer()
+                    
+                    if isEnabled {
+                        Image(systemName: "chevron.right")
+                            .foregroundStyle(KKTheme.textSecondary)
+                    } else {
+                        Image(systemName: "lock.fill")
+                            .foregroundStyle(.red)
+                    }
+                }
+                
+                // Toon seizoen bericht als gesloten
+                if !isEnabled {
+                    Text(tenant.enrollmentMessage ?? "Inschrijving momenteel gesloten")
+                        .font(KKFont.body(11))
+                        .foregroundStyle(.red)
+                        .padding(.top, 4)
+                }
+            }
+            .padding()
+            .background(isEnabled ? KKTheme.surface : KKTheme.surface.opacity(0.5))
+            .cornerRadius(8)
+            .overlay(
+                RoundedRectangle(cornerRadius: 8)
+                    .stroke(isEnabled ? Color.clear : Color.red.opacity(0.3), lineWidth: 1)
+            )
+        }
+        .disabled(!isEnabled)
+        .opacity(isEnabled ? 1.0 : 0.6)
+    }
+}
+
+// MARK: - Diagonal Shape for Background
+private struct DiagonalShape: Shape {
+    func path(in rect: CGRect) -> Path {
+        var path = Path()
+        
+        // Start linksboven
+        path.move(to: CGPoint(x: 0, y: 0))
+        
+        // Rechts boven
+        path.addLine(to: CGPoint(x: rect.maxX, y: 0))
+        
+        // Rechts naar beneden (iets hoger dan onderkant)
+        path.addLine(to: CGPoint(x: rect.maxX, y: rect.maxY - 60))
+        
+        // Schuin naar links beneden (onderkant)
+        path.addLine(to: CGPoint(x: 0, y: rect.maxY))
+        
+        // Terug naar start
+        path.closeSubpath()
+        
+        return path
     }
 }
 

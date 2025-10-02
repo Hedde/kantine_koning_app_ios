@@ -505,6 +505,27 @@ final class BackendClient {
             } catch { completion(.failure(error)) }
         }.resume()
     }
+    
+    // MARK: - Tenant Search (public)
+    func searchTenants(query: String, completion: @escaping (Result<[TenantSearchResult], Error>) -> Void) {
+        let trimmed = query.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { completion(.success([])); return }
+        var comps = URLComponents(url: baseURL.appendingPathComponent("/api/mobile/v1/tenants/search"), resolvingAgainstBaseURL: false)!
+        comps.queryItems = [URLQueryItem(name: "q", value: trimmed)]
+        guard let url = comps.url else { completion(.failure(NSError(domain: "Backend", code: -3))); return }
+        let req = URLRequest(url: url)
+        URLSession.shared.dataTask(with: req) { data, response, error in
+            if let error = error { completion(.failure(error)); return }
+            guard let http = response as? HTTPURLResponse, let data = data, (200..<300).contains(http.statusCode) else {
+                completion(.failure(NSError(domain: "Backend", code: -1))); return
+            }
+            do {
+                struct Resp: Decodable { let tenants: [TenantSearchResult] }
+                let resp = try JSONDecoder().decode(Resp.self, from: data)
+                completion(.success(resp.tenants))
+            } catch { completion(.failure(error)) }
+        }.resume()
+    }
 
     // MARK: - Member Enrollment (no email)
     func registerMemberDevice(tenantSlug: String, tenantName: String, teamIds: [String], pushToken: String?, completion: @escaping (Result<EnrollmentDelta, Error>) -> Void) {

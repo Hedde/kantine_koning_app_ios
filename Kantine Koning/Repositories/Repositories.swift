@@ -12,6 +12,7 @@ protocol EnrollmentRepository {
     func removeTenant(_ tenant: TenantID, completion: @escaping (Result<Void, Error>) -> Void)
     func removeAllEnrollments(completion: @escaping (Result<Void, Error>) -> Void)
     func searchTeams(tenant: TenantID, query: String, completion: @escaping (Result<[SearchTeam], Error>) -> Void)
+    func searchTenants(query: String, completion: @escaping (Result<[TenantSearchResult], Error>) -> Void)
     func registerMember(tenantSlug: String, tenantName: String, teamIds: [TeamID], pushToken: String?, completion: @escaping (Result<EnrollmentDelta, Error>) -> Void)
 }
 
@@ -68,6 +69,10 @@ final class DefaultEnrollmentRepository: EnrollmentRepository {
         backend.searchTeams(tenant: tenant, query: query) { result in
             completion(result.map { list in list.map { SearchTeam(id: $0.id, code: $0.code, name: $0.naam) } })
         }
+    }
+    
+    func searchTenants(query: String, completion: @escaping (Result<[TenantSearchResult], Error>) -> Void) {
+        backend.searchTenants(query: query, completion: completion)
     }
 
     func registerMember(tenantSlug: String, tenantName: String, teamIds: [TeamID], pushToken: String?, completion: @escaping (Result<EnrollmentDelta, Error>) -> Void) {
@@ -282,6 +287,24 @@ struct SearchTeam: Identifiable, Equatable {
 
 // Remote Team search DTO
 struct TeamDTO: Decodable { let id: String; let code: String?; let naam: String }
+
+// Remote Tenant search result
+struct TenantSearchResult: Identifiable, Decodable {
+    let slug: String
+    let name: String
+    let enrollmentOpen: Bool
+    let enrollmentMessage: String?
+    let clubLogoUrl: String?
+    
+    var id: String { slug }
+    
+    enum CodingKeys: String, CodingKey {
+        case slug, name
+        case enrollmentOpen = "enrollment_open"
+        case enrollmentMessage = "enrollment_message"
+        case clubLogoUrl = "club_logo_url"
+    }
+}
 
 // MARK: - DienstRepository Extension for Token Revocation
 
