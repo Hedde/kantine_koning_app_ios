@@ -464,6 +464,13 @@ final class AppStore: ObservableObject {
         // Perform all local cleanup
         cleanupTenantData(tenant)
         
+        // Check if this was the last enrollment - if so, return to onboarding
+        if model.tenants.isEmpty {
+            Logger.info("🔄 Last tenant removed - returning to onboarding")
+            appPhase = .onboarding
+            return
+        }
+        
         // Try backend removal if we have the tenant's auth token
         if let token = tenantToken {
             // Create a temporary backend client with the specific tenant's token
@@ -492,6 +499,13 @@ final class AppStore: ObservableObject {
         model = updatedModel
         enrollmentRepository.persist(model: model)
         Logger.success("Local team removal complete")
+        
+        // Check if this was the last enrollment - if so, return to onboarding
+        if model.tenants.isEmpty {
+            Logger.info("🔄 Last team removed (no tenants left) - returning to onboarding")
+            appPhase = .onboarding
+            return
+        }
         
         // Try backend removal if we have the team's auth token
         if let token = authToken {
