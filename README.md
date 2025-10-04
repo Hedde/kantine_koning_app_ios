@@ -31,6 +31,11 @@ Home → Verenigingen → Teams → Diensten
        Delete    Delete      beheer
 ```
 
+**Auto-reset naar onboarding:**
+- Wanneer het laatste team/vereniging wordt verwijderd via swipe-to-delete
+- Wanneer "Alles resetten" wordt gebruikt in instellingen
+- App keert automatisch terug naar QR-scan scherm
+
 ## Architectuur
 - `AppStore` (ObservableObject) beheert appfasen: launching, onboarding, enrollmentPending, registered
 - `DomainModel` met `Tenant`, `Team`, rollen (`manager`/`member`), persist via `UserDefaults` (`kk_domain_model`)
@@ -519,9 +524,11 @@ throw AppError.validationFailed("Invalid email")
 
 - Max 5 teams per gebruiker (enforced bij enrollment en member-registratie)
 - Vrijwilliger toevoegen kan alleen voor toekomstige diensten en enkel als manager
+- **Auto-reset gedrag**: Bij verwijderen van laatste team/vereniging keert de app automatisch terug naar onboarding
 - "Alles resetten" wist lokaal en probeert backend-opschoning indien auth-token aanwezig
 - **Multi-tenant**: Gebruik ALTIJD enrollment-specifieke JWT tokens via `model.authTokenForTeam()` of `tenant.signedDeviceToken`, NIET `primaryAuthToken`
 - **Data synchronisatie**: Bij netwerkproblemen kan `refreshDiensten()` handmatig aangeroepen worden om data bij te werken
+- **Simulator rebuilds**: Token/enrollment data kan verloren gaan bij rebuild - re-enroll je teams indien nodig
 
 ### 🚨 Common Configuration Mistakes
 
