@@ -1117,7 +1117,8 @@ extension AppStore {
                 locationName: dienst.locationName,
                 volunteers: volunteers,
                 updatedAt: dienst.updatedAt,
-                minimumBemanning: dienst.minimumBemanning
+                minimumBemanning: dienst.minimumBemanning,
+                dienstType: dienst.dienstType
             )
             
             upcoming[index] = updatedDienst
@@ -1151,7 +1152,8 @@ extension AppStore {
                 locationName: dienst.locationName,
                 volunteers: volunteers,
                 updatedAt: dienst.updatedAt,
-                minimumBemanning: dienst.minimumBemanning
+                minimumBemanning: dienst.minimumBemanning,
+                dienstType: dienst.dienstType
             )
             
             upcoming[index] = updatedDienst
@@ -1185,7 +1187,8 @@ extension AppStore {
                 locationName: dienst.locationName,
                 volunteers: volunteers,
                 updatedAt: dienst.updatedAt,
-                minimumBemanning: dienst.minimumBemanning
+                minimumBemanning: dienst.minimumBemanning,
+                dienstType: dienst.dienstType
             )
             
             upcoming[index] = revertedDienst
@@ -1219,7 +1222,8 @@ extension AppStore {
                 locationName: dienst.locationName,
                 volunteers: volunteers,
                 updatedAt: dienst.updatedAt,
-                minimumBemanning: dienst.minimumBemanning
+                minimumBemanning: dienst.minimumBemanning,
+                dienstType: dienst.dienstType
             )
             
             upcoming[index] = revertedDienst

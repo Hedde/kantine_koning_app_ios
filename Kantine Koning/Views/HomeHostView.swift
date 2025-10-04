@@ -9,29 +9,28 @@ struct HomeHostView: View {
     @State private var selectedTeam: String? = nil
 
     var body: some View {
-        NavigationStack {
-            VStack(spacing: 0) {
-                // Main Content
-                if showSettings {
-                    SettingsViewInternal().environmentObject(store)
-                } else if showLeaderboard {
-                    LeaderboardHostView(
-                        initialTenant: selectedTenant,
-                        initialTeam: selectedTeam,
-                        showingInfo: leaderboardShowingInfo,
-                        onInfoToggle: { showingInfo in
-                            leaderboardShowingInfo = showingInfo
-                        }
-                    ).environmentObject(store)
-                } else if let tenantSlug = selectedTenant, let teamId = selectedTeam, let tenant = store.model.tenants[tenantSlug] {
-                    // Team is selected - show appropriate view based on season status
-                    if tenant.seasonEnded {
-                        SeasonOverviewView(tenant: tenant, teamId: teamId)
-                            .environmentObject(store)
-                    } else {
-                        TeamDienstenView(tenant: tenant, teamId: teamId).environmentObject(store)
+        VStack(spacing: 0) {
+            // Main Content
+            if showSettings {
+                SettingsViewInternal().environmentObject(store)
+            } else if showLeaderboard {
+                LeaderboardHostView(
+                    initialTenant: selectedTenant,
+                    initialTeam: selectedTeam,
+                    showingInfo: leaderboardShowingInfo,
+                    onInfoToggle: { showingInfo in
+                        leaderboardShowingInfo = showingInfo
                     }
-                } else if let tenantSlug = selectedTenant, let tenant = store.model.tenants[tenantSlug] {
+                ).environmentObject(store)
+            } else if let tenantSlug = selectedTenant, let teamId = selectedTeam, let tenant = store.model.tenants[tenantSlug] {
+                // Team is selected - show appropriate view based on season status
+                if tenant.seasonEnded {
+                    SeasonOverviewView(tenant: tenant, teamId: teamId)
+                        .environmentObject(store)
+                } else {
+                    TeamDienstenView(tenant: tenant, teamId: teamId).environmentObject(store)
+                }
+            } else if let tenantSlug = selectedTenant, let tenant = store.model.tenants[tenantSlug] {
                     // Tenant selected but no team - always show team selection
                     if tenant.seasonEnded {
                         SeasonEndedTeamsView(tenant: tenant,
@@ -185,7 +184,6 @@ struct HomeHostView: View {
                 )
                 .background(KKTheme.surface)
             }
-        }
     }
 }
 
@@ -475,8 +473,11 @@ private struct TeamDienstenView: View {
         let future = filtered.filter { $0.startTime >= now }.sorted { $0.startTime < $1.startTime }
         let past = filtered.filter { $0.startTime < now }.sorted { $0.startTime > $1.startTime }
         
-        Logger.debug("📊 Filtered diensten for team '\(team.name)': \(filtered.count) total (\(future.count) future, \(past.count) past)")
-        return future + past
+        // Only show last 3 past diensten to keep the list manageable
+        let recentPast = Array(past.prefix(3))
+        
+        Logger.debug("📊 Filtered diensten for team '\(team.name)': \(filtered.count) total (\(future.count) future, \(past.count) past, showing \(recentPast.count) recent)")
+        return future + recentPast
     }
     
     private func teamDisplayName(teamId: String, in tenant: DomainModel.Tenant) -> String {
@@ -656,9 +657,19 @@ private struct DienstCardContent: View {
                     .foregroundStyle(Color.blue)
                     .cornerRadius(8)
                 }
-                HStack(spacing: 4) {
+                HStack(spacing: 8) {
                     Image(systemName: "clock").font(.caption).foregroundStyle(KKTheme.textSecondary)
                     Text(timeRangeText).font(KKFont.body(14)).foregroundStyle(KKTheme.textSecondary)
+                    
+                    // Dienst type - subtiel naast de tijd
+                    if let dienstType = dienst.dienstType {
+                        Text("•")
+                            .foregroundStyle(KKTheme.textSecondary)
+                            .font(KKFont.body(12))
+                        Text(dienstType.naam)
+                            .font(KKFont.body(14))
+                            .foregroundStyle(KKTheme.textSecondary)
+                    }
                 }
             }
             

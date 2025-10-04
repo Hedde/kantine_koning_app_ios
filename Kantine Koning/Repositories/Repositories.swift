@@ -214,7 +214,8 @@ final class DefaultDienstRepository: DienstRepository {
             locationName: dto.locatie_naam,
             volunteers: dto.aanmeldingen,
             updatedAt: dto.updated_at,
-            minimumBemanning: dto.minimum_bemanning
+            minimumBemanning: dto.minimum_bemanning,
+            dienstType: dto.dienst_type.map { Dienst.DienstType(naam: $0.naam, icon: $0.icon) }
         )
     }
 
@@ -232,7 +233,8 @@ final class DefaultDienstRepository: DienstRepository {
                     locationName: dto.locatie_naam,
                     volunteers: dto.aanmeldingen,
                     updatedAt: dto.updated_at,
-                    minimumBemanning: dto.minimum_bemanning
+                    minimumBemanning: dto.minimum_bemanning,
+                    dienstType: dto.dienst_type.map { Dienst.DienstType(naam: $0.naam, icon: $0.icon) }
                 )
             })
         }
@@ -252,7 +254,8 @@ final class DefaultDienstRepository: DienstRepository {
                     locationName: dto.locatie_naam,
                     volunteers: dto.aanmeldingen,
                     updatedAt: dto.updated_at,
-                    minimumBemanning: dto.minimum_bemanning
+                    minimumBemanning: dto.minimum_bemanning,
+                    dienstType: dto.dienst_type.map { Dienst.DienstType(naam: $0.naam, icon: $0.icon) }
                 )
             })
         }
@@ -265,6 +268,11 @@ final class DefaultDienstRepository: DienstRepository {
 
 // MARK: - DTOs used by Dienst repository
 struct Dienst: Codable, Identifiable, Equatable {
+    struct DienstType: Codable, Equatable {
+        let naam: String
+        let icon: String
+    }
+    
     let id: String
     let tenantId: TenantID
     let teamId: TeamID?
@@ -276,6 +284,7 @@ struct Dienst: Codable, Identifiable, Equatable {
     let volunteers: [String]?
     let updatedAt: Date?
     let minimumBemanning: Int
+    let dienstType: DienstType?
 }
 
 // Team search DTO for UI

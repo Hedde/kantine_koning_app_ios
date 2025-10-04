@@ -277,7 +277,7 @@ final class BackendClient {
         var comps = URLComponents(url: baseURL.appendingPathComponent("/api/mobile/v1/diensten"), resolvingAgainstBaseURL: false)!
         comps.queryItems = [
             URLQueryItem(name: "tenant", value: tenant), 
-            URLQueryItem(name: "past_days", value: "14"), 
+            URLQueryItem(name: "past_days", value: "30"), 
             URLQueryItem(name: "future_days", value: "60")
         ]
         guard let url = comps.url else { completion(.failure(NSError(domain: "Backend", code: -3))); return }
@@ -334,7 +334,7 @@ final class BackendClient {
         
         var comps = URLComponents(url: baseURL.appendingPathComponent("/api/mobile/v1/diensten"), resolvingAgainstBaseURL: false)!
         comps.queryItems = [
-            URLQueryItem(name: "past_days", value: "14"), 
+            URLQueryItem(name: "past_days", value: "30"), 
             URLQueryItem(name: "future_days", value: "60")
             // No tenant parameter = fetch for all enrolled tenants
         ]
@@ -936,6 +936,7 @@ enum BackendError: Error, Equatable {
 // MARK: - DTOs
 struct DienstDTO: Codable {
     struct TeamRef: Codable { let id: String; let code: String?; let naam: String }
+    struct DienstTypeRef: Codable { let naam: String; let icon: String }
     let id: String
     let tenant_id: String
     let team: TeamRef?
@@ -947,6 +948,7 @@ struct DienstDTO: Codable {
     let aanmeldingen_count: Int?
     let aanmeldingen: [String]?
     let updated_at: Date?
+    let dienst_type: DienstTypeRef?
 }
 
 struct TenantInfoResponse: Codable {

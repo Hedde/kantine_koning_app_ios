@@ -5,17 +5,20 @@ struct RootView: View {
     @Namespace private var animation
 
     var body: some View {
-        Group {
-            switch store.appPhase {
-            case .launching:
-                SplashView(namespace: animation)
-            case .onboarding:
-                OnboardingHostView(namespace: animation)
-            case .registered:
-                HomeHostView()
-            case .enrollmentPending(_):
-                EnrollmentPendingHostView()
+        NavigationStack {
+            Group {
+                switch store.appPhase {
+                case .launching:
+                    SplashView(namespace: animation)
+                case .onboarding:
+                    OnboardingHostView(namespace: animation)
+                case .registered:
+                    HomeHostView()
+                case .enrollmentPending(_):
+                    EnrollmentPendingHostView()
+                }
             }
+            .navigationBarHidden(true)
         }
         .onOpenURL { url in store.handleIncomingURL(url) }
     }

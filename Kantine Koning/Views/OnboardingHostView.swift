@@ -209,8 +209,8 @@ struct OnboardingHostView: View {
 
 
                 
-                // Show back button only if there are existing enrollments AND we're not in a scanned state
-                if !store.model.tenants.isEmpty && store.onboardingScan == nil {
+                // Show back button only if there are existing enrollments AND we're not in a scanned state AND not showing QR scanner
+                if !store.model.tenants.isEmpty && store.onboardingScan == nil && !showingQRScanner {
                     SubtleActionButton(icon: "chevron.left", text: "Terug") {
                         store.appPhase = .registered
                     }
