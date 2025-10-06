@@ -734,6 +734,7 @@ final class AppStore: ObservableObject {
     private func updateTenantInfoFromResponse(_ response: TenantInfoResponse) {
         // Start with existing tenant info to preserve data for season-ended tenants
         var newTenantInfo: [String: TenantInfo] = tenantInfo
+        var modelUpdated = false
         
         for tenantData in response.tenants {
             let teams = tenantData.teams.map { teamData in
@@ -755,9 +756,14 @@ final class AppStore: ObservableObject {
             
             // Update domain model with latest tenant info (including logo URL and team names)
             if var existingTenant = model.tenants[tenantData.slug] {
-                // Always update logo URL when available
-                if let logoUrl = tenantData.clubLogoUrl {
-                    existingTenant.clubLogoUrl = logoUrl
+                let oldLogoUrl = existingTenant.clubLogoUrl
+                
+                // Always update logo URL (even if nil -> present or present -> different)
+                let newLogoUrl = tenantData.clubLogoUrl
+                if oldLogoUrl != newLogoUrl {
+                    existingTenant.clubLogoUrl = newLogoUrl
+                    Logger.debug("🖼️ Updated logo URL for \(tenantData.slug): \(oldLogoUrl ?? "nil") → \(newLogoUrl ?? "nil")")
+                    modelUpdated = true
                 }
                 
                 // CRITICAL: Update team names from tenant info (fix team codes showing as names)
@@ -807,7 +813,14 @@ final class AppStore: ObservableObject {
             }
         }
         
+        // Force SwiftUI update by reassigning tenantInfo
         tenantInfo = newTenantInfo
+        
+        // Force model save to persist logo URL updates
+        if modelUpdated {
+            Logger.debug("🔄 Saving model with updated logo URLs")
+            enrollmentRepository.persist(model: model)
+        }
     }
     
     // MARK: - Leaderboard Management

@@ -50,24 +50,30 @@ struct CachedAsyncImage<Content: View, Placeholder: View>: View {
             }
         }
         .onChange(of: url) { _, newURL in
+            // Reset image state and reload when URL changes
+            image = nil
             loadImage()
         }
+        // Add id to force view refresh when URL changes from nil to value or vice versa
+        .id(url?.absoluteString ?? "placeholder")
     }
     
     private func loadImage() {
         guard let url = url else {
+            Logger.debug("🖼️ CachedAsyncImage: No URL provided, showing placeholder")
             image = nil
             return
         }
         
         // Check simple in-memory cache first
         if let cachedImage = ImageCache.shared.image(for: url) {
-            Logger.debug("Using cached image for: \(url)")
+            Logger.debug("🖼️ Using cached image for: \(url.lastPathComponent)")
             image = cachedImage
             return
         }
         
         // Load from network
+        Logger.debug("🖼️ Loading fresh image from: \(url.lastPathComponent)")
         loadFreshImage()
     }
     
