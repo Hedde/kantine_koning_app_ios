@@ -90,9 +90,8 @@ final class BackendClient {
             return "production"   // Release = Production APNs
             #endif
         }()
-        let vendorId = UIDevice.current.identifierForVendor?.uuidString ?? ""
-        let bundleId = Bundle.main.bundleIdentifier ?? ""
-        let hardwareId = "\(vendorId):\(bundleId)"
+        // Use only the vendor UUID as hardware identifier (backend doesn't need bundle ID)
+        let hardwareId = UIDevice.current.identifierForVendor?.uuidString ?? ""
         Logger.debug("🔧 Hardware ID: \(hardwareId)")
         var body: [String: Any] = [
             "enrollment_token": enrollmentToken,

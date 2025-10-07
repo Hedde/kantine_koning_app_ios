@@ -105,8 +105,9 @@ backend.fetchAllDiensten()  // Mist enrollments van andere tenants
 ### 🏗️ Backend Enrollment Storage
 - **Tabel**: `device_enrollments` (public schema)
 - **Per enrollment**: `device_id` (unique per tenant), `tenant_slug`, `team_codes[]`, `role`
-- **Hardware linking**: `hardware_identifier` (consistent across enrollments)
+- **Hardware linking**: `hardware_identifier` (UUID from `identifierForVendor`, consistent across enrollments)
 - **Multi-tenant lookup**: `WHERE hardware_identifier = X AND status = active`
+- **Note**: Hardware identifier is the vendor UUID only, not concatenated with bundle ID
 
 ## Diensten en vrijwilligers
 - **Ophalen**: Per tenant via `/api/mobile/v1/diensten?tenant=slug` met tenant-specifieke JWT
