@@ -12,7 +12,6 @@ struct OnboardingHostView: View {
     @State private var selectedMemberTeams: Set<TeamID> = []
     @State private var selectedManagerTeams: Set<TeamID> = []
     @State private var scanning = false
-    @State private var scannedOnce = false
     @State private var step: EnrollStep? = nil
     @State private var selectedRole: EnrollStep? = nil
     @State private var keyboardHeight: CGFloat = 0
@@ -20,6 +19,14 @@ struct OnboardingHostView: View {
     @State private var tenantSearchQuery: String = ""
     private var safeAreaBottom: CGFloat {
         (UIApplication.shared.connectedScenes.first as? UIWindowScene)?.keyWindow?.safeAreaInsets.bottom ?? 0
+    }
+    
+    // App version info (same as Settings)
+    private var appVersion: String {
+        (Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String) ?? "—"
+    }
+    private var appBuild: String {
+        (Bundle.main.object(forInfoDictionaryKey: "CFBundleVersion") as? String) ?? "—"
     }
 
     var body: some View {
@@ -29,14 +36,6 @@ struct OnboardingHostView: View {
             
             ScrollView {
                 VStack(spacing: 0) {
-                    // Tap anywhere to dismiss keyboard
-                    Color.clear
-                        .contentShape(Rectangle())
-                        .onTapGesture {
-                            hideKeyboard()
-                        }
-                        .frame(height: 0)
-                    
                     // Background afbeelding helemaal bovenaan (onder status bar) - ZONDER overlay
                     GeometryReader { geo in
                         let minY = geo.frame(in: .global).minY
@@ -60,13 +59,14 @@ struct OnboardingHostView: View {
                     
                     // Content container
                     VStack(spacing: 24) {
-                        // Logo en titel (altijd tonen)
-                        VStack(spacing: 24) {
-                            BrandAssets.logoImage()
-                                .resizable()
-                                .scaledToFit()
-                                .frame(width: 72, height: 72)
-
+                        // Logo (altijd tonen)
+                        BrandAssets.logoImage()
+                            .resizable()
+                            .scaledToFit()
+                            .frame(width: 72, height: 72)
+                        
+                        // Titel (alleen op welkom scherm)
+                        if !showingQRScanner {
                             VStack(spacing: -2) {
                                 Text("KANTINEDIENSTEN")
                                     .font(KKFont.heading(30))
@@ -105,12 +105,26 @@ struct OnboardingHostView: View {
                         ClubEnrollContainer(
                             tenantName: scanned.name,
                             selectedRole: $selectedRole,
-                            onContinue: { if let sel = selectedRole { step = sel } }
+                            onContinue: { 
+                                if let sel = selectedRole { 
+                                    // Clear search results when choosing role
+                                    store.searchResults = []
+                                    selectedMemberTeams = []
+                                    selectedManagerTeams = []
+                                    step = sel 
+                                } 
+                            }
                         )
                         .padding(.bottom, 8)
                         // Terug naar welkom scherm
                         SubtleActionButton(icon: "chevron.left", text: "Terug") {
                             store.onboardingScan = nil
+                            store.searchResults = []
+                            selectedRole = nil
+                            selectedMemberTeams = []
+                            selectedManagerTeams = []
+                            searchQuery = ""
+                            email = ""
                             showingQRScanner = false
                             scanning = false
                         }
@@ -127,7 +141,10 @@ struct OnboardingHostView: View {
                             })
                             .padding(.bottom, 8)
                             // Terug - want misschien toch verenigingslid willen worden
-                            SubtleActionButton(icon: "chevron.left", text: "Terug") { step = nil }
+                            SubtleActionButton(icon: "chevron.left", text: "Terug") { 
+                                store.searchResults = []
+                                step = nil 
+                            }
                         } else {
                             // Step 2b: Manager team selection
                             ManagerTeamPickerSection(allowed: sortedAllowedTeams(),
@@ -139,6 +156,7 @@ struct OnboardingHostView: View {
                             SubtleActionButton(icon: "chevron.left", text: "Terug") { 
                                 store.searchResults = []
                                 selectedManagerTeams = []
+                                email = ""
                             }
                         }
                     } else if step == .member {
@@ -153,40 +171,29 @@ struct OnboardingHostView: View {
                         )
                         .padding(.bottom, 8)
                         // Terug - want misschien toch teammanager willen worden
-                        SubtleActionButton(icon: "chevron.left", text: "Terug") { step = nil }
+                        SubtleActionButton(icon: "chevron.left", text: "Terug") { 
+                            store.searchResults = []
+                            selectedMemberTeams = []
+                            searchQuery = ""
+                            step = nil 
+                        }
                     }
                 } else if showingQRScanner {
                     // QR Scanner (when explicitly chosen)
                     VStack(spacing: 16) {
                         ZStack {
-                            RoundedRectangle(cornerRadius: 16, style: .continuous)
-                                .fill(Color.clear)
-                                .aspectRatio(1.0, contentMode: .fit)
-                                .overlay(
-                                    Group {
-                                        if scanning {
-                                            ZStack {
-                                                QRScannerView(isActive: scanning) { code in
-                                                    handleScanned(code)
-                                                }
-                                                CrosshairOverlay()
-                                            }
-                                        } else {
-                                            CrosshairOverlay()
-                                        }
-                                    }
-                                )
+                            QRScannerView(isActive: scanning) { code in
+                                handleScanned(code)
+                            }
+                            CrosshairOverlay()
                         }
-                        .padding(.horizontal, 24)
-
-                        Button(action: scanButtonTapped) {
-                            Label(scannedOnce ? "Opnieuw scannen" : "Scan QR-code", systemImage: "qrcode.viewfinder")
-                        }
-                            .buttonStyle(KKPrimaryButton())
+                        .aspectRatio(1.0, contentMode: .fit)
+                        .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
                         .padding(.horizontal, 24)
                         
                         // Terug naar welkom scherm
                         SubtleActionButton(icon: "chevron.left", text: "Terug") {
+                            store.searchResults = []
                             showingQRScanner = false
                             scanning = false
                         }
@@ -201,8 +208,35 @@ struct OnboardingHostView: View {
                             store.handleQRScan(slug: tenant.slug, name: tenant.name)
                         },
                         onQRScanTapped: {
+                            // Clear all state for fresh scan
+                            store.onboardingScan = nil
+                            store.searchResults = []
+                            selectedRole = nil
+                            step = nil
+                            selectedMemberTeams = []
+                            selectedManagerTeams = []
+                            searchQuery = ""
+                            email = ""
+                            errorText = nil
+                            
                             showingQRScanner = true
-                            scanning = true
+                            
+                            // Request camera permission and start scanning
+                            switch AVCaptureDevice.authorizationStatus(for: .video) {
+                            case .authorized:
+                                scanning = true
+                            case .notDetermined:
+                                AVCaptureDevice.requestAccess(for: .video) { granted in
+                                    DispatchQueue.main.async {
+                                        if granted {
+                                            scanning = true
+                                        }
+                                    }
+                                }
+                            default:
+                                // Camera permission denied - scanner will show empty
+                                break
+                            }
                         }
                     )
                 }
@@ -216,6 +250,24 @@ struct OnboardingHostView: View {
                     }
                     .padding(.top, 16)
                 }
+                
+                // Show version info when no enrollments yet (geen instellingen bereikbaar)
+                if store.model.tenants.isEmpty && store.onboardingScan == nil && !showingQRScanner {
+                    Spacer().frame(height: 40)
+                    
+                    VStack(spacing: 4) {
+                        Text("Kantine Koning – versie \(appVersion) (\(appBuild))")
+                            .font(KKFont.body(12))
+                            .foregroundStyle(KKTheme.textSecondary)
+                            .multilineTextAlignment(.center)
+                        
+                        Text(Logger.buildInfo)
+                            .font(KKFont.body(10))
+                            .foregroundStyle(KKTheme.textSecondary.opacity(0.7))
+                            .multilineTextAlignment(.center)
+                    }
+                    .padding(.horizontal, 24)
+                }
                     }
                     .padding(.vertical, 32)
                     .frame(maxWidth: .infinity)
@@ -228,22 +280,16 @@ struct OnboardingHostView: View {
         .onReceive(NotificationCenter.default.publisher(for: UIResponder.keyboardWillShowNotification)) { notification in
             if let frame = notification.userInfo?[UIResponder.keyboardFrameEndUserInfoKey] as? CGRect {
                 let adjusted = max(0, frame.height - safeAreaBottom - 80)
-                withAnimation(.easeOut(duration: 0.2)) { keyboardHeight = adjusted }
+                keyboardHeight = adjusted
             }
         }
         .onReceive(NotificationCenter.default.publisher(for: UIResponder.keyboardWillHideNotification)) { _ in
-            withAnimation(.easeOut(duration: 0.2)) { keyboardHeight = 0 }
+            keyboardHeight = 0
         }
-        .simultaneousGesture(
-            // Tap gesture op hele view om keyboard te sluiten
-            TapGesture().onEnded { _ in
-                hideKeyboard()
-            }
-        )
-    }
-    
-    private func hideKeyboard() {
-        UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
+        .onTapGesture {
+            // Dismiss keyboard when tapping on non-interactive areas
+            UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
+        }
     }
 
     private func request() {
@@ -311,39 +357,8 @@ struct OnboardingHostView: View {
 
 // MARK: - Helpers
 private extension OnboardingHostView {
-    func scanButtonTapped() {
-        switch AVCaptureDevice.authorizationStatus(for: .video) {
-        case .authorized:
-            startScanning()
-        case .notDetermined:
-            AVCaptureDevice.requestAccess(for: .video) { granted in
-                DispatchQueue.main.async { if granted { startScanning() } }
-            }
-        default:
-            // Keep silent; could add settings deep link
-            break
-        }
-    }
-
-    func startScanning() {
-        Logger.debug("📷 Starting scanner - clearing all cached state")
-        // Always clear all onboarding state for fresh start
-        store.onboardingScan = nil
-        store.searchResults = []
-        scanning = true
-        selectedRole = nil
-        step = nil
-        selectedMemberTeams = []
-        selectedManagerTeams = []
-        searchQuery = ""
-        email = ""
-        errorText = nil
-        Logger.success("All onboarding state cleared for fresh scan")
-    }
-
     func handleScanned(_ code: String) {
         Logger.qr("📦 Raw payload=\(code)")
-        scannedOnce = true
         scanning = false
         // Clear all state for fresh enrollment flow
         selectedRole = nil
@@ -439,11 +454,13 @@ private struct ManagerVerifySection: View {
                 if email.isEmpty {
                     Text("manager@club.nl")
                         .foregroundColor(.secondary)
-                        .padding(.leading, 12)
+                        .padding(.leading, 16)
                         .font(KKFont.body(16))
+                        .allowsHitTesting(false)
                 }
                 TextField("", text: $email)
-                    .padding(12)
+                    .padding(.horizontal, 16)
+                    .padding(.vertical, 14)
                     .background(KKTheme.surfaceAlt)
                     .cornerRadius(8)
                     .textContentType(.emailAddress)
@@ -514,13 +531,11 @@ private struct MemberSearchSection: View {
         VStack(alignment: .leading, spacing: 12) {
             Text("Zoek je team(s)").font(KKFont.body(12)).foregroundStyle(KKTheme.textSecondary)
             
-            // Helpful instruction text
-            if searchQuery.isEmpty {
-                Text("Teams beginnen meestal met JO13, MO11, 1, 2, 3, enzovoorts")
-                    .font(KKFont.body(11))
-                    .foregroundStyle(KKTheme.textSecondary)
-                    .italic()
-            }
+            // Helpful instruction text (always visible)
+            Text("Teams beginnen meestal met JO13, MO11, 1, 2, 3, enzovoorts")
+                .font(KKFont.body(11))
+                .foregroundStyle(KKTheme.textSecondary)
+                .italic()
             
             TextField("Bijv. JO11-3", text: $searchQuery)
                 .kkTextField()
@@ -897,13 +912,11 @@ private struct TenantSearchSection: View {
                         .font(KKFont.body(12))
                         .foregroundStyle(KKTheme.textSecondary)
                     
-                    // Helpful instruction text
-                    if searchQuery.isEmpty {
-                        Text("Typ de naam van je sportvereniging")
-                            .font(KKFont.body(11))
-                            .foregroundStyle(KKTheme.textSecondary)
-                            .italic()
-                    }
+                    // Helpful instruction text (always visible)
+                    Text("Typ de naam van je sportvereniging")
+                        .font(KKFont.body(11))
+                        .foregroundStyle(KKTheme.textSecondary)
+                        .italic()
                 }
                 
                 Spacer()

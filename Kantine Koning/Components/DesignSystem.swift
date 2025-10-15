@@ -90,7 +90,8 @@ struct KKTextFieldStyle: TextFieldStyle {
     init(placeholder: String? = nil) { self.placeholder = placeholder }
     func _body(configuration: TextField<_Label>) -> some View {
         configuration
-            .padding(12)
+            .padding(.horizontal, 16)
+            .padding(.vertical, 14)
             .background(KKTheme.surfaceAlt)
             .cornerRadius(8)
             .font(KKFont.body(16))
