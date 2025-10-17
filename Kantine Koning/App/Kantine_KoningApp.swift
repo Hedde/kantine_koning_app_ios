@@ -19,8 +19,8 @@ struct Kantine_KoningApp: App {
                     store.configurePushNotifications()
                 }
                 .onReceive(NotificationCenter.default.publisher(for: UIApplication.willEnterForegroundNotification)) { _ in
-                    Logger.view("App entering foreground - refreshing data")
-                    store.refreshDiensten()
+                    Logger.view("App entering foreground - reconciling and refreshing data")
+                    store.onAppBecameActive()
                     store.refreshTenantInfo()
                 }
         }

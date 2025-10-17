@@ -2,6 +2,7 @@ import Foundation
 import Combine
 import UserNotifications
 import StoreKit
+import UIKit
 
 enum EnrollmentError: LocalizedError {
     case alreadyInProgress
@@ -50,6 +51,7 @@ final class AppStore: ObservableObject {
     private let dienstRepository: DienstRepository
     private let pushService: PushService
     private let leaderboardRepository: LeaderboardRepository
+    private let reconciliationService: EnrollmentReconciliationService
 
     private var cancellables: Set<AnyCancellable> = []
     
@@ -68,6 +70,10 @@ final class AppStore: ObservableObject {
         self.dienstRepository = dienstRepository
         self.pushService = pushService
         self.leaderboardRepository = leaderboardRepository
+        
+        // Initialize reconciliation service
+        let backendClient = BackendClient() // Using default instance
+        self.reconciliationService = EnrollmentReconciliationService(backendClient: backendClient)
 
         // Bootstrap
         Logger.section("APP BOOTSTRAP")
@@ -597,6 +603,31 @@ final class AppStore: ObservableObject {
     }
     
     // MARK: - Data Refresh
+    
+    /// Called when app becomes active (from background or fresh launch).
+    /// Triggers reconciliation sync and then refreshes diensten.
+    func onAppBecameActive() {
+        Logger.info("📱 App became active")
+        
+        // Only reconcile if enrolled
+        guard model.isEnrolled else {
+            Logger.info("⏭️ Skipping reconciliation - not enrolled")
+            refreshDiensten()
+            return
+        }
+        
+        // Trigger reconciliation in background (non-blocking)
+        Task { @MainActor in
+            // Get hardware identifier and auth token for reconciliation
+            let hardwareId = UIDevice.current.identifierForVendor?.uuidString
+            let authToken = model.enrollments.values.first?.signedDeviceToken
+            
+            await reconciliationService.reconcileIfNeeded(model: model, hardwareIdentifier: hardwareId, authToken: authToken)
+            
+            // After reconciliation, refresh diensten
+            refreshDiensten()
+        }
+    }
 
     func refreshDiensten() {
         guard model.isEnrolled else { return }
