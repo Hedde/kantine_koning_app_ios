@@ -618,6 +618,16 @@ final class AppStore: ObservableObject {
         
         // Trigger reconciliation in background (non-blocking)
         Task { @MainActor in
+            // SAFEGUARD: First refresh tenant info to ensure we have latest team data
+            // This prevents reconciliation from running with stale/incomplete team data
+            await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
+                refreshTenantInfo()
+                // Give tenant info refresh a moment to complete
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+                    continuation.resume()
+                }
+            }
+            
             // Get hardware identifier and auth token for reconciliation
             let hardwareId = UIDevice.current.identifierForVendor?.uuidString
             let authToken = model.enrollments.values.first?.signedDeviceToken

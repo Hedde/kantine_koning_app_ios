@@ -19,6 +19,15 @@ Een native SwiftUI-app voor het beheren van kantinediensten bij sportvereniginge
 - APNs-registratie en token doorgeven aan backend
 - Notificaties verversen automatisch de lijst met diensten
 
+### 🔄 Enrollment Reconciliation
+- **Automatische sync** bij app foreground: App stuurt huidige enrollment state naar backend
+- **Cleanup orphaned enrollments**: Backend revoked enrollments die niet meer in app bestaan
+- **Safeguards**: 
+  - Reconciliation alleen na tenant info refresh (voorkomt incomplete data)
+  - Team code mapping MOET slagen (abort bij failures)
+  - Throttling van 1 uur tussen syncs
+- **Use case**: Herstelt inconsistenties door gefaalde deletion API calls of "Alles resetten"
+
 ### 👥 Vrijwilligersbeheer
 - Managers: vrijwilligers toevoegen/verwijderen per dienst
 - Leden: alleen-lezen toegang tot dienstinformatie
@@ -126,6 +135,10 @@ backend.fetchAllDiensten()  // Mist enrollments van andere tenants
 - **Endpoints**: `/api/mobile/v1/enrollments/*`, `/device/*`, `/diensten`, `/teams/search`, `/leaderboard/*`, vrijwilligers-CRUD
 - **Auth**: Signed device token uit `registerDevice` als Bearer token **PER TENANT**
 - **APNs**: `updateAPNsToken` verstuurt ook build-omgeving en appversie
+- **Reconciliation**: `POST /enrollments/sync` - App stuurt enrollment state, backend cleanup orphans
+  - Request: `{"enrollments": [{"tenant_slug", "role", "team_codes", "hardware_identifier"}]}`
+  - Response: `{"synced": true, "cleanup_summary": {"enrollments_revoked", "teams_removed"}}`
+  - Guards: Alleen binnen hardware_identifier scope, respect voor `enrollment_open` en `season_ended`
 
 ## Requirements
 - iOS 16.0+

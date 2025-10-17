@@ -49,7 +49,13 @@ actor EnrollmentReconciliationService {
         backendClient.authToken = token
         
         // Build enrollment list from current app state
-        let appEnrollments = buildEnrollmentList(from: model, hardwareIdentifier: hardwareIdentifier)
+        // Returns nil if data is incomplete (e.g. team code mapping failed)
+        guard let appEnrollments = buildEnrollmentList(from: model, hardwareIdentifier: hardwareIdentifier) else {
+            Logger.error("🚨 Reconciliation ABORTED: Incomplete data detected (team code mapping failed)")
+            Logger.error("   This is a safety measure to prevent accidental enrollment revokes")
+            Logger.error("   Will retry on next app activation when data is complete")
+            return
+        }
         
         if appEnrollments.isEmpty {
             Logger.info("📭 No active enrollments to sync (app is empty)")
@@ -94,8 +100,9 @@ actor EnrollmentReconciliationService {
     ///   - model: The app's current domain model
     ///   - hardwareIdentifier: Device hardware identifier (from UIDevice.current.identifierForVendor)
     /// - Returns: Array of enrollment sync data structures
-    private func buildEnrollmentList(from model: DomainModel, hardwareIdentifier: String?) -> [EnrollmentSyncData] {
+    private func buildEnrollmentList(from model: DomainModel, hardwareIdentifier: String?) -> [EnrollmentSyncData]? {
         var enrollments: [EnrollmentSyncData] = []
+        var hasIncompleteMappings = false
         
         for (tenantSlug, tenant) in model.tenants {
             // Skip tenants with ended seasons - their enrollments are already revoked
@@ -112,29 +119,53 @@ actor EnrollmentReconciliationService {
                 }
                 
                 // Map team IDs to team codes (backend expects codes, not UUIDs)
-                let teamCodes = enrollment.teams.compactMap { teamId in
-                    tenant.teams.first(where: { $0.id == teamId })?.code
+                // CRITICAL: All team IDs MUST successfully map to codes
+                var teamCodes: [String] = []
+                
+                for teamId in enrollment.teams {
+                    if let code = tenant.teams.first(where: { $0.id == teamId })?.code {
+                        teamCodes.append(code)
+                    } else {
+                        // CRITICAL: Team code lookup failed - data is incomplete!
+                        Logger.error("🚨 CRITICAL: No team code found for ID \(teamId) in tenant \(tenantSlug)")
+                        Logger.error("   This indicates incomplete tenant.teams data - ABORTING reconciliation to prevent accidental revokes")
+                        hasIncompleteMappings = true
+                        break
+                    }
                 }
                 
-                // Skip if no valid team codes found
+                // If we had mapping failures, abort entire reconciliation
+                if hasIncompleteMappings {
+                    break
+                }
+                
+                // Skip only if enrollment has NO teams at all (should never happen)
                 guard !teamCodes.isEmpty else {
-                    Logger.warning("⚠️ No valid team codes found for enrollment \(enrollmentId)")
+                    Logger.warning("⚠️ Enrollment \(enrollmentId) has no teams - skipping")
                     continue
                 }
                 
                 // Convert enrollment to sync data format
-                // Note: role is .manager or .member (not .teamManager)
-                // email property contains the manager email (not teamManagerEmail)
                 let syncData = EnrollmentSyncData(
                     tenantSlug: tenantSlug,
                     role: enrollment.role == .manager ? "manager" : "member",
                     teamManagerEmail: enrollment.email,
-                    hardwareIdentifier: hardwareIdentifier, // Pass device hardware ID
-                    teamCodes: teamCodes // Use mapped team codes, not UUIDs
+                    hardwareIdentifier: hardwareIdentifier,
+                    teamCodes: teamCodes
                 )
                 
                 enrollments.append(syncData)
             }
+            
+            // Break outer loop if we had mapping failures
+            if hasIncompleteMappings {
+                break
+            }
+        }
+        
+        // Return nil if data was incomplete (signals reconciliation should be skipped)
+        if hasIncompleteMappings {
+            return nil
         }
         
         return enrollments
