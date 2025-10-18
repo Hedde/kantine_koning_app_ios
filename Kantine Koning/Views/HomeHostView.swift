@@ -1026,6 +1026,36 @@ private struct ClubsViewInternal: View {
                             .cornerRadius(8)
                         }
                     }
+                    
+                    // Add new club/team button
+                    Button {
+                        store.startNewEnrollment()
+                    } label: {
+                        HStack(spacing: 16) {
+                            Image(systemName: "plus.circle.fill")
+                                .font(.system(size: 28))
+                                .foregroundStyle(KKTheme.accent)
+                                .frame(width: 40, height: 40)
+                            
+                            VStack(alignment: .leading, spacing: 4) {
+                                Text("Team toevoegen")
+                                    .font(KKFont.title(18))
+                                    .foregroundStyle(KKTheme.textPrimary)
+                                Text("Scannen of zoeken")
+                                    .font(KKFont.body(14))
+                                    .foregroundStyle(KKTheme.textSecondary)
+                            }
+                            Spacer()
+                            Image(systemName: "chevron.right")
+                                .foregroundStyle(KKTheme.textSecondary)
+                                .font(.title2)
+                        }
+                        .padding(.horizontal, 20)
+                        .padding(.vertical, 16)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .background(KKTheme.surfaceAlt)
+                        .cornerRadius(8)
+                    }
                 }
                 .padding(.horizontal, 12)
                 Spacer(minLength: 24)
@@ -1103,6 +1133,10 @@ private struct SettingsViewInternal: View {
                     Text("Aanmeldingen")
                         .font(KKFont.body(12))
                         .foregroundStyle(KKTheme.textSecondary)
+                    Text("Voeg een nieuwe vereniging of team toe door te scannen of te zoeken")
+                        .font(KKFont.body(12))
+                        .foregroundStyle(KKTheme.textSecondary)
+                        .fixedSize(horizontal: false, vertical: true)
                     Button {
                         let totalTeams = store.model.tenants.values.reduce(0) { $0 + $1.teams.count }
                         guard totalTeams < 5 else { showCapAlert = true; return }
