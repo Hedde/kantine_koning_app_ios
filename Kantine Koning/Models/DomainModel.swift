@@ -80,6 +80,19 @@ struct DomainModel: Codable, Equatable {
     var hasActiveTenants: Bool { 
         tenants.values.contains { !$0.seasonEnded } 
     }
+    
+    // Clean up orphaned enrollments that don't belong to any tenant
+    mutating func cleanupOrphanedEnrollments() {
+        let validEnrollmentIds = Set(tenants.values.flatMap { $0.enrollments })
+        let allEnrollmentIds = Set(enrollments.keys)
+        let orphanedIds = allEnrollmentIds.subtracting(validEnrollmentIds)
+        
+        if !orphanedIds.isEmpty {
+            for orphanedId in orphanedIds {
+                enrollments.removeValue(forKey: orphanedId)
+            }
+        }
+    }
     var primaryAuthToken: String? {
         // Prefer any ACTIVE manager tenant token, fallback to any ACTIVE token
         // Skip season-ended tenants to avoid using revoked tokens
@@ -188,6 +201,14 @@ struct DomainModel: Codable, Equatable {
 
     func removingTenant(_ tenant: TenantID) -> DomainModel {
         var copy = self
+        
+        // Remove all enrollments for this tenant
+        if let tenantData = copy.tenants[tenant] {
+            for enrollmentId in tenantData.enrollments {
+                copy.enrollments.removeValue(forKey: enrollmentId)
+            }
+        }
+        
         copy.tenants.removeValue(forKey: tenant)
         copy.updatedAt = Date()
         return copy
@@ -197,7 +218,40 @@ struct DomainModel: Codable, Equatable {
         var copy = self
         if var t = copy.tenants[tenant] {
             t.teams.removeAll { $0.id == team }
-            if t.teams.isEmpty { copy.tenants.removeValue(forKey: tenant) } else { copy.tenants[tenant] = t }
+            
+            // CRITICAL: Also update all enrollments for this tenant to remove this team
+            // This prevents stale team IDs in enrollment records which causes reconciliation issues
+            for enrollmentId in t.enrollments {
+                if var enrollment = copy.enrollments[enrollmentId] {
+                    enrollment = Enrollment(
+                        id: enrollment.id,
+                        tenantSlug: enrollment.tenantSlug,
+                        teams: enrollment.teams.filter { $0 != team }, // Remove this team
+                        role: enrollment.role,
+                        signedDeviceToken: enrollment.signedDeviceToken,
+                        enrolledAt: enrollment.enrolledAt,
+                        email: enrollment.email
+                    )
+                    
+                    // If enrollment has no teams left, remove it entirely
+                    if enrollment.teams.isEmpty {
+                        copy.enrollments.removeValue(forKey: enrollmentId)
+                        t.enrollments.removeAll { $0 == enrollmentId }
+                    } else {
+                        copy.enrollments[enrollmentId] = enrollment
+                    }
+                }
+            }
+            
+            if t.teams.isEmpty { 
+                // Remove tenant and all its enrollments
+                for enrollmentId in t.enrollments {
+                    copy.enrollments.removeValue(forKey: enrollmentId)
+                }
+                copy.tenants.removeValue(forKey: tenant)
+            } else { 
+                copy.tenants[tenant] = t 
+            }
         }
         copy.updatedAt = Date()
         return copy

@@ -37,7 +37,9 @@ actor EnrollmentReconciliationService {
     /// This method always performs reconciliation regardless of when the last sync occurred.
     /// Use this when you need to ensure sync happens (e.g., after major enrollment changes).
     func reconcile(model: DomainModel, hardwareIdentifier: String?, authToken: String?) async {
-        Logger.info("🔄 Starting enrollment reconciliation")
+        Logger.reconcile("🔄 Starting enrollment reconciliation")
+        Logger.reconcile("   Hardware ID: \(hardwareIdentifier ?? "nil")")
+        Logger.reconcile("   Model has \(model.tenants.count) tenant(s), \(model.enrollments.count) enrollment(s)")
         
         // Check if we have an auth token
         guard let token = authToken else {
@@ -58,9 +60,12 @@ actor EnrollmentReconciliationService {
         }
         
         if appEnrollments.isEmpty {
-            Logger.info("📭 No active enrollments to sync (app is empty)")
+            Logger.reconcile("📭 No active enrollments to sync (app is empty)")
         } else {
-            Logger.info("📤 Syncing \(appEnrollments.count) enrollment(s) to backend")
+            Logger.reconcile("📤 Syncing \(appEnrollments.count) enrollment(s) to backend:")
+            for (idx, enrollment) in appEnrollments.enumerated() {
+                Logger.reconcile("   [\(idx+1)] tenant=\(enrollment.tenantSlug) role=\(enrollment.role) teams=\(enrollment.teamCodes)")
+            }
         }
         
         do {
@@ -70,9 +75,9 @@ actor EnrollmentReconciliationService {
             lastSyncDate = Date()
             
             if summary.enrollmentsRevoked == 0 && summary.teamsRemoved == 0 {
-                Logger.info("✅ Reconciliation completed - no cleanup needed")
+                Logger.reconcile("✅ Reconciliation completed - no cleanup needed")
             } else {
-                Logger.info("""
+                Logger.reconcile("""
                 ✅ Reconciliation completed with cleanup:
                    - Teams removed: \(summary.teamsRemoved)
                    - Enrollments revoked: \(summary.enrollmentsRevoked)
@@ -104,7 +109,12 @@ actor EnrollmentReconciliationService {
         var enrollments: [EnrollmentSyncData] = []
         var hasIncompleteMappings = false
         
+        Logger.reconcile("🔨 Building enrollment list from model:")
+        Logger.reconcile("   Hardware identifier: \(hardwareIdentifier ?? "nil")")
+        
         for (tenantSlug, tenant) in model.tenants {
+            Logger.reconcile("   Tenant: \(tenantSlug), teams=\(tenant.teams.count), enrollments=\(tenant.enrollments.count)")
+            
             // Skip tenants with ended seasons - their enrollments are already revoked
             guard !tenant.seasonEnded else {
                 Logger.debug("⏭️ Skipping tenant \(tenantSlug): season ended")
@@ -112,22 +122,32 @@ actor EnrollmentReconciliationService {
             }
             
             // Process each enrollment for this tenant
-            for enrollmentId in tenant.enrollments {
+            for (idx, enrollmentId) in tenant.enrollments.enumerated() {
                 guard let enrollment = model.enrollments[enrollmentId] else {
                     Logger.warning("⚠️ Enrollment \(enrollmentId) not found in model")
                     continue
                 }
+                
+                Logger.reconcile("      Enrollment [\(idx+1)]: id=\(String(enrollmentId.prefix(8)))... role=\(enrollment.role) teams=\(enrollment.teams.count)")
                 
                 // Map team IDs to team codes (backend expects codes, not UUIDs)
                 // CRITICAL: All team IDs MUST successfully map to codes
                 var teamCodes: [String] = []
                 
                 for teamId in enrollment.teams {
-                    if let code = tenant.teams.first(where: { $0.id == teamId })?.code {
-                        teamCodes.append(code)
+                    if let team = tenant.teams.first(where: { $0.id == teamId }) {
+                        if let code = team.code {
+                            Logger.reconcile("         ✓ Team \(teamId) → code \(code) (name: \(team.name))")
+                            teamCodes.append(code)
+                        } else {
+                            Logger.error("🚨 CRITICAL: Team \(teamId) has no code! (name: \(team.name))")
+                            hasIncompleteMappings = true
+                            break
+                        }
                     } else {
                         // CRITICAL: Team code lookup failed - data is incomplete!
-                        Logger.error("🚨 CRITICAL: No team code found for ID \(teamId) in tenant \(tenantSlug)")
+                        Logger.error("🚨 CRITICAL: No team found for ID \(teamId) in tenant \(tenantSlug)")
+                        Logger.error("   Available team IDs: \(tenant.teams.map { $0.id })")
                         Logger.error("   This indicates incomplete tenant.teams data - ABORTING reconciliation to prevent accidental revokes")
                         hasIncompleteMappings = true
                         break

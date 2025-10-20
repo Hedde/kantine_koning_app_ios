@@ -118,6 +118,14 @@ enum Logger {
         log(level: .enrollment, message: message, category: "Enrollment", debugOnly: true)
     }
     
+    /// Log reconciliation operations (debug only, verbose)
+    /// Used for detailed sync/reconciliation logging that should not appear in production
+    static func reconcile(_ message: String) {
+        #if DEBUG
+        log(level: .info, message: message, category: "Reconcile", debugOnly: true)
+        #endif
+    }
+    
     /// Log view lifecycle and UI operations (debug only)
     static func view(_ message: String) {
         log(level: .view, message: message, category: "View", debugOnly: true)

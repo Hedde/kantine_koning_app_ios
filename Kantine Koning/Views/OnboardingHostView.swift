@@ -963,6 +963,42 @@ private struct TenantSearchSection: View {
                     .background(KKTheme.surface)
                     .cornerRadius(6)
                 }
+                
+                // Show demo message when search has been performed but no results found
+                if !searchQuery.isEmpty && results.isEmpty {
+                    VStack(spacing: 8) {
+                        HStack(alignment: .top, spacing: 12) {
+                            Image(systemName: "questionmark.circle")
+                                .foregroundStyle(KKTheme.textSecondary.opacity(0.7))
+                                .font(.system(size: 20))
+                            
+                            VStack(alignment: .leading, spacing: 4) {
+                                Text("Vereniging niet gevonden?")
+                                    .font(KKFont.body(13))
+                                    .foregroundStyle(KKTheme.textPrimary)
+                                    .fontWeight(.medium)
+                                
+                                Text("Maakt jouw vereniging nog geen gebruik van Kantine Koning? Vraag dan een gratis demo aan op ")
+                                    .font(KKFont.body(12))
+                                    .foregroundStyle(KKTheme.textSecondary)
+                                +
+                                Text("www.kantinekoning.com/plan-een-demo")
+                                    .font(KKFont.body(12))
+                                    .foregroundStyle(KKTheme.accent)
+                                    .fontWeight(.medium)
+                            }
+                            
+                            Spacer(minLength: 0)
+                        }
+                        .padding(12)
+                        .background(KKTheme.surface)
+                        .cornerRadius(8)
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 8)
+                                .stroke(KKTheme.textSecondary.opacity(0.1), lineWidth: 1)
+                        )
+                    }
+                }
             }
         }
         .kkCard()

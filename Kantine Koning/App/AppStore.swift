@@ -620,17 +620,30 @@ final class AppStore: ObservableObject {
         Task { @MainActor in
             // SAFEGUARD: First refresh tenant info to ensure we have latest team data
             // This prevents reconciliation from running with stale/incomplete team data
+            // CRITICAL: Wait for ACTUAL completion, not just a fixed timeout
             await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
-                refreshTenantInfo()
-                // Give tenant info refresh a moment to complete
-                DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+                refreshTenantInfoAsync { 
                     continuation.resume()
                 }
             }
             
+            // Clean up any orphaned enrollments before reconciliation
+            model.cleanupOrphanedEnrollments()
+            enrollmentRepository.persist(model: model)
+            
             // Get hardware identifier and auth token for reconciliation
             let hardwareId = UIDevice.current.identifierForVendor?.uuidString
-            let authToken = model.enrollments.values.first?.signedDeviceToken
+            
+            // Get a valid auth token from active enrollments
+            // Sort by enrolledAt to prefer newest enrollments (most likely to be valid)
+            let authToken = model.enrollments.values
+                .filter { enrollment in
+                    // Skip enrollments for season-ended tenants or non-existent tenants
+                    guard let tenant = model.tenants[enrollment.tenantSlug] else { return false }
+                    return !tenant.seasonEnded
+                }
+                .sorted { $0.enrolledAt > $1.enrolledAt }  // Newest first
+                .first?.signedDeviceToken
             
             await reconciliationService.reconcileIfNeeded(model: model, hardwareIdentifier: hardwareId, authToken: authToken)
             
@@ -732,6 +745,53 @@ final class AppStore: ObservableObject {
     func refreshBanners() {
         // This method is called from refreshDiensten() but we'll use lazy loading instead
         Logger.debug("Banner refresh triggered - will use on-demand loading per tenant")
+    }
+    
+    /// Async version of refreshTenantInfo that calls completion when done
+    /// Used before reconciliation to ensure we have fresh tenant data
+    func refreshTenantInfoAsync(completion: @escaping () -> Void) {
+        Logger.reconcile("🔄 refreshTenantInfoAsync START (for reconciliation)")
+        
+        // Get ALL tenants with tokens (not just active ones) to ensure club logos load for new enrollments
+        let availableTenants = model.tenants.values.filter { tenant in
+            // Check if we have any auth token for this tenant
+            if let firstTeam = tenant.teams.first {
+                return model.authTokenForTeam(firstTeam.id, in: tenant.slug) != nil
+            }
+            return false
+        }
+        
+        guard !availableTenants.isEmpty,
+              let firstTenant = availableTenants.first,
+              let authToken = model.authTokenForTeam(firstTenant.teams.first?.id ?? "", in: firstTenant.slug) else {
+            Logger.warning("No tenants with auth tokens available for tenant info")
+            completion()  // Complete immediately if no tenants
+            return
+        }
+        
+        let backend = BackendClient()
+        backend.authToken = authToken
+        
+        Logger.info("📡 Fetching tenant info using token from tenant \(firstTenant.slug)")
+        
+        backend.fetchTenantInfo { [weak self] result in
+            DispatchQueue.main.async {
+                switch result {
+                case .success(let response):
+                    Logger.success("✅ Received tenant info for \(response.tenants.count) tenants")
+                    self?.updateTenantInfoFromResponse(response)
+                    Logger.reconcile("🏁 refreshTenantInfoAsync COMPLETE")
+                    completion()  // Complete after successful update
+                    
+                case .failure(let error):
+                    Logger.error("❌ Failed to fetch tenant info: \(error)")
+                    // Check if this is a token revocation for the specific tenant we used
+                    self?.handlePotentialTokenRevocation(error: error, tenant: firstTenant.slug)
+                    Logger.reconcile("🏁 refreshTenantInfoAsync COMPLETE (with error)")
+                    completion()  // Complete even on failure (don't block reconciliation indefinitely)
+                }
+            }
+        }
     }
     
     func refreshTenantInfo() {
