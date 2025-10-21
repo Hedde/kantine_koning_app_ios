@@ -2,6 +2,30 @@
 
 Een native SwiftUI-app voor het beheren van kantinediensten bij sportverenigingen. Ondersteunt zowel teammanagers als verenigingsleden met gescheiden rechten, multi-tenant gebruik en push notificaties.
 
+## ⚠️ Important: Device Identifiers & Testing
+
+### identifierForVendor Behavior
+
+De app gebruikt `UIDevice.current.identifierForVendor` als hardware identifier voor multi-enrollment support en reconciliation.
+
+**Stabiel in productie (App Store):**
+- ✅ App updates (1.0 → 2.0 → 3.0)
+- ✅ Normaal gebruikersgedrag
+- ✅ iOS updates
+- ✅ Delete/reinstall (als er andere apps van dezelfde vendor op device staan)
+
+**Verandert tijdens development/testing:**
+- ❌ **TestFlight ↔ App Store switches** (verschillende signing)
+- ❌ **Verschillende TestFlight builds** (afhankelijk van build settings)
+- ❌ **Delete/reinstall als het de enige app van de vendor is**
+- ❌ Device restore/reset
+
+**Impact op reconciliation:**
+Wanneer `identifierForVendor` verandert, ziet de backend dit als een nieuw device. De enrollments van het oude device worden binnen 1 uur weggereconciled (revoked) wanneer de app met de nieuwe identifier naar foreground komt. Dit is **verwacht gedrag** tijdens testing maar **heeft geen impact op productie gebruikers** die alleen App Store updates ontvangen.
+
+**Testing aanbeveling:**
+Wees bewust dat switchen tussen TestFlight en App Store builds de device identifier kan veranderen en enrollment cleanup triggert. Om betrouwbaar te testen, blijf bij één distributie methode per test sessie.
+
 ## Features
 
 ### 🔐 Accountloze onboarding

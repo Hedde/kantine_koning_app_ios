@@ -1035,7 +1035,7 @@ private struct TenantSearchSection: View {
                     store.searchTenants(query: newValue)
                 }
             
-            if !limitedResults.isEmpty || hasMoreResults || (!searchQuery.isEmpty && results.isEmpty) {
+            if !limitedResults.isEmpty || hasMoreResults || (searchQuery.count >= 3 && results.isEmpty) {
                 VStack(spacing: 8) {
                 ForEach(limitedResults) { tenant in
                     TenantRow(
@@ -1079,7 +1079,8 @@ private struct TenantSearchSection: View {
                 }
                 
                 // Show demo message when search has been performed but no results found
-                if !searchQuery.isEmpty && results.isEmpty {
+                // Only show after typing at least 3 characters to avoid flickering
+                if searchQuery.count >= 3 && results.isEmpty {
                     HStack(alignment: .top, spacing: 12) {
                         Image(systemName: "questionmark.circle")
                             .foregroundStyle(KKTheme.textSecondary.opacity(0.7))
@@ -1232,5 +1233,3 @@ private struct DiagonalShape: Shape {
         return path
     }
 }
-
-
