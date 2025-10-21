@@ -421,18 +421,23 @@ private struct TeamDienstenView: View {
                     VStack(spacing: 16) {
                         Image(systemName: "calendar.badge.exclamationmark")
                             .font(.system(size: 48))
-                            .foregroundStyle(KKTheme.textSecondary)
+                            .foregroundStyle(KKTheme.textSecondary.opacity(0.5))
+                        
                         VStack(spacing: 8) {
                             Text("Geen diensten gevonden")
                                 .font(KKFont.title(18))
                                 .foregroundStyle(KKTheme.textPrimary)
+                                .fontWeight(.medium)
+                            
                             Text("Er zijn momenteel geen aankomende diensten voor dit team.")
                                 .font(KKFont.body(14))
                                 .foregroundStyle(KKTheme.textSecondary)
                                 .multilineTextAlignment(.center)
+                                .padding(.horizontal, 24)
                         }
                     }
-                    .padding(.vertical, 32)
+                    .padding(.vertical, 48)
+                    .padding(.horizontal, 16)
                 } else {
                     VStack(spacing: 12) {
                                         ForEach(diensten) { d in
@@ -1131,8 +1136,9 @@ private struct SettingsViewInternal: View {
                 // Enrollment actions card
                 VStack(alignment: .leading, spacing: 12) {
                     Text("Aanmeldingen")
-                        .font(KKFont.body(12))
-                        .foregroundStyle(KKTheme.textSecondary)
+                        .font(KKFont.body(13))
+                        .foregroundStyle(KKTheme.textPrimary)
+                        .fontWeight(.medium)
                     Text("Voeg een nieuwe vereniging of team toe door te scannen of te zoeken")
                         .font(KKFont.body(12))
                         .foregroundStyle(KKTheme.textSecondary)
@@ -1152,8 +1158,9 @@ private struct SettingsViewInternal: View {
                 // Notifications card (info only)
                 VStack(alignment: .leading, spacing: 12) {
                     Text("Push Meldingen")
-                        .font(KKFont.body(12))
-                        .foregroundStyle(KKTheme.textSecondary)
+                        .font(KKFont.body(13))
+                        .foregroundStyle(KKTheme.textPrimary)
+                        .fontWeight(.medium)
                     Text("Push meldingen worden automatisch geconfigureerd bij eerste gebruik. Heb je geweigerd? Ga dan naar Instellingen > Apps > Kantine Koning om meldingen alsnog toe te staan.")
                         .font(KKFont.body(12))
                         .foregroundStyle(KKTheme.textSecondary)
@@ -1176,8 +1183,9 @@ private struct SettingsViewInternal: View {
                 // Destructive reset card
                 VStack(alignment: .leading, spacing: 12) {
                     Text("Geavanceerd")
-                        .font(KKFont.body(12))
-                        .foregroundStyle(KKTheme.textSecondary)
+                        .font(KKFont.body(13))
+                        .foregroundStyle(KKTheme.textPrimary)
+                        .fontWeight(.medium)
                     Text("Reset alle gegevens zet de app terug naar de beginstatus.")
                         .font(KKFont.body(12))
                         .foregroundStyle(KKTheme.textSecondary)
@@ -1235,8 +1243,9 @@ private struct EmailNotificationPreferencesView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
             Text("E-mail Meldingen")
-                .font(KKFont.body(12))
-                .foregroundStyle(KKTheme.textSecondary)
+                .font(KKFont.body(13))
+                .foregroundStyle(KKTheme.textPrimary)
+                .fontWeight(.medium)
             
             VStack(spacing: 8) {
                     // Group teams by tenant - only show active tenants with manager teams
@@ -1250,7 +1259,7 @@ private struct EmailNotificationPreferencesView: View {
                         // Tenant header
                         HStack {
                             Text(tenant.name)
-                                .font(KKFont.body(12))
+                                .font(KKFont.body(13))
                                 .fontWeight(.medium)
                                 .foregroundStyle(KKTheme.textPrimary)
                             Spacer()

@@ -144,10 +144,12 @@ struct OnboardingHostView: View {
                         SubtleActionButton(icon: "chevron.left", text: "Terug") {
                             store.onboardingScan = nil
                             store.searchResults = []
+                            store.tenantSearchResults = []
                             selectedRole = nil
                             selectedMemberTeams = []
                             selectedManagerTeams = []
                             searchQuery = ""
+                            tenantSearchQuery = ""
                             email = ""
                             showingQRScanner = false
                             scanning = false
@@ -178,6 +180,7 @@ struct OnboardingHostView: View {
                             // Terug - want misschien toch verenigingslid willen worden
                             SubtleActionButton(icon: "chevron.left", text: "Terug") { 
                                 store.searchResults = []
+                                errorText = nil
                                 step = nil 
                             }
                         } else {
@@ -192,6 +195,7 @@ struct OnboardingHostView: View {
                                 store.searchResults = []
                                 selectedManagerTeams = []
                                 email = ""
+                                errorText = nil
                             }
                         }
                     } else if step == .member {
@@ -229,6 +233,8 @@ struct OnboardingHostView: View {
                         // Terug naar welkom scherm
                         SubtleActionButton(icon: "chevron.left", text: "Terug") {
                             store.searchResults = []
+                            store.tenantSearchResults = []
+                            tenantSearchQuery = ""
                             showingQRScanner = false
                             scanning = false
                         }
@@ -251,6 +257,7 @@ struct OnboardingHostView: View {
                             selectedMemberTeams = []
                             selectedManagerTeams = []
                             searchQuery = ""
+                            tenantSearchQuery = ""
                             email = ""
                             errorText = nil
                             
@@ -530,7 +537,7 @@ private struct ManagerVerifySection: View {
                         
                         Text(errorText)
                             .font(KKFont.body(13))
-                            .foregroundStyle(KKTheme.textPrimary)
+                            .foregroundStyle(KKTheme.textSecondary)
                     }
                     
                     Spacer(minLength: 0)
@@ -607,8 +614,9 @@ private struct MemberSearchSection: View {
                 .kkTextField()
                 .onChange(of: searchQuery) { _, newValue in onSearch(newValue) }
             
-            VStack(spacing: 8) {
-                ForEach(limitedResults, id: \.id) { t in
+            if !limitedResults.isEmpty || hasMoreResults {
+                VStack(spacing: 8) {
+                    ForEach(limitedResults, id: \.id) { t in
                     KKSelectableRow(
                         title: t.name,
                         subtitle: t.code,
@@ -619,18 +627,34 @@ private struct MemberSearchSection: View {
                 
                 // Show message when there are more results
                 if hasMoreResults {
-                    HStack {
+                    HStack(alignment: .top, spacing: 12) {
                         Image(systemName: "magnifyingglass")
-                            .foregroundStyle(KKTheme.textSecondary)
-                        Text("Er zijn \(filteredResults.count - maxDisplayedResults) meer resultaten. Typ meer letters voor een specifiekere zoekopdracht.")
-                            .font(KKFont.body(12))
-                            .foregroundStyle(KKTheme.textSecondary)
+                            .foregroundStyle(KKTheme.textSecondary.opacity(0.7))
+                            .font(.system(size: 20))
+                        
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text("Meer teams gevonden")
+                                .font(KKFont.body(13))
+                                .foregroundStyle(KKTheme.textPrimary)
+                                .fontWeight(.medium)
+                            
+                            Text("Er zijn \(filteredResults.count - maxDisplayedResults) meer resultaten. Typ meer letters voor een specifiekere zoekopdracht.")
+                                .font(KKFont.body(13))
+                                .foregroundStyle(KKTheme.textSecondary)
+                        }
+                        
+                        Spacer(minLength: 0)
                     }
-                    .padding(.horizontal, 24)
-                    .padding(.vertical, 8)
+                    .padding(12)
                     .background(KKTheme.surface)
-                    .cornerRadius(6)
+                    .cornerRadius(8)
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 8)
+                            .stroke(KKTheme.textSecondary.opacity(0.1), lineWidth: 1)
+                    )
+                    .padding(.top, 4)
                 }
+            }
             }
             
             Button("Aanmelden", action: onSubmit)
@@ -640,7 +664,14 @@ private struct MemberSearchSection: View {
         .kkCard()
         .padding(.horizontal, 24)
     }
-    private func toggle(_ id: TeamID) { if selected.contains(id) { selected.remove(id) } else { selected.insert(id) } }
+    
+    private func toggle(_ id: TeamID) { 
+        if selected.contains(id) { 
+            selected.remove(id) 
+        } else { 
+            selected.insert(id) 
+        } 
+    }
 }
 
 private struct ManagerTeamPickerSection: View {
@@ -1004,7 +1035,8 @@ private struct TenantSearchSection: View {
                     store.searchTenants(query: newValue)
                 }
             
-            VStack(spacing: 8) {
+            if !limitedResults.isEmpty || hasMoreResults || (!searchQuery.isEmpty && results.isEmpty) {
+                VStack(spacing: 8) {
                 ForEach(limitedResults) { tenant in
                     TenantRow(
                         tenant: tenant,
@@ -1018,48 +1050,63 @@ private struct TenantSearchSection: View {
                 
                 // Show message when there are more results
                 if hasMoreResults {
-                    HStack {
+                    HStack(alignment: .top, spacing: 12) {
                         Image(systemName: "magnifyingglass")
-                            .foregroundStyle(KKTheme.textSecondary)
-                        Text("Er zijn \(results.count - maxDisplayedResults) meer resultaten. Typ meer letters voor een specifiekere zoekopdracht.")
-                            .font(KKFont.body(12))
-                            .foregroundStyle(KKTheme.textSecondary)
+                            .foregroundStyle(KKTheme.textSecondary.opacity(0.7))
+                            .font(.system(size: 20))
+                        
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text("Meer verenigingen gevonden")
+                                .font(KKFont.body(13))
+                                .foregroundStyle(KKTheme.textPrimary)
+                                .fontWeight(.medium)
+                            
+                            Text("Er zijn \(results.count - maxDisplayedResults) meer resultaten. Typ meer letters voor een specifiekere zoekopdracht.")
+                                .font(KKFont.body(13))
+                                .foregroundStyle(KKTheme.textSecondary)
+                        }
+                        
+                        Spacer(minLength: 0)
                     }
-                    .padding(.horizontal, 24)
-                    .padding(.vertical, 8)
+                    .padding(12)
                     .background(KKTheme.surface)
-                    .cornerRadius(6)
+                    .cornerRadius(8)
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 8)
+                            .stroke(KKTheme.textSecondary.opacity(0.1), lineWidth: 1)
+                    )
+                    .padding(.top, 4)
                 }
                 
                 // Show demo message when search has been performed but no results found
                 if !searchQuery.isEmpty && results.isEmpty {
-                    VStack(spacing: 8) {
-                        HStack(alignment: .top, spacing: 12) {
-                            Image(systemName: "questionmark.circle")
-                                .foregroundStyle(KKTheme.textSecondary.opacity(0.7))
-                                .font(.system(size: 20))
+                    HStack(alignment: .top, spacing: 12) {
+                        Image(systemName: "questionmark.circle")
+                            .foregroundStyle(KKTheme.textSecondary.opacity(0.7))
+                            .font(.system(size: 20))
+                        
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text("Vereniging niet gevonden?")
+                                .font(KKFont.body(13))
+                                .foregroundStyle(KKTheme.textPrimary)
+                                .fontWeight(.medium)
                             
-                            VStack(alignment: .leading, spacing: 4) {
-                                Text("Vereniging niet gevonden?")
-                                    .font(KKFont.body(13))
-                                    .foregroundStyle(KKTheme.textPrimary)
-                                    .fontWeight(.medium)
-                                
-                                Text(attributedDemoText())
-                            }
-                            .tint(KKTheme.accent)
-                            
-                            Spacer(minLength: 0)
+                            Text(attributedDemoText())
                         }
-                        .padding(12)
-                        .background(KKTheme.surface)
-                        .cornerRadius(8)
-                        .overlay(
-                            RoundedRectangle(cornerRadius: 8)
-                                .stroke(KKTheme.textSecondary.opacity(0.1), lineWidth: 1)
-                        )
+                        .tint(KKTheme.accent)
+                        
+                        Spacer(minLength: 0)
                     }
+                    .padding(12)
+                    .background(KKTheme.surface)
+                    .cornerRadius(8)
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 8)
+                            .stroke(KKTheme.textSecondary.opacity(0.1), lineWidth: 1)
+                    )
+                    .padding(.top, 4)
                 }
+            }
             }
         }
         .kkCard()

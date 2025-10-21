@@ -471,7 +471,7 @@ private struct LeaderboardMenuView: View {
     
     var body: some View {
         ScrollView {
-            VStack(spacing: 32) {
+            VStack(spacing: 24) {
                 Spacer(minLength: 24)
                 
                 // Header
@@ -568,7 +568,7 @@ private struct LeaderboardMenuView: View {
 private struct LeaderboardInfoView: View {
     var body: some View {
         ScrollView {
-            VStack(spacing: 32) {
+            VStack(spacing: 24) {
                 Spacer(minLength: 24)
                 
                 // Header
@@ -654,7 +654,7 @@ private struct LeaderboardWelcomeView: View {
     
     var body: some View {
         ScrollView {
-            VStack(spacing: 32) {
+            VStack(spacing: 24) {
                 Spacer(minLength: 24)
                 
                 // Header
