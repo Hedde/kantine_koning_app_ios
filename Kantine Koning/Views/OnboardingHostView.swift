@@ -28,6 +28,38 @@ struct OnboardingHostView: View {
     private var appBuild: String {
         (Bundle.main.object(forInfoDictionaryKey: "CFBundleVersion") as? String) ?? "—"
     }
+    
+    // Dynamische instructietekst op basis van huidige stap
+    private var instructionText: String {
+        if showingQRScanner {
+            return "Scan de QR-code van je club. Deze vind je op [jouw-vereniging].kantinekoning.com/ios-app-connect"
+        }
+        
+        guard let scanned = store.onboardingScan else {
+            // Welkomscherm (geen vereniging geselecteerd)
+            return "Zoek je club of scan de QR-code om je team(s) te kiezen en meldingen te ontvangen wanneer jouw team is ingedeeld."
+        }
+        
+        // Vereniging is geselecteerd
+        if step == nil {
+            // Stap 1: Rol selectie
+            return "Kies je rol bij \(scanned.name). Als speler of ouder kies je 'Verenigingslid'."
+        } else if step == .manager {
+            if store.searchResults.isEmpty {
+                // Stap 2a: Manager email invoeren
+                return "Voer je e-mailadres in waarmee je bekend bent als teammanager bij \(scanned.name)."
+            } else {
+                // Stap 2b: Manager teams selecteren
+                return "Selecteer de teams waarvoor je als teammanager meldingen wilt ontvangen."
+            }
+        } else if step == .member {
+            // Stap 2c: Lid teams zoeken en selecteren
+            return "Zoek en selecteer je team(s) bij \(scanned.name) om meldingen te ontvangen."
+        }
+        
+        // Fallback
+        return "Zoek je club of scan de QR-code om je team(s) te kiezen en meldingen te ontvangen wanneer jouw team is ingedeeld."
+    }
 
     var body: some View {
         ZStack(alignment: .top) {
@@ -84,20 +116,12 @@ struct OnboardingHostView: View {
                             .multilineTextAlignment(.center)
                         }
                         
-                        // Instructietekst (context-afhankelijk)
-                        if showingQRScanner {
-                            Text("Scan de QR-code van je club")
-                                .font(KKFont.body(16))
-                                .multilineTextAlignment(.center)
-                                .foregroundStyle(KKTheme.textSecondary)
-                                .padding(.horizontal, 24)
-                        } else {
-                            Text("Zoek je club of scan de QR-code om je team(s) te kiezen en meldingen te ontvangen wanneer jouw team is ingedeeld.")
-                                .font(KKFont.body(16))
-                                .multilineTextAlignment(.center)
-                                .foregroundStyle(KKTheme.textSecondary)
-                                .padding(.horizontal, 24)
-                        }
+                        // Instructietekst (dynamisch op basis van huidige stap)
+                        Text(instructionText)
+                            .font(KKFont.body(16))
+                            .multilineTextAlignment(.center)
+                            .foregroundStyle(KKTheme.textSecondary)
+                            .padding(.horizontal, 24)
 
                 if let scanned = store.onboardingScan {
                     if step == nil {
@@ -132,9 +156,20 @@ struct OnboardingHostView: View {
                         if store.searchResults.isEmpty {
                             // Step 2a: Manager email verification
                             ManagerVerifySection(email: $email, isLoading: submitting, errorText: $errorText, onSubmit: {
+                                // Valideer email eerst
+                                let trimmedEmail = email.trimmingCharacters(in: .whitespacesAndNewlines)
+                                if trimmedEmail.isEmpty {
+                                    errorText = "Vul een e-mailadres in"
+                                    return
+                                }
+                                if !isValidEmail(trimmedEmail) {
+                                    errorText = "Vul een geldig e-mailadres in"
+                                    return
+                                }
+                                
                                 submitting = true
                                 errorText = nil
-                                store.submitEmail(email, for: scanned.slug, selectedTeamCodes: []) { result in
+                                store.submitEmail(trimmedEmail, for: scanned.slug, selectedTeamCodes: []) { result in
                                     submitting = false
                                     if case .failure(let err) = result { errorText = ErrorTranslations.translate(err) }
                                 }
@@ -318,6 +353,13 @@ struct OnboardingHostView: View {
     private func toggleSelect(_ t: SearchTeam) {
         if selectedMemberTeams.contains(t.id) { selectedMemberTeams.remove(t.id) } else { selectedMemberTeams.insert(t.id) }
     }
+    
+    private func isValidEmail(_ email: String) -> Bool {
+        let trimmed = email.trimmingCharacters(in: .whitespacesAndNewlines)
+        let emailRegex = "[A-Z0-9a-z._%+-]+@[A-Za-z0-9.-]+\\.[A-Za-z]{2,64}"
+        let emailPredicate = NSPredicate(format:"SELF MATCHES %@", emailRegex)
+        return emailPredicate.evaluate(with: trimmed)
+    }
 
     private func registerMember() {
         guard !selectedMemberTeams.isEmpty else { return }
@@ -348,7 +390,8 @@ struct OnboardingHostView: View {
             submitting = false
             return
         }
-        store.submitEmail(email, for: tenantSlug, selectedTeamCodes: teamCodes) { result in
+        let trimmedEmail = email.trimmingCharacters(in: .whitespacesAndNewlines)
+        store.submitEmail(trimmedEmail, for: tenantSlug, selectedTeamCodes: teamCodes) { result in
             submitting = false
             if case .failure(let err) = result { errorText = ErrorTranslations.translate(err) }
         }
@@ -445,6 +488,7 @@ private struct ManagerVerifySection: View {
     var isLoading: Bool
     @Binding var errorText: String?
     var onSubmit: () -> Void
+    
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
             Text("E-mailadres teammanager").font(KKFont.body(12)).foregroundStyle(KKTheme.textSecondary)
@@ -473,15 +517,37 @@ private struct ManagerVerifySection: View {
                     .onSubmit { onSubmit() }
             }
             if let errorText = errorText {
-                Text(errorText)
-                    .font(KKFont.body(12))
-                    .foregroundStyle(.red)
+                HStack(alignment: .top, spacing: 12) {
+                    Image(systemName: "exclamationmark.triangle")
+                        .foregroundStyle(KKTheme.textSecondary.opacity(0.7))
+                        .font(.system(size: 20))
+                    
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text("Er ging iets mis")
+                            .font(KKFont.body(13))
+                            .foregroundStyle(KKTheme.textPrimary)
+                            .fontWeight(.medium)
+                        
+                        Text(errorText)
+                            .font(KKFont.body(13))
+                            .foregroundStyle(KKTheme.textPrimary)
+                    }
+                    
+                    Spacer(minLength: 0)
+                }
+                .padding(12)
+                .background(KKTheme.surface)
+                .cornerRadius(8)
+                .overlay(
+                    RoundedRectangle(cornerRadius: 8)
+                        .stroke(KKTheme.textSecondary.opacity(0.1), lineWidth: 1)
+                )
             }
             Button(action: onSubmit) { 
                 if isLoading {
                     HStack {
                         ProgressView()
-                            .tint(KKTheme.accent)
+                            .tint(.white)
                         Text("Controleren...")
                     }
                 } else {
@@ -489,7 +555,7 @@ private struct ManagerVerifySection: View {
                 }
             }
             .disabled(isLoading)
-            .buttonStyle(KKSecondaryButton())
+            .buttonStyle(KKPrimaryButton())
         }
         .kkCard()
         .padding(.horizontal, 24)
@@ -630,6 +696,7 @@ private extension OnboardingHostView {
 }
 private struct HeaderHero: View {
     var showBackground: Bool = true
+    var instructionText: String = "Zoek je club of scan de QR-code om je team(s) te kiezen en meldingen te ontvangen wanneer jouw team is ingedeeld."
     
     var body: some View {
         VStack(spacing: 24) {
@@ -654,7 +721,7 @@ private struct HeaderHero: View {
             }
             .multilineTextAlignment(.center)
 
-            Text("Zoek je club of scan de QR-code om je team(s) te kiezen en meldingen te ontvangen wanneer jouw team is ingedeeld.")
+            Text(instructionText)
                 .font(KKFont.body(16))
                 .multilineTextAlignment(.center)
                 .foregroundStyle(KKTheme.textSecondary)
@@ -1000,7 +1067,7 @@ private struct TenantSearchSection: View {
     }
     
     private func attributedDemoText() -> AttributedString {
-        var result = AttributedString("Maakt jouw vereniging nog geen gebruik van Kantine Koning? Vraag dan een gratis demo aan op ")
+        var result = AttributedString("Maakt jouw vereniging nog geen gebruik van Kantine Koning? Vraag dan vandaag nog een gratis demo aan op ")
         result.foregroundColor = KKTheme.textSecondary
         if let comfortaaFont = UIFont(name: "Comfortaa-Regular", size: 12) {
             result.font = Font(comfortaaFont)
