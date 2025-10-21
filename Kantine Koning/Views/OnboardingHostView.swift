@@ -978,15 +978,9 @@ private struct TenantSearchSection: View {
                                     .foregroundStyle(KKTheme.textPrimary)
                                     .fontWeight(.medium)
                                 
-                                Text("Maakt jouw vereniging nog geen gebruik van Kantine Koning? Vraag dan een gratis demo aan op ")
-                                    .font(KKFont.body(12))
-                                    .foregroundStyle(KKTheme.textSecondary)
-                                +
-                                Text("www.kantinekoning.com/plan-een-demo")
-                                    .font(KKFont.body(12))
-                                    .foregroundStyle(KKTheme.accent)
-                                    .fontWeight(.medium)
+                                Text(attributedDemoText())
                             }
+                            .tint(KKTheme.accent)
                             
                             Spacer(minLength: 0)
                         }
@@ -1003,6 +997,27 @@ private struct TenantSearchSection: View {
         }
         .kkCard()
         .padding(.horizontal, 24)
+    }
+    
+    private func attributedDemoText() -> AttributedString {
+        var result = AttributedString("Maakt jouw vereniging nog geen gebruik van Kantine Koning? Vraag dan een gratis demo aan op ")
+        result.foregroundColor = KKTheme.textSecondary
+        if let comfortaaFont = UIFont(name: "Comfortaa-Regular", size: 12) {
+            result.font = Font(comfortaaFont)
+        } else {
+            result.font = Font(UIFont.systemFont(ofSize: 12, weight: .regular))
+        }
+        
+        var link = AttributedString("www.kantinekoning.com/plan-een-demo")
+        link.foregroundColor = KKTheme.accent
+        if let comfortaaMedium = UIFont(name: "Comfortaa-Medium", size: 12) {
+            link.font = Font(comfortaaMedium)
+        } else {
+            link.font = Font(UIFont.systemFont(ofSize: 12, weight: .medium))
+        }
+        
+        result.append(link)
+        return result
     }
 }
 

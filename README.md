@@ -120,7 +120,7 @@ backend.fetchAllDiensten()  // Mist enrollments van andere tenants
 
 ## Diensten en vrijwilligers
 - **Ophalen**: Per tenant via `/api/mobile/v1/diensten?tenant=slug` met tenant-specifieke JWT
-- **Tijdvenster**: Standaard 30 dagen in het verleden, 60 dagen in de toekomst (configureerbaar via `past_days`/`future_days`)
+- **Tijdvenster**: Standaard 365 dagen (1 jaar) in het verleden voor volledige seizoensgeschiedenis, 60 dagen in de toekomst (configureerbaar via `past_days`/`future_days`)
 - **Filtering**: Backend filtert op `team_codes` uit JWT token van die enrollment
 - **Aggregatie**: Client-side dedup en sortering (toekomst eerst)
 - **Validaties**: Managers kunnen vrijwilligers toevoegen/verwijderen; naam ≤ 15 tekens, geen duplicaten

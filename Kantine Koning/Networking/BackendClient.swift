@@ -276,8 +276,8 @@ final class BackendClient {
         var comps = URLComponents(url: baseURL.appendingPathComponent("/api/mobile/v1/diensten"), resolvingAgainstBaseURL: false)!
         comps.queryItems = [
             URLQueryItem(name: "tenant", value: tenant), 
-            URLQueryItem(name: "past_days", value: "30"), 
             URLQueryItem(name: "future_days", value: "60")
+            // past_days removed - use backend default (365 days for full season history)
         ]
         guard let url = comps.url else { completion(.failure(NSError(domain: "Backend", code: -3))); return }
         var req = URLRequest(url: url)
@@ -333,9 +333,9 @@ final class BackendClient {
         
         var comps = URLComponents(url: baseURL.appendingPathComponent("/api/mobile/v1/diensten"), resolvingAgainstBaseURL: false)!
         comps.queryItems = [
-            URLQueryItem(name: "past_days", value: "30"), 
             URLQueryItem(name: "future_days", value: "60")
             // No tenant parameter = fetch for all enrolled tenants
+            // past_days removed - use backend default (365 days for full season history)
         ]
         guard let url = comps.url else { completion(.failure(NSError(domain: "Backend", code: -3))); return }
         var req = URLRequest(url: url)
