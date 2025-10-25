@@ -163,10 +163,6 @@ struct LeaderboardHostView: View {
             } else if let tenantSlug = selectedTenant, let tenant = store.model.tenants[tenantSlug] {
                 ScrollView {
                     VStack(spacing: 24) {
-                        // Tenant banners - positioned right under navigation with minimal spacing
-                        TenantBannerView(tenantSlug: tenant.slug)
-                            .environmentObject(store)
-
                         // Header with club info
                         VStack(spacing: 16) {
                             // Club logo
@@ -260,6 +256,13 @@ struct LeaderboardHostView: View {
                         
                         Spacer(minLength: 24)
                     }
+                }
+                .safeAreaInset(edge: .top) {
+                    // Fixed banner positioned under navigation
+                    TenantBannerView(tenantSlug: tenant.slug)
+                        .environmentObject(store)
+                        .padding(.bottom, 12)
+                        .background(KKTheme.surface)
                 }
                 .refreshable {
                     if let tenantSlug = selectedTenant {

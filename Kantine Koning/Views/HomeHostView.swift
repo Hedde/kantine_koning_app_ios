@@ -194,6 +194,8 @@ private struct TopNavigationBar: View {
     let onLeaderboardAction: () -> Void
     let isSettingsActive: Bool
     let showLeaderboard: Bool
+    @EnvironmentObject var store: AppStore
+    
     var body: some View {
         ZStack {
             // Background
@@ -208,10 +210,24 @@ private struct TopNavigationBar: View {
             // Left and right buttons overlay
             HStack {
                 // Left side
-                Button(action: onHomeAction) {
-                    Image(systemName: "house.fill")
-                        .font(.title2)
-                        .foregroundColor(KKTheme.textSecondary)
+                HStack(spacing: 12) {
+                    Button(action: onHomeAction) {
+                        Image(systemName: "house.fill")
+                            .font(.title2)
+                            .foregroundColor(KKTheme.textSecondary)
+                    }
+                    
+                    #if DEBUG
+                    // 🚨 TEMP DEBUG: Season end toggle
+                    Button(action: {
+                        store.toggleSeasonEndedForFirstTenant()
+                    }) {
+                        let isSeasonEnded = store.model.tenants.values.first?.seasonEnded ?? false
+                        Image(systemName: isSeasonEnded ? "flag.checkered.circle.fill" : "flag.circle")
+                            .font(.title3)
+                            .foregroundColor(isSeasonEnded ? .red : .orange)
+                    }
+                    #endif
                 }
                 
                 Spacer()
@@ -286,10 +302,6 @@ private struct TeamsView: View {
     var body: some View {
         ScrollView {
             VStack(spacing: 24) {
-                // Tenant banners - positioned right under navigation with minimal spacing
-                TenantBannerView(tenantSlug: tenant.slug)
-                    .environmentObject(store)
-                
                 VStack(spacing: 8) {
                     Text("SELECTEER TEAM")
                         .font(KKFont.heading(24))
@@ -357,6 +369,13 @@ private struct TeamsView: View {
                 Spacer(minLength: 24)
             }
         }
+        .safeAreaInset(edge: .top) {
+            // Fixed banner positioned under navigation
+            TenantBannerView(tenantSlug: tenant.slug)
+                .environmentObject(store)
+                .padding(.bottom, 12)
+                .background(KKTheme.surface)
+        }
     }
     private func dienstCountText(for teamId: String) -> String {
         // Find the team first to get both ID and code
@@ -401,10 +420,6 @@ private struct TeamDienstenView: View {
     var body: some View {
         ScrollView {
             VStack(spacing: 24) {
-                // Tenant banners - positioned right under navigation with minimal spacing
-                TenantBannerView(tenantSlug: tenant.slug)
-                    .environmentObject(store)
-                
                 VStack(spacing: 8) {
                     Text(teamDisplayName(teamId: teamId, in: tenant).uppercased())
                         .font(KKFont.heading(24))
@@ -449,6 +464,13 @@ private struct TeamDienstenView: View {
                 }
                 Spacer(minLength: 24)
             }
+        }
+        .safeAreaInset(edge: .top) {
+            // Fixed banner positioned under navigation
+            TenantBannerView(tenantSlug: tenant.slug)
+                .environmentObject(store)
+                .padding(.bottom, 12)
+                .background(KKTheme.surface)
         }
         .refreshable { 
             store.refreshDiensten()

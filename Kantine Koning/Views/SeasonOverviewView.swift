@@ -38,8 +38,6 @@ struct SeasonOverviewView: View {
     var body: some View {
         ScrollView {
             VStack(spacing: 24) {
-                Spacer(minLength: 24)
-                
                 // Header with confetti overlay (consistent with app style)
                 VStack(spacing: 8) {
                     Text("SEIZOEN AFGELOPEN")
@@ -95,11 +93,6 @@ struct SeasonOverviewView: View {
                     AchievementsCard(achievements: seasonStats.achievements)
                 }
                 
-                // Team contributions card
-                if !seasonStats.teamContributions.isEmpty {
-                    TeamContributionsCard(contributions: seasonStats.teamContributions)
-                }
-                
                 // Thank you card
                 ThankYouCard()
                 
@@ -110,6 +103,13 @@ struct SeasonOverviewView: View {
                 
                 Spacer(minLength: 100)
             }
+        }
+        .safeAreaInset(edge: .top) {
+            // Fixed banner positioned under navigation
+            TenantBannerView(tenantSlug: tenant.slug)
+                .environmentObject(store)
+                .padding(.bottom, 12)
+                .background(KKTheme.surface)
         }
         .background(KKTheme.surface)
         .navigationBarTitleDisplayMode(.inline)
@@ -461,7 +461,7 @@ struct ResetTenantCard: View {
                 .font(KKFont.body(12))
                 .foregroundStyle(KKTheme.textSecondary)
             
-            Text("Verwijder alle gegevens van \(tenant.name) uit de app om ruimte te maken voor een nieuwe seizoen.")
+            Text("Verwijder alle gegevens van \(tenant.name) uit de app om ruimte te maken voor een nieuw seizoen.")
                 .font(KKFont.body(12))
                 .foregroundStyle(KKTheme.textSecondary)
             

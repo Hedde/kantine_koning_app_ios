@@ -685,28 +685,30 @@ final class AppStore: ObservableObject {
     }
     
     func refreshBannersForTenant(_ tenantSlug: String) {
-        // Only fetch banners for active (non-season ended) tenants
-        guard let tenant = model.tenants[tenantSlug], !tenant.seasonEnded else {
-            Logger.debug("Tenant \(tenantSlug) is season ended - skipping banner fetch")
+        // Check if tenant exists
+        guard let tenant = model.tenants[tenantSlug] else {
+            Logger.debug("Tenant \(tenantSlug) not found - skipping banner fetch")
             return
         }
         
-        // Don't refetch if we already have banners cached for this tenant
-        if banners[tenantSlug] != nil {
-            Logger.debug("Banners already cached for tenant \(tenantSlug)")
+        // Don't refetch if we already have non-empty banners cached for this tenant
+        // (Empty arrays mean previous fetch failed - allow retry)
+        if let cachedBanners = banners[tenantSlug], !cachedBanners.isEmpty {
+            Logger.debug("Banners already cached for tenant \(tenantSlug) (\(cachedBanners.count) banners)")
             return
         }
         
-        // Get tenant-specific auth token
-        guard let authToken = model.authTokenForTeam(tenant.teams.first?.id ?? "", in: tenantSlug) else {
-            Logger.warning("No auth token for tenant \(tenantSlug) - skipping banner fetch")
-            return
-        }
-        
-        Logger.debug("Fetching banners for tenant \(tenantSlug)")
+        Logger.debug("Fetching banners for tenant \(tenantSlug) (season ended: \(tenant.seasonEnded))")
         
         let backend = BackendClient()
-        backend.authToken = authToken
+        
+        // Try to get auth token, but fetch anyway if not available (banners endpoint is public)
+        if let authToken = model.authTokenForTeam(tenant.teams.first?.id ?? "", in: tenantSlug) {
+            backend.authToken = authToken
+            Logger.debug("Using auth token for banner fetch")
+        } else {
+            Logger.debug("No auth token available - fetching banners without authentication")
+        }
         
         backend.fetchBanners(tenant: tenantSlug) { [weak self] result in
             DispatchQueue.main.async {
@@ -923,6 +925,22 @@ final class AppStore: ObservableObject {
             enrollmentRepository.persist(model: model)
         }
     }
+    
+    // MARK: - DEBUG ONLY - Season End Toggle
+    #if DEBUG
+    func toggleSeasonEndedForFirstTenant() {
+        guard let firstTenant = model.tenants.values.first else { return }
+        var updatedTenant = firstTenant
+        updatedTenant.seasonEnded.toggle()
+        Logger.debug("🔧 DEBUG: Toggled season end for \(firstTenant.slug) = \(updatedTenant.seasonEnded)")
+        model.tenants[firstTenant.slug] = updatedTenant
+        enrollmentRepository.persist(model: model)
+        
+        // Clear banner cache to force refetch
+        banners.removeValue(forKey: firstTenant.slug)
+        Logger.debug("🔧 DEBUG: Cleared banner cache for \(firstTenant.slug)")
+    }
+    #endif
     
     // MARK: - Leaderboard Management
     func refreshLeaderboard(for tenantSlug: String, period: String = "season", teamId: String? = nil) {
