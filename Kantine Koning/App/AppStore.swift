@@ -152,32 +152,31 @@ final class AppStore: ObservableObject {
         
         // Store navigation request
         pendingPushNavigation = (tenant: tenant, team: team)
+        
+        let initialCount = upcoming.count
         Logger.push("🎯 Reactive navigation queued for tenant='\(tenant)' team='\(team)'")
+        Logger.push("📊 Current diensten count: \(initialCount)")
+        Logger.push("⏳ Waiting for data refresh (initiated by AppDelegate)")
         
-        // Start data refresh immediately (non-blocking)
-        Logger.push("🔄 Starting data refresh for push navigation")
-        refreshDiensten()
+        // NOTE: refreshDiensten() is called by AppDelegate BEFORE this method
+        // We simply wait for the first data update to arrive
         
-        // Create reactive publisher that waits for fresh data OR timeout
         pushNavigationCancellable = $upcoming
-            .dropFirst() // Skip current stale value
-            .timeout(.seconds(2.0), scheduler: DispatchQueue.main) // Max 2s wait
-            .sink(
-                receiveCompletion: { [weak self] completion in
-                    switch completion {
-                    case .finished:
-                        Logger.push("⏱️ Reactive navigation finished waiting - proceeding (no error)")
-                        self?.executePendingNavigation()
-                    case .failure:
-                        Logger.push("⏰ Reactive navigation timeout - proceeding with cached data")
-                        self?.executePendingNavigation()
-                    }
-                },
-                receiveValue: { [weak self] diensten in
-                    Logger.push("📊 Fresh data received (\(diensten.count) diensten) - executing navigation")
-                    self?.executePendingNavigation()
+            .dropFirst() // Skip the immediate current value
+            .timeout(.seconds(2.0), scheduler: DispatchQueue.main) // Max 2s wait for fresh data
+            .catch { [weak self] _ -> AnyPublisher<[Dienst], Never> in
+                // Timeout occurred - use current cached data as fallback
+                guard let self = self else {
+                    return Just([]).eraseToAnyPublisher()
                 }
-            )
+                Logger.push("⏰ Data refresh timeout after 2s - proceeding with current data (\(self.upcoming.count) diensten)")
+                return Just(self.upcoming).eraseToAnyPublisher()
+            }
+            .first() // Take the first update that arrives
+            .sink { [weak self] diensten in
+                Logger.push("📊 Fresh data received: \(diensten.count) diensten (was: \(initialCount))")
+                self?.executePendingNavigation()
+            }
     }
     
     private func executePendingNavigation() {

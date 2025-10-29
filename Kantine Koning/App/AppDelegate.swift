@@ -30,8 +30,11 @@ class AppDelegate: UIResponder, UIApplicationDelegate, UNUserNotificationCenterD
 
     func userNotificationCenter(_ center: UNUserNotificationCenter, didReceive response: UNNotificationResponse, withCompletionHandler completionHandler: @escaping () -> Void) {
         let userInfo = response.notification.request.content.userInfo
-        store?.handleNotification(userInfo: userInfo)
+        // CRITICAL: Refresh data BEFORE handling notification to avoid race conditions
+        // This ensures fresh data is loading when triggerReactivePushNavigation() sets up its publisher
+        // Even if handleNotification() early returns, data is still refreshed
         store?.refreshDiensten()
+        store?.handleNotification(userInfo: userInfo)
         completionHandler()
     }
 }
