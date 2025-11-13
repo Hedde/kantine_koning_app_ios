@@ -490,8 +490,8 @@ private struct LeaderboardMenuView: View {
                 }
                 .multilineTextAlignment(.center)
                 
-                // Menu options
-                VStack(spacing: 16) {
+                // Menu options (consistent 8pt spacing like ClubsView/TeamsView)
+                VStack(spacing: 8) {
                     // National leaderboard option
                     Button(action: onNationalSelected) {
                         HStack(spacing: 16) {
