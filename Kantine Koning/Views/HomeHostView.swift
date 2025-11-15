@@ -45,9 +45,13 @@ struct HomeHostView: View {
                     }
                 },
                 onLeaderboardAction: {
-                    showLeaderboard.toggle()
-                    leaderboardShowingInfo.toggle()
                     if showLeaderboard {
+                        // Already in leaderboard - toggle info view
+                        leaderboardShowingInfo.toggle()
+                    } else {
+                        // Opening leaderboard - start with data view
+                        showLeaderboard = true
+                        leaderboardShowingInfo = false
                         showSettings = false
                         showQRScanner = false
                         scanningActive = false
@@ -77,6 +81,7 @@ struct HomeHostView: View {
                 },
                 isSettingsActive: showSettings,
                 showLeaderboard: showLeaderboard,
+                leaderboardShowingInfo: leaderboardShowingInfo,
                 showQRButton: isViewingManagerTeam && store.pendingClaimDienst == nil && !showQRScanner
             )
             .background(KKTheme.surface)
@@ -309,6 +314,7 @@ private struct TopNavigationBar: View {
     let onQRScanAction: () -> Void
     let isSettingsActive: Bool
     let showLeaderboard: Bool
+    let leaderboardShowingInfo: Bool
     let showQRButton: Bool
     @EnvironmentObject var store: AppStore
     
@@ -358,16 +364,14 @@ private struct TopNavigationBar: View {
                 
                 // Right side
                 HStack(spacing: 12) {
-                    if showLeaderboard {
-                        // Question mark/X icon when in leaderboard
-                        Button(action: onLeaderboardAction) {
-                            Image(systemName: "questionmark.circle.fill")
+                    Button(action: onLeaderboardAction) {
+                        if showLeaderboard {
+                            // In leaderboard - show trophy or question mark
+                            Image(systemName: leaderboardShowingInfo ? "trophy.fill" : "questionmark.circle.fill")
                                 .font(.title2)
                                 .foregroundColor(KKTheme.textSecondary)
-                        }
-                    } else {
-                        // Trophy icon when not in leaderboard
-                        Button(action: onLeaderboardAction) {
+                        } else {
+                            // Not in leaderboard - show trophy
                             Image(systemName: "trophy.fill")
                                 .font(.title2)
                                 .foregroundColor(KKTheme.textSecondary)
