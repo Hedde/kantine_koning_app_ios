@@ -703,7 +703,7 @@ private struct DienstCardContent: View {
             // Volunteer status and progress
             VStack(alignment: .leading, spacing: 8) {
                 HStack {
-                    Text("Bemanning").font(KKFont.body(12)).foregroundStyle(KKTheme.textSecondary)
+                    Text("Bezetting").font(KKFont.body(12)).foregroundStyle(KKTheme.textSecondary)
                     Spacer()
                     HStack(spacing: 4) {
                         Text("\(volunteers.count)/\(minimumBemanning)")

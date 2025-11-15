@@ -159,7 +159,7 @@ final class CalendarService: ObservableObject {
         notes += "."
         
         // Add minimum staffing info
-        notes += "\n\nMinimale bemanning: \(dienst.minimumBemanning) vrijwilliger(s)"
+        notes += "\n\nMinimale bezetting: \(dienst.minimumBemanning) vrijwilliger(s)"
         
         // Add volunteers if any
         if let volunteers = dienst.volunteers, !volunteers.isEmpty {
