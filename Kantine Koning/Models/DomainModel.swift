@@ -271,9 +271,22 @@ enum DeepLink {
     static func isEnrollment(_ url: URL) -> Bool { (url.scheme == "kantinekoning" && url.host == "device-enroll") || (url.host?.contains("kantinekoning.com") == true && url.path.contains("device-enroll")) }
     static func isCTA(_ url: URL) -> Bool { (url.scheme == "kantinekoning" && url.host == "cta") || (url.host?.contains("kantinekoning.com") == true && url.path.contains("cta")) }
     static func isInvite(_ url: URL) -> Bool { (url.scheme == "kantinekoning" && url.host == "invite") || (url.host?.contains("kantinekoning.com") == true && url.path.contains("invite")) }
-    static func extractToken(from url: URL) -> String? { URLComponents(url: url, resolvingAgainstBaseURL: false)?.queryItems?.first(where: { $0.name == "token" })?.value }
+    static func isClaim(_ url: URL) -> Bool { (url.scheme == "kantinekoning" && url.host == "claim-dienst") || (url.host?.contains("kantinekoning.com") == true && url.path.contains("claim-dienst")) }
+    
+    // Helper to normalize HTML-encoded URLs
+    private static func normalizeURL(_ url: URL) -> URL? {
+        let urlString = url.absoluteString.replacingOccurrences(of: "&amp;", with: "&")
+        return URL(string: urlString)
+    }
+    
+    static func extractToken(from url: URL) -> String? {
+        guard let normalizedURL = normalizeURL(url) else { return nil }
+        return URLComponents(url: normalizedURL, resolvingAgainstBaseURL: false)?.queryItems?.first(where: { $0.name == "token" })?.value
+    }
+    
     static func extractInviteParams(from url: URL) -> (tenant: String, tenantName: String)? {
-        guard let components = URLComponents(url: url, resolvingAgainstBaseURL: false),
+        guard let normalizedURL = normalizeURL(url),
+              let components = URLComponents(url: normalizedURL, resolvingAgainstBaseURL: false),
               let tenant = components.queryItems?.first(where: { $0.name == "tenant" })?.value,
               let tenantNameRaw = components.queryItems?.first(where: { $0.name == "tenant_name" })?.value else {
             return nil
@@ -282,6 +295,16 @@ enum DeepLink {
         let plusNormalized = tenantNameRaw.replacingOccurrences(of: "+", with: " ")
         let tenantName = plusNormalized.removingPercentEncoding ?? plusNormalized
         return (tenant: tenant, tenantName: tenantName)
+    }
+    static func extractClaimParams(from url: URL) -> (tenant: String, dienstId: String, token: String)? {
+        guard let normalizedURL = normalizeURL(url),
+              let components = URLComponents(url: normalizedURL, resolvingAgainstBaseURL: false),
+              let tenant = components.queryItems?.first(where: { $0.name == "tenant" })?.value,
+              let dienstId = components.queryItems?.first(where: { $0.name == "dienst_id" })?.value,
+              let token = components.queryItems?.first(where: { $0.name == "token" })?.value else {
+            return nil
+        }
+        return (tenant: tenant, dienstId: dienstId, token: token)
     }
 }
 

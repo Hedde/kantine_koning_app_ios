@@ -92,10 +92,12 @@ struct KKTextFieldStyle: TextFieldStyle {
         configuration
             .padding(.horizontal, 16)
             .padding(.vertical, 14)
-            .background(KKTheme.surfaceAlt)
+            // Darker background for better placeholder contrast
+            .background(Color(hex: 0xF0F0F2))
             .cornerRadius(8)
             .font(KKFont.body(16))
             .foregroundColor(KKTheme.textPrimary)
+            .tint(KKTheme.accent)
     }
 }
 

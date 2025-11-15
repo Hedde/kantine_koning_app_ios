@@ -180,6 +180,7 @@ struct OnboardingHostView: View {
                             // Terug - want misschien toch verenigingslid willen worden
                             SubtleActionButton(icon: "chevron.left", text: "Terug") { 
                                 store.searchResults = []
+                                tenantSearchQuery = ""
                                 errorText = nil
                                 step = nil 
                             }
@@ -194,8 +195,10 @@ struct OnboardingHostView: View {
                             SubtleActionButton(icon: "chevron.left", text: "Terug") { 
                                 store.searchResults = []
                                 selectedManagerTeams = []
+                                tenantSearchQuery = ""
                                 email = ""
                                 errorText = nil
+                                step = nil
                             }
                         }
                     } else if step == .member {
@@ -209,13 +212,14 @@ struct OnboardingHostView: View {
                             onSubmit: registerMember
                         )
                         .padding(.bottom, 8)
-                        // Terug - want misschien toch teammanager willen worden
-                        SubtleActionButton(icon: "chevron.left", text: "Terug") { 
-                            store.searchResults = []
-                            selectedMemberTeams = []
-                            searchQuery = ""
-                            step = nil 
-                        }
+                            // Terug - want misschien toch teammanager willen worden
+                            SubtleActionButton(icon: "chevron.left", text: "Terug") { 
+                                store.searchResults = []
+                                selectedMemberTeams = []
+                                searchQuery = ""
+                                tenantSearchQuery = ""
+                                step = nil 
+                            }
                     }
                 } else if showingQRScanner {
                     // QR Scanner (when explicitly chosen)

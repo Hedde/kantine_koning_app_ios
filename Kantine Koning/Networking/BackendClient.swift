@@ -484,6 +484,168 @@ final class BackendClient {
         }.resume()
     }
 
+    // MARK: - Dienst Claiming
+    func fetchDienstDetails(dienstId: String, tenantSlug: String, notificationToken: String, completion: @escaping (Result<DienstDTO, Error>) -> Void) {
+        Logger.network("Fetching dienst details for \(dienstId)")
+        Logger.auth("Auth token available: \(authToken?.prefix(20) ?? "nil")")
+        
+        // Build URL with query params
+        var comps = URLComponents(url: baseURL.appendingPathComponent("/api/mobile/v1/diensten/\(dienstId)"), resolvingAgainstBaseURL: false)!
+        comps.queryItems = [
+            URLQueryItem(name: "tenant", value: tenantSlug),
+            URLQueryItem(name: "token", value: notificationToken)
+        ]
+        
+        guard let url = comps.url else { 
+            completion(.failure(NSError(domain: "Backend", code: -3, userInfo: [NSLocalizedDescriptionKey: "Ongeldige URL"])))
+            return 
+        }
+        
+        // Auth check - require token for manager access
+        guard let token = authToken, !token.isEmpty else {
+            Logger.error("No auth token for dienst details fetch")
+            completion(.failure(NSError(domain: "Backend", code: 401, userInfo: [NSLocalizedDescriptionKey: "Authenticatie vereist. Log opnieuw in."])))
+            return
+        }
+        
+        var req = URLRequest(url: url)
+        req.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+        
+        URLSession.shared.dataTask(with: req) { data, response, error in
+            if let error = error {
+                Logger.error("Network error fetching dienst: \(error)")
+                completion(.failure(NSError(domain: "Backend", code: -1, userInfo: [NSLocalizedDescriptionKey: "Geen verbinding met server"])))
+                return
+            }
+            
+            guard let http = response as? HTTPURLResponse, let data = data else {
+                completion(.failure(NSError(domain: "Backend", code: -1, userInfo: [NSLocalizedDescriptionKey: "Geen response van server"])))
+                return
+            }
+            
+            guard (200..<300).contains(http.statusCode) else {
+                let body = String(data: data, encoding: .utf8) ?? "<no body>"
+                Logger.error("Fetch dienst HTTP \(http.statusCode): \(body)")
+                
+                if let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+                   let message = json["message"] as? String {
+                    completion(.failure(NSError(domain: "Backend", code: http.statusCode, userInfo: [NSLocalizedDescriptionKey: message])))
+                } else {
+                    let message: String
+                    switch http.statusCode {
+                    case 404: message = "Dienst niet gevonden"
+                    case 403: message = "Geen toegang tot deze dienst"
+                    case 409: message = "Deze dienst is al geclaimd"
+                    default: message = "Kan dienst niet ophalen (HTTP \(http.statusCode))"
+                    }
+                    completion(.failure(NSError(domain: "Backend", code: http.statusCode, userInfo: [NSLocalizedDescriptionKey: message])))
+                }
+                return
+            }
+            
+            do {
+                struct Resp: Decodable { let dienst: DienstDTO }
+                let decoder = JSONDecoder()
+                let isoNoFrac = ISO8601DateFormatter(); isoNoFrac.formatOptions = [.withInternetDateTime]
+                let isoFrac = ISO8601DateFormatter(); isoFrac.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+                decoder.dateDecodingStrategy = .custom { dec in
+                    let c = try dec.singleValueContainer(); let s = try c.decode(String.self)
+                    if let d = isoFrac.date(from: s) { return d }
+                    if let d = isoNoFrac.date(from: s) { return d }
+                    throw DecodingError.dataCorruptedError(in: c, debugDescription: "Invalid date: \(s)")
+                }
+                
+                let resp = try decoder.decode(Resp.self, from: data)
+                Logger.success("✅ Dienst details ophalen succesvol")
+                completion(.success(resp.dienst))
+            } catch {
+                Logger.error("Failed to decode dienst: \(error)")
+                completion(.failure(NSError(domain: "Backend", code: -2, userInfo: [NSLocalizedDescriptionKey: "Ongeldig antwoord van server"])))
+            }
+        }.resume()
+    }
+    
+    func claimDienst(dienstId: String, teamId: String, notificationToken: String, completion: @escaping (Result<DienstDTO, Error>) -> Void) {
+        Logger.network("Claiming dienst \(dienstId) for team \(teamId)")
+        Logger.auth("Auth token available: \(authToken?.prefix(20) ?? "nil")")
+        
+        var req = URLRequest(url: baseURL.appendingPathComponent("/api/mobile/v1/diensten/\(dienstId)/claim"))
+        req.httpMethod = "POST"
+        req.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        
+        guard let token = authToken, !token.isEmpty else {
+            Logger.error("No auth token for dienst claim")
+            completion(.failure(NSError(domain: "Backend", code: 401, userInfo: [NSLocalizedDescriptionKey: "No authentication token available"])))
+            return
+        }
+        
+        req.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+        
+        let body: [String: Any] = [
+            "team_id": teamId,
+            "notification_token": notificationToken
+        ]
+        
+        do {
+            req.httpBody = try JSONSerialization.data(withJSONObject: body)
+        } catch {
+            completion(.failure(error))
+            return
+        }
+        
+        URLSession.shared.dataTask(with: req) { data, response, error in
+            if let error = error {
+                Logger.error("Network error claiming dienst: \(error)")
+                completion(.failure(error))
+                return
+            }
+            
+            guard let http = response as? HTTPURLResponse, let data = data else {
+                completion(.failure(NSError(domain: "Backend", code: -1, userInfo: [NSLocalizedDescriptionKey: "No response"])))
+                return
+            }
+            
+            guard (200..<300).contains(http.statusCode) else {
+                let body = String(data: data, encoding: .utf8) ?? "<no body>"
+                Logger.error("Claim dienst HTTP \(http.statusCode): \(body)")
+                
+                // Parse error messages from backend
+                if let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+                   let message = json["message"] as? String {
+                    completion(.failure(NSError(domain: "Backend", code: http.statusCode, userInfo: [NSLocalizedDescriptionKey: message])))
+                } else {
+                    completion(.failure(NSError(domain: "Backend", code: http.statusCode, userInfo: [NSLocalizedDescriptionKey: body])))
+                }
+                return
+            }
+            
+            do {
+                struct Resp: Decodable {
+                    let success: Bool
+                    let message: String
+                    let dienst: DienstDTO
+                }
+                
+                let decoder = JSONDecoder()
+                let isoNoFrac = ISO8601DateFormatter(); isoNoFrac.formatOptions = [.withInternetDateTime]
+                let isoFrac = ISO8601DateFormatter(); isoFrac.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+                decoder.dateDecodingStrategy = .custom { dec in
+                    let c = try dec.singleValueContainer(); let s = try c.decode(String.self)
+                    if let d = isoFrac.date(from: s) { return d }
+                    if let d = isoNoFrac.date(from: s) { return d }
+                    throw DecodingError.dataCorruptedError(in: c, debugDescription: "Invalid date: \(s)")
+                }
+                
+                let resp = try decoder.decode(Resp.self, from: data)
+                Logger.success("✅ Dienst claimed successfully: \(resp.message)")
+                completion(.success(resp.dienst))
+            } catch {
+                Logger.error("Failed to decode claim response: \(error)")
+                completion(.failure(error))
+            }
+        }.resume()
+    }
+
     // MARK: - Team Search (public)
     func searchTeams(tenant: TenantID, query: String, completion: @escaping (Result<[TeamDTO], Error>) -> Void) {
         let trimmed = query.trimmingCharacters(in: .whitespacesAndNewlines)

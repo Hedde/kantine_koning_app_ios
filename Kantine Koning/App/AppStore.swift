@@ -32,6 +32,8 @@ final class AppStore: ObservableObject {
     @Published var tenantSearchResults: [TenantSearchResult] = []
     @Published var onboardingScan: ScannedTenant?
     @Published var pendingCTA: CTA?
+    @Published var pendingClaimDienst: ClaimDienstParams?
+    @Published var currentlyViewingTeamId: String? // Track which team page user is on for QR scan context
     @Published var leaderboards: [String: LeaderboardData] = [:]  // tenantSlug -> LeaderboardData
     @Published var leaderboardErrors: [String: String] = [:]  // tenantSlug -> error message
     @Published var globalLeaderboard: GlobalLeaderboardData?
@@ -143,6 +145,7 @@ final class AppStore: ObservableObject {
         if DeepLink.isEnrollment(url) { handleEnrollmentDeepLink(url) }
         else if DeepLink.isCTA(url) { handleCTALink(url) }
         else if DeepLink.isInvite(url) { handleInviteLink(url) }
+        else if DeepLink.isClaim(url) { handleClaimDienstLink(url) }
     }
     
     // MARK: - Reactive Push Navigation
@@ -164,7 +167,7 @@ final class AppStore: ObservableObject {
         pushNavigationCancellable = $upcoming
             .dropFirst() // Skip the immediate current value
             .timeout(.seconds(2.0), scheduler: DispatchQueue.main) // Max 2s wait for fresh data
-            .catch { [weak self] _ -> AnyPublisher<[Dienst], Never> in
+            .catch { [weak self] (error: Error) -> AnyPublisher<[Dienst], Never> in
                 // Timeout occurred - use current cached data as fallback
                 guard let self = self else {
                     return Just([]).eraseToAnyPublisher()
@@ -335,6 +338,14 @@ final class AppStore: ObservableObject {
     func handleQRScan(slug: TenantID, name: String) { onboardingScan = ScannedTenant(slug: slug, name: name) }
 
     enum CTA: Equatable { case shiftVolunteer(token: String) }
+    
+    struct ClaimDienstParams: Equatable, Identifiable {
+        var id: String { dienstId }
+        let tenantSlug: String
+        let dienstId: String
+        let notificationToken: String
+        let suggestedTeamId: String? // Team that user was viewing when scanning
+    }
 
     func submitEmail(_ email: String, for tenant: TenantID, selectedTeamCodes: [TeamID], completion: @escaping (Result<Void, Error>) -> Void) {
         // Old flow: if no team codes yet, first fetch allowed teams for selection
@@ -1047,6 +1058,35 @@ final class AppStore: ObservableObject {
         // Set app phase to onboarding to ensure enrollment screen is shown
         appPhase = .onboarding
         handleQRScan(slug: params.tenant, name: params.tenantName)
+    }
+    
+    private func handleClaimDienstLink(_ url: URL) {
+        // Handle kantinekoning://claim-dienst?tenant=...&dienst_id=...&token=...
+        guard let params = DeepLink.extractClaimParams(from: url) else {
+            Logger.error("Failed to extract claim params from URL")
+            return
+        }
+        
+        Logger.userInteraction("Claim Dienst Link Received", target: "AppStore", context: [
+            "tenant": params.tenant,
+            "dienst_id": params.dienstId,
+            "url_scheme": url.scheme ?? "unknown"
+        ])
+        
+        // Only allow claiming when user is registered
+        guard appPhase == .registered else {
+            Logger.warning("Claim dienst link ignored - app not in registered state (phase: \(appPhase))")
+            return
+        }
+        
+        // Set pending claim to trigger ClaimDienstView presentation
+        // Include currently viewing team as suggested default (if user is on a team page)
+        pendingClaimDienst = ClaimDienstParams(
+            tenantSlug: params.tenant,
+            dienstId: params.dienstId,
+            notificationToken: params.token,
+            suggestedTeamId: currentlyViewingTeamId
+        )
     }
 }
 

@@ -1,4 +1,5 @@
 import SwiftUI
+import AVFoundation
 
 struct HomeHostView: View {
     @EnvironmentObject var store: AppStore
@@ -7,11 +8,135 @@ struct HomeHostView: View {
     @State private var leaderboardShowingInfo = false
     @State private var selectedTenant: String? = nil
     @State private var selectedTeam: String? = nil
+    @State private var showQRScanner = false
+    @State private var scanningActive = false
+    
+    // Check if user is viewing a manager team page
+    private var isViewingManagerTeam: Bool {
+        guard let tenantSlug = selectedTenant,
+              let teamId = selectedTeam,
+              let tenant = store.model.tenants[tenantSlug],
+              let team = tenant.teams.first(where: { $0.id == teamId }) else {
+            return false
+        }
+        return team.role == .manager && !tenant.seasonEnded
+    }
 
     var body: some View {
         VStack(spacing: 0) {
+            // Top Navigation (always visible)
+            TopNavigationBar(
+                onHomeAction: {
+                    // Clear all selections to go back to home
+                    selectedTenant = nil
+                    selectedTeam = nil
+                    showQRScanner = false
+                    showSettings = false
+                    showLeaderboard = false
+                    scanningActive = false
+                    store.pendingClaimDienst = nil
+                },
+                onSettingsAction: {
+                    showSettings.toggle()
+                    if showSettings {
+                        showLeaderboard = false
+                        showQRScanner = false
+                        scanningActive = false
+                    }
+                },
+                onLeaderboardAction: {
+                    showLeaderboard.toggle()
+                    leaderboardShowingInfo.toggle()
+                    if showLeaderboard {
+                        showSettings = false
+                        showQRScanner = false
+                        scanningActive = false
+                    }
+                },
+                onQRScanAction: {
+                    Logger.userInteraction("Tap", target: "QR Scan Button")
+                    showQRScanner = true
+                    showSettings = false
+                    showLeaderboard = false
+                    
+                    // Request camera permission and start scanning
+                    switch AVCaptureDevice.authorizationStatus(for: .video) {
+                    case .authorized:
+                        scanningActive = true
+                    case .notDetermined:
+                        AVCaptureDevice.requestAccess(for: .video) { granted in
+                            DispatchQueue.main.async {
+                                if granted {
+                                    scanningActive = true
+                                }
+                            }
+                        }
+                    default:
+                        Logger.qr("❌ Camera permission denied")
+                    }
+                },
+                isSettingsActive: showSettings,
+                showLeaderboard: showLeaderboard,
+                showQRButton: isViewingManagerTeam && store.pendingClaimDienst == nil && !showQRScanner
+            )
+            .background(KKTheme.surface)
+            
             // Main Content
-            if showSettings {
+            if let claimParams = store.pendingClaimDienst {
+                // Claim dienst view
+                ClaimDienstView(
+                    tenantSlug: claimParams.tenantSlug,
+                    dienstId: claimParams.dienstId,
+                    notificationToken: claimParams.notificationToken,
+                    suggestedTeamId: claimParams.suggestedTeamId,
+                    onDismiss: {
+                        store.pendingClaimDienst = nil
+                    }
+                )
+                .environmentObject(store)
+            } else if showQRScanner {
+                // QR Scanner for claiming diensten
+                VStack(spacing: 20) {
+                    Spacer().frame(height: 40)
+                    
+                    Text("Scan QR-code")
+                        .font(KKFont.heading(24))
+                        .fontWeight(.regular)
+                        .foregroundStyle(KKTheme.textPrimary)
+                    
+                    Text("Richt je camera op een QR-code om een dienst op te pakken voor jouw team")
+                        .font(KKFont.body(14))
+                        .multilineTextAlignment(.center)
+                        .foregroundStyle(KKTheme.textSecondary)
+                        .padding(.horizontal, 24)
+                    
+                    ZStack {
+                        QRScannerView(isActive: scanningActive) { code in
+                            handleQRScanned(code)
+                        }
+                        CrosshairOverlay()
+                    }
+                    .aspectRatio(1.0, contentMode: .fit)
+                    .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+                    .padding(.horizontal, 24)
+                    
+                    Button(action: {
+                        showQRScanner = false
+                        scanningActive = false
+                    }) {
+                        HStack(spacing: 6) {
+                            Image(systemName: "chevron.left").font(.body)
+                            Text("Terug").font(KKFont.body(12))
+                        }
+                    }
+                    .buttonStyle(.plain)
+                    .foregroundStyle(KKTheme.textSecondary)
+                    
+                    Spacer()
+                }
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .background(KKTheme.surface.ignoresSafeArea())
+            } else if showSettings {
                 SettingsViewInternal().environmentObject(store)
             } else if showLeaderboard {
                 LeaderboardHostView(
@@ -44,146 +169,135 @@ struct HomeHostView: View {
                                   onBack: { selectedTenant = nil })
                         .environmentObject(store)
                     }
-                } else {
-                    // Smart tenant selection logic
-                    let allTenants = Array(store.model.tenants.values)
-                    let accessibleTenants = allTenants.filter { $0.isAccessible }
-                    
-                    // If only ONE tenant total and it's season ended -> still show team selection
-                    if allTenants.count == 1, let singleTenant = allTenants.first, singleTenant.seasonEnded {
-                        SeasonEndedTeamsView(tenant: singleTenant,
-                                           onTeamSelected: { teamId in 
-                                               selectedTenant = singleTenant.slug
-                                               selectedTeam = teamId 
-                                           },
-                                           onBack: { /* No back for single tenant */ })
-                        .environmentObject(store)
-                    } 
-                    // If multiple tenants OR single accessible tenant -> show selection
-                    else if allTenants.count > 1 || !accessibleTenants.isEmpty {
-                        ClubsViewInternal(
-                            onTenantSelected: { slug in
-                                selectedTenant = slug
-                                // Auto-select team when only one exists (for accessible tenants)
-                                if let tenant = store.model.tenants[slug], tenant.isAccessible, tenant.teams.count == 1, let onlyTeam = tenant.teams.first {
-                                    selectedTeam = onlyTeam.id
-                                }
-                                // Note: Season ended tenants will be handled by selectedTenant logic above
+            } else {
+                // Smart tenant selection logic
+                let allTenants = Array(store.model.tenants.values)
+                let accessibleTenants = allTenants.filter { $0.isAccessible }
+                
+                // If only ONE tenant total and it's season ended -> still show team selection
+                if allTenants.count == 1, let singleTenant = allTenants.first, singleTenant.seasonEnded {
+                    SeasonEndedTeamsView(tenant: singleTenant,
+                                       onTeamSelected: { teamId in 
+                                           selectedTenant = singleTenant.slug
+                                           selectedTeam = teamId 
+                                       },
+                                       onBack: { /* No back for single tenant */ })
+                    .environmentObject(store)
+                } 
+                // If multiple tenants OR single accessible tenant -> show selection
+                else if allTenants.count > 1 || !accessibleTenants.isEmpty {
+                    ClubsViewInternal(
+                        onTenantSelected: { slug in
+                            selectedTenant = slug
+                            // Auto-select team when only one exists (for accessible tenants)
+                            if let tenant = store.model.tenants[slug], tenant.isAccessible, tenant.teams.count == 1, let onlyTeam = tenant.teams.first {
+                                selectedTeam = onlyTeam.id
                             }
-                        )
-                        .environmentObject(store)
-                    } 
-                    // No tenants at all -> should not happen here
-                    else {
-                        EmptyView()
-                    }
-                }
-
-                // Back navigation is handled by home button in navigation bar
-            }
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
-            .background(KKTheme.surface.ignoresSafeArea())
-            .onAppear {
-                Logger.viewLifecycle("HomeHostView", event: "onAppear", details: "tenants: \(store.model.tenants.count)")
-            }
-            .onDisappear {
-                Logger.viewLifecycle("HomeHostView", event: "onDisappear")
-            }
-            .onChange(of: store.model.tenants) { oldTenants, newTenants in
-                // Only react to season ended changes for the currently selected tenant
-                guard let selectedTenantSlug = selectedTenant,
-                      let oldTenant = oldTenants[selectedTenantSlug],
-                      let newTenant = newTenants[selectedTenantSlug],
-                      oldTenant.seasonEnded != newTenant.seasonEnded else {
-                    return
-                }
-                
-                if newTenant.seasonEnded {
-                    Logger.auth("🔄 Selected tenant \(selectedTenantSlug) became season ended - clearing team selection")
-                    selectedTeam = nil // This will trigger navigation to SeasonOverviewView
-                }
-            }
-            .onReceive(NotificationCenter.default.publisher(for: .pushNavigationRequested)) { notification in
-                // Handle push notification navigation with defensive programming
-                guard let userInfo = notification.userInfo,
-                      let tenantSlug = userInfo["tenant"] as? String,
-                      let teamCode = userInfo["team"] as? String,
-                      let source = userInfo["source"] as? String,
-                      source == "push_notification" else {
-                    Logger.push("🚫 HomeHostView: Invalid push navigation data received")
-                    return
-                }
-                
-                // Enhanced safety: Don't override user's recent manual navigation
-                let userHasNavigated = (selectedTenant != nil || selectedTeam != nil)
-                if userHasNavigated {
-                    Logger.push("🚫 HomeHostView: User already navigated manually - skipping push navigation")
-                    Logger.push("   Current state: tenant=\(selectedTenant ?? "nil") team=\(selectedTeam ?? "nil")")
-                    return
-                }
-                
-                // Additional safety: Verify user has correct role access for this team
-                if let tenant = store.model.tenants[tenantSlug] {
-                    let correctTeamAccess = tenant.teams.contains { team in
-                        (team.id == teamCode || team.code == teamCode)
-                    }
-                    
-                    if !correctTeamAccess {
-                        Logger.push("🚫 HomeHostView: Team access verification failed for '\(teamCode)' in tenant '\(tenantSlug)'")
-                        return
-                    }
-                }
-                
-                // Double-check tenant access (redundant safety check)
-                guard store.model.tenants[tenantSlug] != nil else {
-                    Logger.push("🚫 HomeHostView: Push navigation denied - tenant '\(tenantSlug)' not accessible")
-                    return
-                }
-                
-                Logger.push("✅ HomeHostView: Applying push navigation - tenant='\(tenantSlug)' team='\(teamCode)'")
-                
-                // Apply navigation state
-                selectedTenant = tenantSlug
-                selectedTeam = teamCode
-            }
-                            .safeAreaInset(edge: .top) {
-                TopNavigationBar(
-                    onHomeAction: {
-                        Logger.userInteraction("Tap", target: "Home Button")
-                        selectedTenant = nil
-                        selectedTeam = nil
-                        showSettings = false
-                        showLeaderboard = false
-                    },
-                    onSettingsAction: { 
-                        Logger.userInteraction("Tap", target: "Settings Button", context: ["current_state": showSettings ? "open" : "closed"])
-                        showSettings.toggle()
-                        showLeaderboard = false
-                    },
-                    onLeaderboardAction: {
-                        Logger.userInteraction("Tap", target: "Leaderboard Button", context: ["current_state": showLeaderboard ? "open" : "closed"])
-                        if !showLeaderboard {
-                            showLeaderboard = true
-                            showSettings = false
-                            leaderboardShowingInfo = false
-                            
-                            // If current tenant is season ended, clear selection to force menu
-                            if let tenantSlug = selectedTenant,
-                               let tenant = store.model.tenants[tenantSlug],
-                               tenant.seasonEnded {
-                                Logger.debug("Clearing season ended tenant selection for leaderboard access")
-                                // Note: Don't clear selectedTenant here, just let LeaderboardHostView handle it
-                            }
-                        } else {
-                            // Toggle info when already in leaderboard
-                            leaderboardShowingInfo.toggle()
+                            // Note: Season ended tenants will be handled by selectedTenant logic above
                         }
-                    },
-                    isSettingsActive: showSettings,
-                    showLeaderboard: showLeaderboard
-                )
-                .background(KKTheme.surface)
+                    )
+                    .environmentObject(store)
+                } 
+                // No tenants at all -> should not happen here
+                else {
+                    EmptyView()
+                }
             }
+
+            // Back navigation is handled by home button in navigation bar
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .background(KKTheme.surface.ignoresSafeArea())
+        .onAppear {
+            Logger.viewLifecycle("HomeHostView", event: "onAppear", details: "tenants: \(store.model.tenants.count)")
+        }
+        .onDisappear {
+            Logger.viewLifecycle("HomeHostView", event: "onDisappear")
+        }
+        .onChange(of: store.model.tenants) { oldTenants, newTenants in
+            // Only react to season ended changes for the currently selected tenant
+            guard let selectedTenantSlug = selectedTenant,
+                  let oldTenant = oldTenants[selectedTenantSlug],
+                  let newTenant = newTenants[selectedTenantSlug],
+                  oldTenant.seasonEnded != newTenant.seasonEnded else {
+                return
+            }
+            
+            if newTenant.seasonEnded {
+                Logger.auth("🔄 Selected tenant \(selectedTenantSlug) became season ended - clearing team selection")
+                selectedTeam = nil // This will trigger navigation to SeasonOverviewView
+            }
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .pushNavigationRequested)) { notification in
+            // Handle push notification navigation with defensive programming
+            guard let userInfo = notification.userInfo,
+                  let tenantSlug = userInfo["tenant"] as? String,
+                  let teamCode = userInfo["team"] as? String,
+                  let source = userInfo["source"] as? String,
+                  source == "push_notification" else {
+                Logger.push("🚫 HomeHostView: Invalid push notification data received")
+                return
+            }
+            
+            // Enhanced safety: Don't override user's recent manual navigation
+            let userHasNavigated = (selectedTenant != nil || selectedTeam != nil)
+            if userHasNavigated {
+                Logger.push("🚫 HomeHostView: User already navigated manually - skipping push navigation")
+                Logger.push("   Current state: tenant=\(selectedTenant ?? "nil") team=\(selectedTeam ?? "nil")")
+                return
+            }
+            
+            // Additional safety: Verify user has correct role access for this team
+            if let tenant = store.model.tenants[tenantSlug] {
+                let correctTeamAccess = tenant.teams.contains { team in
+                    (team.id == teamCode || team.code == teamCode)
+                }
+                
+                if !correctTeamAccess {
+                    Logger.push("🚫 HomeHostView: Team access verification failed for '\(teamCode)' in tenant '\(tenantSlug)'")
+                    return
+                }
+            }
+            
+            // Double-check tenant access (redundant safety check)
+            guard store.model.tenants[tenantSlug] != nil else {
+                Logger.push("🚫 HomeHostView: Push navigation denied - tenant '\(tenantSlug)' not accessible")
+                return
+            }
+            
+            Logger.push("✅ HomeHostView: Applying push navigation - tenant='\(tenantSlug)' team='\(teamCode)'")
+            
+            // Apply navigation state
+            selectedTenant = tenantSlug
+            selectedTeam = teamCode
+        }
+        .onChange(of: selectedTeam) { _, newTeam in
+            // Update AppStore with currently viewing team for QR scan context
+            store.currentlyViewingTeamId = newTeam
+        }
+    }
+    
+    // MARK: - QR Scanner Handler
+    private func handleQRScanned(_ code: String) {
+        Logger.qr("📦 Scanned code in HomeHostView: \(code)")
+        
+        // Stop scanning and close scanner
+        scanningActive = false
+        showQRScanner = false
+        
+        // Try to parse as URL
+        guard let url = URL(string: code) else {
+            Logger.qr("❌ Invalid URL format")
+            return
+        }
+        
+        // Check if it's a claim deep link
+        if DeepLink.isClaim(url) {
+            Logger.qr("✅ Detected claim deep link, processing...")
+            store.handleIncomingURL(url)
+        } else {
+            Logger.qr("⚠️ Not a claim deep link, ignoring")
+        }
     }
 }
 
@@ -192,8 +306,10 @@ private struct TopNavigationBar: View {
     let onHomeAction: () -> Void
     let onSettingsAction: () -> Void
     let onLeaderboardAction: () -> Void
+    let onQRScanAction: () -> Void
     let isSettingsActive: Bool
     let showLeaderboard: Bool
+    let showQRButton: Bool
     @EnvironmentObject var store: AppStore
     
     var body: some View {
@@ -215,6 +331,14 @@ private struct TopNavigationBar: View {
                         Image(systemName: "house.fill")
                             .font(.title2)
                             .foregroundColor(KKTheme.textSecondary)
+                    }
+                    
+                    if showQRButton {
+                        Button(action: onQRScanAction) {
+                            Image(systemName: "qrcode")
+                                .font(.title2)
+                                .foregroundColor(KKTheme.textSecondary)
+                        }
                     }
                     
                     #if DEBUG
@@ -1715,3 +1839,85 @@ private struct SeasonEndedTeamsView: View {
     }
 }
 
+// MARK: - Crosshair Overlay for QR Scanner
+private struct CrosshairOverlay: View {
+    var body: some View {
+        GeometryReader { geo in
+            let minDim = min(geo.size.width, geo.size.height)
+            let inset: CGFloat = minDim * 0.15
+            let rect = CGRect(
+                x: (geo.size.width - minDim) / 2 + inset,
+                y: (geo.size.height - minDim) / 2 + inset,
+                width: minDim - 2 * inset,
+                height: minDim - 2 * inset
+            )
+
+            let lineW: CGFloat = 2.0
+            let radius: CGFloat = 16
+            let seg: CGFloat = 32
+            let plus: CGFloat = 16
+
+            let stroke = StrokeStyle(lineWidth: lineW, lineCap: .round, lineJoin: .round)
+
+            ZStack {
+                // TL (Top Left corner)
+                Path { p in
+                    p.move(to: .init(x: rect.minX + radius, y: rect.minY))
+                    p.addLine(to: .init(x: rect.minX + radius + seg, y: rect.minY))
+                    p.move(to: .init(x: rect.minX, y: rect.minY + radius))
+                    p.addLine(to: .init(x: rect.minX, y: rect.minY + radius + seg))
+                    p.addArc(center: .init(x: rect.minX + radius, y: rect.minY + radius),
+                             radius: radius,
+                             startAngle: .degrees(180), endAngle: .degrees(270), clockwise: false)
+                }
+                .stroke(Color.black.opacity(0.8), style: stroke)
+
+                // TR (Top Right corner)
+                Path { p in
+                    p.move(to: .init(x: rect.maxX - radius, y: rect.minY))
+                    p.addLine(to: .init(x: rect.maxX - radius - seg, y: rect.minY))
+                    p.move(to: .init(x: rect.maxX, y: rect.minY + radius))
+                    p.addLine(to: .init(x: rect.maxX, y: rect.minY + radius + seg))
+                    p.addArc(center: .init(x: rect.maxX - radius, y: rect.minY + radius),
+                             radius: radius,
+                             startAngle: .degrees(0), endAngle: .degrees(270), clockwise: true)
+                }
+                .stroke(Color.black.opacity(0.8), style: stroke)
+
+                // BL (Bottom Left corner)
+                Path { p in
+                    p.move(to: .init(x: rect.minX + radius, y: rect.maxY))
+                    p.addLine(to: .init(x: rect.minX + radius + seg, y: rect.maxY))
+                    p.move(to: .init(x: rect.minX, y: rect.maxY - radius))
+                    p.addLine(to: .init(x: rect.minX, y: rect.maxY - radius - seg))
+                    p.addArc(center: .init(x: rect.minX + radius, y: rect.maxY - radius),
+                             radius: radius,
+                             startAngle: .degrees(180), endAngle: .degrees(90), clockwise: true)
+                }
+                .stroke(Color.black.opacity(0.8), style: stroke)
+
+                // BR (Bottom Right corner)
+                Path { p in
+                    p.move(to: .init(x: rect.maxX - radius, y: rect.maxY))
+                    p.addLine(to: .init(x: rect.maxX - radius - seg, y: rect.maxY))
+                    p.move(to: .init(x: rect.maxX, y: rect.maxY - radius))
+                    p.addLine(to: .init(x: rect.maxX, y: rect.maxY - radius - seg))
+                    p.addArc(center: .init(x: rect.maxX - radius, y: rect.maxY - radius),
+                             radius: radius,
+                             startAngle: .degrees(0), endAngle: .degrees(90), clockwise: false)
+                }
+                .stroke(Color.black.opacity(0.8), style: stroke)
+
+                // Center crosshair
+                Path { p in
+                    let c = CGPoint(x: rect.midX, y: rect.midY)
+                    p.move(to: .init(x: c.x - plus, y: c.y))
+                    p.addLine(to: .init(x: c.x + plus, y: c.y))
+                    p.move(to: .init(x: c.x, y: c.y - plus))
+                    p.addLine(to: .init(x: c.x, y: c.y + plus))
+                }
+                .stroke(Color.black.opacity(0.8), style: stroke)
+            }
+        }
+    }
+}
