@@ -645,6 +645,149 @@ final class BackendClient {
             }
         }.resume()
     }
+    
+    // MARK: - Available Diensten (manager only)
+    func fetchBeschikbareDiensten(completion: @escaping (Result<[DienstDTO], Error>) -> Void) {
+        // GET /api/mobile/v1/diensten/available
+        // Tenant comes from JWT token (no param needed)
+        // authToken MUST be enrollment-specific (manager role)
+        
+        guard let token = authToken else {
+            completion(.failure(NSError(domain: "Backend", code: -2, userInfo: [NSLocalizedDescriptionKey: "Authenticatie vereist"])))
+            return
+        }
+        
+        let url = baseURL.appendingPathComponent("/api/mobile/v1/diensten/available")
+        var req = URLRequest(url: url)
+        req.httpMethod = "GET"
+        req.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+        
+        Logger.network("Fetching beschikbare diensten")
+        Logger.auth("Auth token available: \(String(token.prefix(20)))...")
+        
+        URLSession.shared.dataTask(with: req) { data, response, error in
+            if let error = error {
+                completion(.failure(error))
+                return
+            }
+            
+            guard let http = response as? HTTPURLResponse, let data = data else {
+                completion(.failure(NSError(domain: "Backend", code: -1, userInfo: [NSLocalizedDescriptionKey: "Geen response"])))
+                return
+            }
+            
+            guard (200..<300).contains(http.statusCode) else {
+                let body = String(data: data, encoding: .utf8) ?? "<no body>"
+                Logger.error("Fetch beschikbare diensten HTTP \(http.statusCode): \(body)")
+                
+                if let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+                   let message = json["message"] as? String {
+                    completion(.failure(NSError(domain: "Backend", code: http.statusCode, userInfo: [NSLocalizedDescriptionKey: message])))
+                } else {
+                    completion(.failure(NSError(domain: "Backend", code: http.statusCode, userInfo: [NSLocalizedDescriptionKey: "HTTP \(http.statusCode)"])))
+                }
+                return
+            }
+            
+            do {
+                struct Resp: Decodable { let diensten: [DienstDTO] }
+                
+                let decoder = JSONDecoder()
+                let isoNoFrac = ISO8601DateFormatter(); isoNoFrac.formatOptions = [.withInternetDateTime]
+                let isoFrac = ISO8601DateFormatter(); isoFrac.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+                decoder.dateDecodingStrategy = .custom { dec in
+                    let c = try dec.singleValueContainer(); let s = try c.decode(String.self)
+                    if let d = isoFrac.date(from: s) { return d }
+                    if let d = isoNoFrac.date(from: s) { return d }
+                    throw DecodingError.dataCorruptedError(in: c, debugDescription: "Invalid date: \(s)")
+                }
+                
+                let resp = try decoder.decode(Resp.self, from: data)
+                Logger.success("Fetched \(resp.diensten.count) beschikbare diensten")
+                completion(.success(resp.diensten))
+            } catch {
+                Logger.error("Failed to decode beschikbare diensten: \(error)")
+                completion(.failure(error))
+            }
+        }.resume()
+    }
+    
+    // MARK: - Toggle Transfer Offer (manager only)
+    func toggleTransferOffer(dienstId: String, offered: Bool, completion: @escaping (Result<DienstDTO, Error>) -> Void) {
+        // PUT /api/mobile/v1/diensten/:id/transfer-offer
+        // Body: { "offered_for_transfer": true/false }
+        
+        guard let token = authToken else {
+            completion(.failure(NSError(domain: "Backend", code: -2, userInfo: [NSLocalizedDescriptionKey: "Authenticatie vereist"])))
+            return
+        }
+        
+        let url = baseURL.appendingPathComponent("/api/mobile/v1/diensten/\(dienstId)/transfer-offer")
+        var req = URLRequest(url: url)
+        req.httpMethod = "PUT"
+        req.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+        req.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        
+        let body = ["offered_for_transfer": offered]
+        do {
+            req.httpBody = try JSONSerialization.data(withJSONObject: body)
+        } catch {
+            completion(.failure(error))
+            return
+        }
+        
+        Logger.network("Toggling transfer offer for dienst \(dienstId) to \(offered)")
+        Logger.auth("Auth token available: \(String(token.prefix(20)))...")
+        
+        URLSession.shared.dataTask(with: req) { data, response, error in
+            if let error = error {
+                completion(.failure(error))
+                return
+            }
+            
+            guard let http = response as? HTTPURLResponse, let data = data else {
+                completion(.failure(NSError(domain: "Backend", code: -1, userInfo: [NSLocalizedDescriptionKey: "Geen response"])))
+                return
+            }
+            
+            guard (200..<300).contains(http.statusCode) else {
+                let body = String(data: data, encoding: .utf8) ?? "<no body>"
+                Logger.error("Toggle transfer offer HTTP \(http.statusCode): \(body)")
+                
+                if let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+                   let message = json["message"] as? String {
+                    completion(.failure(NSError(domain: "Backend", code: http.statusCode, userInfo: [NSLocalizedDescriptionKey: message])))
+                } else {
+                    completion(.failure(NSError(domain: "Backend", code: http.statusCode, userInfo: [NSLocalizedDescriptionKey: "HTTP \(http.statusCode)"])))
+                }
+                return
+            }
+            
+            do {
+                struct Resp: Decodable {
+                    let success: Bool
+                    let dienst: DienstDTO
+                }
+                
+                let decoder = JSONDecoder()
+                let isoNoFrac = ISO8601DateFormatter(); isoNoFrac.formatOptions = [.withInternetDateTime]
+                let isoFrac = ISO8601DateFormatter(); isoFrac.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+                decoder.dateDecodingStrategy = .custom { dec in
+                    let c = try dec.singleValueContainer(); let s = try c.decode(String.self)
+                    if let d = isoFrac.date(from: s) { return d }
+                    if let d = isoNoFrac.date(from: s) { return d }
+                    throw DecodingError.dataCorruptedError(in: c, debugDescription: "Invalid date: \(s)")
+                }
+                
+                let resp = try decoder.decode(Resp.self, from: data)
+                Logger.success("Transfer offer toggled successfully")
+                completion(.success(resp.dienst))
+            } catch {
+                Logger.error("Failed to decode toggle response: \(error)")
+                completion(.failure(error))
+            }
+        }.resume()
+    }
 
     // MARK: - Team Search (public)
     func searchTeams(tenant: TenantID, query: String, completion: @escaping (Result<[TeamDTO], Error>) -> Void) {
@@ -1110,6 +1253,8 @@ struct DienstDTO: Codable {
     let aanmeldingen: [String]?
     let updated_at: Date?
     let dienst_type: DienstTypeRef?
+    let offered_for_transfer: Bool?
+    let notification_token: String?
 }
 
 struct TenantInfoResponse: Codable {

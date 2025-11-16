@@ -10,6 +10,8 @@ struct HomeHostView: View {
     @State private var selectedTeam: String? = nil
     @State private var showQRScanner = false
     @State private var scanningActive = false
+    @State private var showBeschikbareDiensten = false
+    @State private var offerTransferForDienst: Dienst? = nil
     
     // Check if user is viewing a manager team page
     private var isViewingManagerTeam: Bool {
@@ -31,9 +33,11 @@ struct HomeHostView: View {
                     selectedTenant = nil
                     selectedTeam = nil
                     showQRScanner = false
+                    showBeschikbareDiensten = false
                     showSettings = false
                     showLeaderboard = false
                     scanningActive = false
+                    offerTransferForDienst = nil
                     store.pendingClaimDienst = nil
                 },
                 onSettingsAction: {
@@ -42,6 +46,9 @@ struct HomeHostView: View {
                         showLeaderboard = false
                         showQRScanner = false
                         scanningActive = false
+                        showBeschikbareDiensten = false
+                        offerTransferForDienst = nil
+                        store.pendingClaimDienst = nil
                     }
                 },
                 onLeaderboardAction: {
@@ -55,13 +62,28 @@ struct HomeHostView: View {
                         showSettings = false
                         showQRScanner = false
                         scanningActive = false
+                        showBeschikbareDiensten = false
+                        offerTransferForDienst = nil
+                        store.pendingClaimDienst = nil
                     }
                 },
                 onQRScanAction: {
                     Logger.userInteraction("Tap", target: "QR Scan Button")
+                    
+                    // If already on QR scanner, refresh by restarting scanning
+                    if showQRScanner {
+                        scanningActive = false
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+                            scanningActive = true
+                        }
+                        return
+                    }
+                    
                     showQRScanner = true
                     showSettings = false
                     showLeaderboard = false
+                    showBeschikbareDiensten = false
+                    offerTransferForDienst = nil
                     
                     // Request camera permission and start scanning
                     switch AVCaptureDevice.authorizationStatus(for: .video) {
@@ -79,10 +101,30 @@ struct HomeHostView: View {
                         Logger.qr("❌ Camera permission denied")
                     }
                 },
+                onBeschikbareDienstenAction: {
+                    Logger.userInteraction("Tap", target: "Beschikbare Diensten Button")
+                    
+                    // If already on beschikbare diensten, refresh by toggling state
+                    if showBeschikbareDiensten {
+                        showBeschikbareDiensten = false
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
+                            showBeschikbareDiensten = true
+                        }
+                        return
+                    }
+                    
+                    showBeschikbareDiensten = true
+                    showSettings = false
+                    showLeaderboard = false
+                    showQRScanner = false
+                    scanningActive = false
+                    offerTransferForDienst = nil
+                },
                 isSettingsActive: showSettings,
                 showLeaderboard: showLeaderboard,
                 leaderboardShowingInfo: leaderboardShowingInfo,
-                showQRButton: isViewingManagerTeam && store.pendingClaimDienst == nil && !showQRScanner
+                showQRButton: isViewingManagerTeam && store.pendingClaimDienst == nil,
+                showBeschikbareDienstenButton: isViewingManagerTeam && store.pendingClaimDienst == nil
             )
             .background(KKTheme.surface)
             
@@ -141,6 +183,20 @@ struct HomeHostView: View {
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
                 .background(KKTheme.surface.ignoresSafeArea())
+            } else if showBeschikbareDiensten, let tenantSlug = selectedTenant {
+                // Beschikbare diensten view (manager only)
+                BeschikbareDienstenView(tenantSlug: tenantSlug)
+                    .environmentObject(store)
+            } else if let dienst = offerTransferForDienst {
+                // Transfer offer view (full page, not sheet)
+                OfferDienstForTransferView(
+                    dienst: dienst,
+                    isPresented: Binding(
+                        get: { offerTransferForDienst != nil },
+                        set: { if !$0 { offerTransferForDienst = nil } }
+                    )
+                )
+                .environmentObject(store)
             } else if showSettings {
                 SettingsViewInternal().environmentObject(store)
             } else if showLeaderboard {
@@ -158,7 +214,14 @@ struct HomeHostView: View {
                     SeasonOverviewView(tenant: tenant, teamId: teamId)
                         .environmentObject(store)
                 } else {
-                    TeamDienstenView(tenant: tenant, teamId: teamId).environmentObject(store)
+                    TeamDienstenView(
+                        tenant: tenant, 
+                        teamId: teamId,
+                        onOfferTransfer: { dienst in
+                            offerTransferForDienst = dienst
+                        }
+                    )
+                    .environmentObject(store)
                 }
             } else if let tenantSlug = selectedTenant, let tenant = store.model.tenants[tenantSlug] {
                     // Tenant selected but no team - always show team selection
@@ -312,10 +375,12 @@ private struct TopNavigationBar: View {
     let onSettingsAction: () -> Void
     let onLeaderboardAction: () -> Void
     let onQRScanAction: () -> Void
+    let onBeschikbareDienstenAction: () -> Void
     let isSettingsActive: Bool
     let showLeaderboard: Bool
     let leaderboardShowingInfo: Bool
     let showQRButton: Bool
+    let showBeschikbareDienstenButton: Bool
     @EnvironmentObject var store: AppStore
     
     var body: some View {
@@ -342,6 +407,14 @@ private struct TopNavigationBar: View {
                     if showQRButton {
                         Button(action: onQRScanAction) {
                             Image(systemName: "qrcode")
+                                .font(.title2)
+                                .foregroundColor(KKTheme.textSecondary)
+                        }
+                    }
+                    
+                    if showBeschikbareDienstenButton {
+                        Button(action: onBeschikbareDienstenAction) {
+                            Image(systemName: "tray.full")
                                 .font(.title2)
                                 .foregroundColor(KKTheme.textSecondary)
                         }
@@ -543,6 +616,7 @@ private struct DienstRow: View {
 private struct TeamDienstenView: View {
     let tenant: DomainModel.Tenant
     let teamId: String
+    let onOfferTransfer: (Dienst) -> Void
     @EnvironmentObject var store: AppStore
     
     var body: some View {
@@ -583,10 +657,14 @@ private struct TeamDienstenView: View {
                     .padding(.horizontal, 16)
                 } else {
                     VStack(spacing: 12) {
-                                        ForEach(diensten) { d in
-                    DienstCardView(dienstId: d.id, isManager: (tenant.teams.first{ $0.id == teamId }?.role == .manager))
-                        .opacity(d.startTime < Date() ? 0.5 : 1.0)
-                }
+                        ForEach(diensten) { d in
+                            DienstCardView(
+                                dienstId: d.id, 
+                                isManager: (tenant.teams.first{ $0.id == teamId }?.role == .manager),
+                                onOfferTransfer: onOfferTransfer
+                            )
+                            .opacity(d.startTime < Date() ? 0.5 : 1.0)
+                        }
                     }
                     .padding(.horizontal, 16)
                 }
@@ -735,6 +813,7 @@ private struct DienstDetail: View {
 private struct DienstCardView: View {
     let dienstId: String
     let isManager: Bool
+    let onOfferTransfer: (Dienst) -> Void
     @EnvironmentObject var store: AppStore
     
     // Dynamic lookup to always get fresh data from store
@@ -752,7 +831,12 @@ private struct DienstCardView: View {
     var body: some View {
         Group {
             if let dienst = d {
-                DienstCardContent(dienst: dienst, isManager: isManager, dienstId: dienstId)
+                DienstCardContent(
+                    dienst: dienst, 
+                    isManager: isManager, 
+                    dienstId: dienstId,
+                    onOfferTransfer: onOfferTransfer
+                )
             } else {
                 EmptyView() // Dienst not found in store
             }
@@ -765,6 +849,7 @@ private struct DienstCardContent: View {
     let dienst: Dienst
     let isManager: Bool
     let dienstId: String
+    let onOfferTransfer: (Dienst) -> Void
     @State private var showAddVolunteer = false
     @State private var newVolunteerName = ""
     @State private var showCelebration = false
@@ -799,6 +884,16 @@ private struct DienstCardContent: View {
                         }
                         .accessibilityLabel("Toevoegen aan agenda")
                         .disabled(showingCalendarSuccess)
+                    }
+                    
+                    // Transfer offer toggle (only for future diensten and managers)
+                    if dienst.startTime >= Date() && isManager {
+                        Button(action: { onOfferTransfer(dienst) }) {
+                            Image(systemName: (dienst.offeredForTransfer ?? false) ? "arrow.left.arrow.right.circle.fill" : "arrow.left.arrow.right.circle")
+                                .font(.system(size: 20, weight: .medium))
+                                .foregroundStyle((dienst.offeredForTransfer ?? false) ? KKTheme.accent : KKTheme.textSecondary)
+                        }
+                        .accessibilityLabel("Dienst ter overname aanbieden")
                     }
                     
                     // Location badge
@@ -1921,6 +2016,234 @@ private struct CrosshairOverlay: View {
                     p.addLine(to: .init(x: c.x, y: c.y + plus))
                 }
                 .stroke(Color.black.opacity(0.8), style: stroke)
+            }
+        }
+    }
+}
+
+// MARK: - Offer Dienst For Transfer Confirmation View
+private struct OfferDienstForTransferView: View {
+    let dienst: Dienst
+    @Binding var isPresented: Bool
+    @EnvironmentObject var store: AppStore
+    
+    @State private var isOffering: Bool = false
+    @State private var errorMessage: String?
+    @State private var successMessage: String?
+    
+    private var dateFormatter: DateFormatter {
+        let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: "nl_NL")
+        formatter.dateFormat = "EEEE d MMMM"
+        return formatter
+    }
+    
+    private var timeFormatter: DateFormatter {
+        let formatter = DateFormatter()
+        formatter.dateFormat = "HH:mm"
+        return formatter
+    }
+    
+    private var isCurrentlyOffered: Bool {
+        dienst.offeredForTransfer ?? false
+    }
+    
+    var body: some View {
+        ScrollView {
+            VStack(spacing: 24) {
+                Spacer(minLength: 24)
+                
+                if let successMessage = successMessage {
+                    // Success state
+                    VStack(spacing: 20) {
+                        Spacer()
+                        
+                        Image(systemName: "checkmark.circle.fill")
+                            .font(.system(size: 60))
+                            .foregroundStyle(Color.green)
+                        
+                        Text(successMessage)
+                            .font(KKFont.heading(24))
+                            .fontWeight(.semibold)
+                            .foregroundStyle(KKTheme.textPrimary)
+                        
+                        Spacer()
+                    }
+                    .frame(maxWidth: .infinity, minHeight: 400)
+                    .padding(.horizontal, 24)
+                } else {
+                    // Header with subtitle (like ClubsViewInternal)
+                    VStack(spacing: 8) {
+                        Text((isCurrentlyOffered ? "AANBOD INTREKKEN" : "DIENST TER OVERNAME AANBIEDEN"))
+                            .font(KKFont.heading(24))
+                            .fontWeight(.regular)
+                            .kerning(-1.0)
+                            .foregroundStyle(KKTheme.textPrimary)
+                            .multilineTextAlignment(.center)
+                        
+                        Text(dienst.teamName ?? "")
+                            .font(KKFont.body(14))
+                            .foregroundStyle(KKTheme.textSecondary)
+                    }
+                    .padding(.horizontal, 20)
+                    .padding(.bottom, 8)
+                    
+                    // Dienst details card (style like normal dienst cards)
+                    VStack(alignment: .leading, spacing: 16) {
+                        // Date and location header
+                        HStack {
+                            Text(dateFormatter.string(from: dienst.startTime).capitalized)
+                                .font(KKFont.title(18))
+                                .foregroundStyle(KKTheme.textPrimary)
+                            Spacer()
+                            
+                            // Location badge
+                            HStack(spacing: 4) {
+                                Image(systemName: "location.fill").font(.system(size: 12))
+                                Text(dienst.locationName ?? "Kantine").font(KKFont.body(12))
+                            }
+                            .padding(.horizontal, 8)
+                            .padding(.vertical, 4)
+                            .background(Color.blue.opacity(0.1))
+                            .foregroundStyle(Color.blue)
+                            .cornerRadius(8)
+                        }
+                        
+                        // Time and type
+                        HStack(spacing: 8) {
+                            Image(systemName: "clock").font(.caption).foregroundStyle(KKTheme.textSecondary)
+                            Text("\(timeFormatter.string(from: dienst.startTime)) - \(timeFormatter.string(from: dienst.endTime))")
+                                .font(KKFont.body(14))
+                                .foregroundStyle(KKTheme.textSecondary)
+                            
+                            if let dienstType = dienst.dienstType {
+                                Text("•")
+                                    .foregroundStyle(KKTheme.textSecondary)
+                                    .font(KKFont.body(12))
+                                Text(dienstType.naam)
+                                    .font(KKFont.body(14))
+                                    .foregroundStyle(KKTheme.textSecondary)
+                            }
+                        }
+                    }
+                    .padding(16)
+                    .background(KKTheme.surfaceAlt)
+                    .cornerRadius(12)
+                    .padding(.horizontal, 20)
+                    
+                    // Explanation text
+                    VStack(alignment: .leading, spacing: 12) {
+                        if isCurrentlyOffered {
+                            Text("Deze dienst is nu zichtbaar voor andere teams 🎯")
+                                .font(KKFont.body(14))
+                                .foregroundStyle(KKTheme.textPrimary)
+                                .fontWeight(.medium)
+                            
+                            Text("Wil je het aanbod intrekken? De dienst blijft gewoon op jouw team staan.")
+                                .font(KKFont.body(14))
+                                .foregroundStyle(KKTheme.textSecondary)
+                        } else {
+                            Text("💡 Tip: Probeer eerst binnen je eigen team te ruilen")
+                                .font(KKFont.body(14))
+                                .foregroundStyle(Color.orange)
+                                .fontWeight(.medium)
+                            
+                            Text("Kun je er echt niet bij? Stel de dienst beschikbaar voor andere teams. Je blijft verantwoordelijk totdat een ander team de dienst oppakt.")
+                                .font(KKFont.body(14))
+                                .foregroundStyle(KKTheme.textSecondary)
+                        }
+                    }
+                    .padding(.horizontal, 20)
+                    
+                    // Error message
+                    if let errorMessage = errorMessage {
+                        HStack(spacing: 12) {
+                            Image(systemName: "exclamationmark.triangle.fill")
+                                .foregroundStyle(Color.red)
+                            Text(errorMessage)
+                                .font(KKFont.body(13))
+                                .foregroundStyle(Color.red)
+                        }
+                        .padding(12)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .background(Color.red.opacity(0.1))
+                        .cornerRadius(8)
+                        .padding(.horizontal, 20)
+                    }
+                    
+                    // Action buttons
+                    VStack(spacing: 12) {
+                        Button(action: toggleTransferOffer) {
+                            if isOffering {
+                                HStack {
+                                    ProgressView()
+                                        .tint(.white)
+                                    Text("Even geduld...")
+                                }
+                            } else {
+                                HStack {
+                                    Image(systemName: isCurrentlyOffered ? "arrow.uturn.backward.circle.fill" : "hand.thumbsup.fill")
+                                    Text(isCurrentlyOffered ? "Aanbod intrekken" : "Dienst aanbieden")
+                                }
+                            }
+                        }
+                        .buttonStyle(KKPrimaryButton())
+                        .disabled(isOffering)
+                        .opacity(isOffering ? 0.5 : 1.0)
+                        
+                        Button(action: { isPresented = false }) {
+                            Text("Terug")
+                        }
+                        .buttonStyle(KKSecondaryButton())
+                    }
+                    .padding(.horizontal, 20)
+                    .padding(.top, 12)
+                }
+                
+                Spacer(minLength: 24)
+            }
+        }
+        .background(KKTheme.surface.ignoresSafeArea())
+    }
+    
+    private func toggleTransferOffer() {
+        isOffering = true
+        errorMessage = nil
+        
+        let backend = BackendClient()
+        
+        // Find the manager enrollment for this tenant
+        let managerEnrollment = store.model.enrollments.values.first { enrollment in
+            enrollment.tenantSlug == dienst.tenantId && enrollment.role == .manager
+        }
+        
+        guard let token = managerEnrollment?.signedDeviceToken else {
+            errorMessage = "Geen manager authenticatie beschikbaar"
+            isOffering = false
+            return
+        }
+        
+        backend.authToken = token
+        
+        backend.toggleTransferOffer(dienstId: dienst.id, offered: !isCurrentlyOffered) { result in
+            DispatchQueue.main.async {
+                isOffering = false
+                
+                switch result {
+                case .success:
+                    successMessage = isCurrentlyOffered ? "Aanbod ingetrokken" : "Dienst aangeboden voor overname"
+                    
+                    // Refresh diensten to get updated state
+                    store.refreshDiensten()
+                    
+                    // Auto-close after 1.5 seconds
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) {
+                        isPresented = false
+                    }
+                    
+                case .failure(let error):
+                    errorMessage = error.localizedDescription
+                }
             }
         }
     }

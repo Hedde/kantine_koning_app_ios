@@ -50,234 +50,291 @@ struct ClaimDienstView: View {
     var body: some View {
         ScrollView {
             VStack(spacing: 24) {
-                Spacer().frame(height: 20)
-                
-                if !tenantExists {
-                    // Tenant not found
-                    errorView(
-                        icon: "exclamationmark.triangle.fill",
-                        iconColor: Color.orange,
-                        title: "Vereniging niet gevonden",
-                        message: "Deze dienst hoort bij een vereniging waar je geen toegang toe hebt."
-                    )
-                } else if !hasManagerAccess {
-                    // No manager access for this tenant
-                    errorView(
-                        icon: "exclamationmark.triangle.fill",
-                        iconColor: Color.orange,
-                        title: "Geen toegang",
-                        message: "Je bent geen teammanager voor deze vereniging. Alleen teammanagers kunnen diensten oppakken."
-                    )
-                } else if isLoadingDienst {
-                    // Loading dienst details
-                    VStack(spacing: 20) {
-                        ProgressView()
-                            .scaleEffect(1.5)
-                            .tint(KKTheme.accent)
-                        
-                        Text("Dienst ophalen...")
-                            .font(KKFont.body(14))
-                            .foregroundStyle(KKTheme.textSecondary)
-                    }
-                    .frame(maxWidth: .infinity)
-                    .padding(.top, 40)
-                } else if let errorMessage = errorMessage, dienst == nil {
-                    // Error loading dienst
-                    errorView(
-                        icon: "exclamationmark.triangle.fill",
-                        iconColor: Color.red,
-                        title: "Fout bij ophalen",
-                        message: errorMessage
-                    )
-                } else if let successMessage = successMessage {
-                    // Success state
-                    VStack(spacing: 20) {
-                        Spacer()
-                        
-                        Image(systemName: "checkmark.circle.fill")
-                            .font(.system(size: 60))
-                            .foregroundStyle(Color.green)
-                        
-                        Text("Dienst opgepakt!")
-                            .font(KKFont.heading(24))
-                            .fontWeight(.semibold)
-                            .foregroundStyle(KKTheme.textPrimary)
-                        
-                        Text(successMessage)
-                            .font(KKFont.body(14))
-                            .multilineTextAlignment(.center)
-                            .foregroundStyle(KKTheme.textSecondary)
-                        
-                        Spacer()
-                        
-                        // Back button (subtle style like onboarding)
-                        Button(action: onDismiss) {
-                            HStack(spacing: 6) {
-                                Image(systemName: "chevron.left").font(.body)
-                                Text("Terug").font(KKFont.body(12))
-                            }
-                        }
-                        .buttonStyle(.plain)
-                        .foregroundStyle(KKTheme.textSecondary)
-                        .padding(.bottom, 24)
-                    }
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
-                    .padding(.horizontal, 24)
-                } else if let dienst = dienst {
-                    // Claiming state with dienst details
-                    VStack(spacing: 24) {
-                        // Header icon
-                        Image(systemName: "calendar.badge.plus")
-                            .font(.system(size: 50))
-                            .foregroundStyle(KKTheme.accent)
-                        
-                        Text("Dienst oppakken")
-                            .font(KKFont.heading(24))
-                            .fontWeight(.semibold)
-                            .foregroundStyle(KKTheme.textPrimary)
-                        
-                        // Dienst details card
-                        VStack(alignment: .leading, spacing: 16) {
-                            HStack(spacing: 12) {
-                                Image(systemName: "calendar")
-                                    .font(.system(size: 20))
-                                    .foregroundStyle(KKTheme.accent)
-                                    .frame(width: 24)
-                                Text(formatDate(dienst.start_tijd))
-                                    .font(KKFont.body(16))
-                                    .fontWeight(.semibold)
-                                    .foregroundStyle(KKTheme.textPrimary)
-                            }
-                            
-                            HStack(spacing: 12) {
-                                Image(systemName: "clock")
-                                    .font(.system(size: 20))
-                                    .foregroundStyle(KKTheme.accent)
-                                    .frame(width: 24)
-                                Text("\(formatTime(dienst.start_tijd)) - \(formatTime(dienst.eind_tijd))")
-                                    .font(KKFont.body(14))
-                                    .foregroundStyle(KKTheme.textSecondary)
-                            }
-                            
-                            if let locatie = dienst.locatie_naam {
-                                HStack(spacing: 12) {
-                                    Image(systemName: "mappin.circle")
-                                        .font(.system(size: 20))
-                                        .foregroundStyle(KKTheme.accent)
-                                        .frame(width: 24)
-                                    Text(locatie)
-                                        .font(KKFont.body(14))
-                                        .foregroundStyle(KKTheme.textSecondary)
-                                }
-                            }
-                            
-                            if let type = dienst.dienst_type?.naam {
-                                HStack(spacing: 12) {
-                                    Image(systemName: "tag")
-                                        .font(.system(size: 20))
-                                        .foregroundStyle(KKTheme.accent)
-                                        .frame(width: 24)
-                                    Text(type)
-                                        .font(KKFont.body(14))
-                                        .foregroundStyle(KKTheme.textSecondary)
-                                }
-                            }
-                        }
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        .padding(20)
-                        .background(KKTheme.surfaceAlt)
-                        .cornerRadius(12)
-                        .padding(.horizontal, 24)
-                        
-                        Text("Wil je deze dienst oppakken met jouw team?")
-                            .font(KKFont.body(14))
-                            .multilineTextAlignment(.center)
-                            .foregroundStyle(KKTheme.textSecondary)
-                            .padding(.horizontal, 24)
-                        
-                        if needsTeamSelection {
-                            // Multiple manager teams: show team selector
-                            VStack(alignment: .leading, spacing: 12) {
-                                Text("Kies een team:")
-                                    .font(KKFont.body(14))
-                                    .fontWeight(.semibold)
-                                    .foregroundStyle(KKTheme.textPrimary)
-                                    .padding(.horizontal, 24)
-                                
-                                ForEach(managerTeamsForTenant) { team in
-                                    TeamSelectionRow(
-                                        team: team,
-                                        tenantName: tenant?.name ?? "",
-                                        isSelected: selectedTeamId == team.id,
-                                        action: {
-                                            selectedTeamId = team.id
-                                        }
-                                    )
-                                    .padding(.horizontal, 24)
-                                }
-                            }
-                        }
-                        
-                        if let errorMessage = errorMessage {
-                            HStack(spacing: 12) {
-                                Image(systemName: "exclamationmark.triangle.fill")
-                                    .foregroundStyle(Color.red)
-                                Text(errorMessage)
-                                    .font(KKFont.body(12))
-                                    .foregroundStyle(Color.red)
-                            }
-                            .padding()
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                            .background(Color.red.opacity(0.1))
-                            .cornerRadius(8)
-                            .padding(.horizontal, 24)
-                        }
-                        
-                        // Action buttons
-                        VStack(spacing: 12) {
-                            Button(action: claimDienst) {
-                                HStack(spacing: 8) {
-                                    if isClaiming {
-                                        ProgressView()
-                                            .progressViewStyle(CircularProgressViewStyle(tint: .white))
-                                            .scaleEffect(0.8)
-                                    } else {
-                                        Image(systemName: "checkmark.circle.fill")
-                                            .font(.system(size: 16))
-                                    }
-                                    Text(isClaiming ? "Bezig met oppakken..." : "Dienst oppakken")
-                                        .font(KKFont.body(16))
-                                        .fontWeight(.semibold)
-                                }
-                                .frame(maxWidth: .infinity)
-                                .padding(.vertical, 16)
-                                .background(isClaiming || (needsTeamSelection && selectedTeamId == nil) ? Color.gray : KKTheme.accent)
-                                .foregroundStyle(.white)
-                                .cornerRadius(12)
-                            }
-                            .disabled(isClaiming || (needsTeamSelection && selectedTeamId == nil))
-                            .padding(.horizontal, 24)
-                        }
-                        .padding(.top, 8)
-                    }
-                }
-                
+                Spacer(minLength: 24)
+                mainContent
                 Spacer()
             }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .padding(.horizontal, 20)
+        }
+        .background(KKTheme.surface.ignoresSafeArea())
+        .navigationBarBackButtonHidden(true)
+        .onAppear { fetchDienstDetails() }
+    }
+    
+    @ViewBuilder
+    private var mainContent: some View {
+        if !tenantExists {
+            errorView(
+                icon: "exclamationmark.triangle.fill",
+                iconColor: Color.orange,
+                title: "Vereniging niet gevonden",
+                message: "Deze dienst hoort bij een vereniging waar je geen toegang toe hebt."
+            )
+        } else if !hasManagerAccess {
+            errorView(
+                icon: "exclamationmark.triangle.fill",
+                iconColor: Color.orange,
+                title: "Geen toegang",
+                message: "Je bent geen teammanager voor deze vereniging. Alleen teammanagers kunnen diensten oppakken."
+            )
+        } else if isLoadingDienst {
+            loadingView
+        } else if let errorMessage = errorMessage, dienst == nil {
+            errorView(
+                icon: "exclamationmark.triangle.fill",
+                iconColor: Color.red,
+                title: "Fout bij ophalen",
+                message: errorMessage
+            )
+        } else if let successMessage = successMessage {
+            successView(message: successMessage)
+        } else if let dienst = dienst {
+            claimingView(dienst: dienst)
+        }
+    }
+    
+    private var loadingView: some View {
+        VStack(spacing: 20) {
+            ProgressView()
+                .scaleEffect(1.5)
+                .tint(KKTheme.accent)
+            
+            Text("Dienst ophalen...")
+                .font(KKFont.body(14))
+                .foregroundStyle(KKTheme.textSecondary)
+        }
+        .frame(maxWidth: .infinity)
+        .padding(.top, 40)
+    }
+    
+    private func successView(message: String) -> some View {
+        VStack(spacing: 20) {
+            Spacer()
+            
+            Image(systemName: "checkmark.circle.fill")
+                .font(.system(size: 60))
+                .foregroundStyle(Color.green)
+            
+            Text("Dienst opgepakt!")
+                .font(KKFont.heading(24))
+                .fontWeight(.semibold)
+                .foregroundStyle(KKTheme.textPrimary)
+            
+            Text(message)
+                .font(KKFont.body(14))
+                .multilineTextAlignment(.center)
+                .foregroundStyle(KKTheme.textSecondary)
+            
+            Spacer()
+            
+            // Back button (subtle style like onboarding)
+            Button(action: onDismiss) {
+                HStack(spacing: 6) {
+                    Image(systemName: "chevron.left").font(.body)
+                    Text("Terug").font(KKFont.body(12))
+                }
+            }
+            .buttonStyle(.plain)
+            .foregroundStyle(KKTheme.textSecondary)
+            .padding(.bottom, 24)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .background(KKTheme.surface)
+    }
+    
+    private func claimingView(dienst: DienstDTO) -> some View {
+        VStack(spacing: 20) {
+            // Header (like ClubsViewInternal)
+            Text("DIENST OPPAKKEN")
+                .font(KKFont.heading(24))
+                .fontWeight(.regular)
+                .kerning(-1.0)
+                .foregroundStyle(KKTheme.textPrimary)
+            
+            // Dienst details card
+            dienstDetailsCard(dienst: dienst)
+            
+            Text("Wil je deze dienst oppakken met jouw team?")
+                .font(KKFont.body(15))
+                .multilineTextAlignment(.center)
+                .foregroundStyle(KKTheme.textSecondary)
+            
+            if needsTeamSelection {
+                teamSelectionView
+            }
+            
+            if let errorMessage = errorMessage {
+                errorBanner(message: errorMessage)
+            }
+            
+            // Action buttons
+            actionButtons
+        }
         .onAppear {
             // Pre-select suggested team if it's a valid manager team for this tenant
             if let suggestedTeamId = suggestedTeamId,
                managerTeamsForTenant.contains(where: { $0.id == suggestedTeamId }) {
                 selectedTeamId = suggestedTeamId
             }
+        }
+    }
+    
+    private func dienstDetailsCard(dienst: DienstDTO) -> some View {
+        VStack(alignment: .leading, spacing: 16) {
+            // Status indicator
+            statusIndicator(dienst: dienst)
             
-            if tenantExists && hasManagerAccess {
-                fetchDienstDetails()
+            // Date and location header
+            dateAndLocation(dienst: dienst)
+            
+            // Time and type
+            timeAndType(dienst: dienst)
+            
+            // Bezetting info
+            bezettingInfo(dienst: dienst)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(16)
+        .background(KKTheme.surfaceAlt)
+        .cornerRadius(12)
+    }
+    
+    private func statusIndicator(dienst: DienstDTO) -> some View {
+        HStack {
+            Image(systemName: (dienst.team == nil) ? "circle.dashed" : "arrow.left.arrow.right")
+                .font(.system(size: 14))
+            if let team = dienst.team {
+                Text("Ter overname van \(team.naam)")
+                    .font(KKFont.body(14))
+                    .fontWeight(.medium)
+            } else {
+                Text("Open dienst")
+                    .font(KKFont.body(14))
+                    .fontWeight(.medium)
+            }
+            Spacer()
+        }
+        .foregroundStyle((dienst.team == nil) ? Color.blue : KKTheme.accent)
+    }
+    
+    private func dateAndLocation(dienst: DienstDTO) -> some View {
+        HStack {
+            Text(formatDate(dienst.start_tijd))
+                .font(KKFont.title(18))
+                .foregroundStyle(KKTheme.textPrimary)
+            Spacer()
+            
+            // Location badge
+            HStack(spacing: 4) {
+                Image(systemName: "location.fill").font(.system(size: 12))
+                Text(dienst.locatie_naam ?? "Kantine").font(KKFont.body(12))
+            }
+            .padding(.horizontal, 8)
+            .padding(.vertical, 4)
+            .background(Color.blue.opacity(0.1))
+            .foregroundStyle(Color.blue)
+            .cornerRadius(8)
+        }
+    }
+    
+    private func timeAndType(dienst: DienstDTO) -> some View {
+        HStack(spacing: 8) {
+            Image(systemName: "clock").font(.caption).foregroundStyle(KKTheme.textSecondary)
+            Text("\(formatTime(dienst.start_tijd)) - \(formatTime(dienst.eind_tijd))")
+                .font(KKFont.body(14))
+                .foregroundStyle(KKTheme.textSecondary)
+            
+            if let dienstType = dienst.dienst_type {
+                Text("•")
+                    .foregroundStyle(KKTheme.textSecondary)
+                    .font(KKFont.body(12))
+                Text(dienstType.naam)
+                    .font(KKFont.body(14))
+                    .foregroundStyle(KKTheme.textSecondary)
             }
         }
+    }
+    
+    private func bezettingInfo(dienst: DienstDTO) -> some View {
+        let count = dienst.aanmeldingen?.count ?? 0
+        let minBemanning = dienst.minimum_bemanning
+        let statusColor: Color = count == 0 ? .red : (count < minBemanning ? .orange : .green)
+        let countDouble = Double(count)
+        let minDouble = Double(minBemanning)
+        
+        return VStack(alignment: .leading, spacing: 8) {
+            HStack {
+                Text("Bezetting").font(KKFont.body(12)).foregroundStyle(KKTheme.textSecondary)
+                Spacer()
+                HStack(spacing: 4) {
+                    Text("\(count)/\(minBemanning)")
+                        .font(KKFont.body(12))
+                        .fontWeight(.medium)
+                    Circle().fill(statusColor).frame(width: 8, height: 8)
+                }
+            }
+            ProgressView(value: Swift.min(countDouble, minDouble), total: minDouble)
+                .tint(statusColor)
+                .background(Color.gray.opacity(0.2))
+                .cornerRadius(4)
+        }
+    }
+    
+    private var teamSelectionView: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text("Kies een team:")
+                .font(KKFont.body(14))
+                .fontWeight(.semibold)
+                .foregroundStyle(KKTheme.textPrimary)
+            
+            ForEach(managerTeamsForTenant) { team in
+                TeamSelectionRow(
+                    team: team,
+                    tenantName: tenant?.name ?? "",
+                    isSelected: selectedTeamId == team.id,
+                    action: {
+                        selectedTeamId = team.id
+                    }
+                )
+            }
+        }
+    }
+    
+    private func errorBanner(message: String) -> some View {
+        HStack(spacing: 12) {
+            Image(systemName: "exclamationmark.triangle.fill")
+                .foregroundStyle(Color.red)
+            Text(message)
+                .font(KKFont.body(12))
+                .foregroundStyle(Color.red)
+        }
+        .padding()
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(Color.red.opacity(0.1))
+        .cornerRadius(8)
+    }
+    
+    private var actionButtons: some View {
+        VStack(spacing: 12) {
+            Button(action: claimDienst) {
+                if isClaiming {
+                    HStack {
+                        ProgressView()
+                            .tint(.white)
+                        Text("Bezig met oppakken...")
+                    }
+                } else {
+                    HStack {
+                        Image(systemName: "checkmark.circle.fill")
+                        Text("Dienst oppakken")
+                    }
+                }
+            }
+            .buttonStyle(KKPrimaryButton())
+            .disabled(isClaiming || (needsTeamSelection && selectedTeamId == nil))
+            .opacity((isClaiming || (needsTeamSelection && selectedTeamId == nil)) ? 0.5 : 1.0)
+        }
+        .padding(.top, 8)
     }
     
     @ViewBuilder
@@ -298,7 +355,6 @@ struct ClaimDienstView: View {
                 .font(KKFont.body(14))
                 .multilineTextAlignment(.center)
                 .foregroundStyle(KKTheme.textSecondary)
-                .padding(.horizontal, 24)
             
             Spacer()
             

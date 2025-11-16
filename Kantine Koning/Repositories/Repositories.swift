@@ -215,7 +215,8 @@ final class DefaultDienstRepository: DienstRepository {
             volunteers: dto.aanmeldingen,
             updatedAt: dto.updated_at,
             minimumBemanning: dto.minimum_bemanning,
-            dienstType: dto.dienst_type.map { Dienst.DienstType(naam: $0.naam, icon: $0.icon) }
+            dienstType: dto.dienst_type.map { Dienst.DienstType(naam: $0.naam, icon: $0.icon) },
+            offeredForTransfer: dto.offered_for_transfer
         )
     }
 
@@ -234,7 +235,8 @@ final class DefaultDienstRepository: DienstRepository {
                     volunteers: dto.aanmeldingen,
                     updatedAt: dto.updated_at,
                     minimumBemanning: dto.minimum_bemanning,
-                    dienstType: dto.dienst_type.map { Dienst.DienstType(naam: $0.naam, icon: $0.icon) }
+                    dienstType: dto.dienst_type.map { Dienst.DienstType(naam: $0.naam, icon: $0.icon) },
+                    offeredForTransfer: dto.offered_for_transfer
                 )
             })
         }
@@ -255,7 +257,8 @@ final class DefaultDienstRepository: DienstRepository {
                     volunteers: dto.aanmeldingen,
                     updatedAt: dto.updated_at,
                     minimumBemanning: dto.minimum_bemanning,
-                    dienstType: dto.dienst_type.map { Dienst.DienstType(naam: $0.naam, icon: $0.icon) }
+                    dienstType: dto.dienst_type.map { Dienst.DienstType(naam: $0.naam, icon: $0.icon) },
+                    offeredForTransfer: dto.offered_for_transfer
                 )
             })
         }
@@ -285,6 +288,7 @@ struct Dienst: Codable, Identifiable, Equatable {
     let updatedAt: Date?
     let minimumBemanning: Int
     let dienstType: DienstType?
+    let offeredForTransfer: Bool?
 }
 
 // Team search DTO for UI

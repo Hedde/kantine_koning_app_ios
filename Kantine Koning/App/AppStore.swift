@@ -1303,7 +1303,8 @@ extension AppStore {
                 volunteers: volunteers,
                 updatedAt: dienst.updatedAt,
                 minimumBemanning: dienst.minimumBemanning,
-                dienstType: dienst.dienstType
+                dienstType: dienst.dienstType,
+                offeredForTransfer: dienst.offeredForTransfer
             )
             
             upcoming[index] = updatedDienst
@@ -1338,7 +1339,8 @@ extension AppStore {
                 volunteers: volunteers,
                 updatedAt: dienst.updatedAt,
                 minimumBemanning: dienst.minimumBemanning,
-                dienstType: dienst.dienstType
+                dienstType: dienst.dienstType,
+                offeredForTransfer: dienst.offeredForTransfer
             )
             
             upcoming[index] = updatedDienst
@@ -1373,7 +1375,8 @@ extension AppStore {
                 volunteers: volunteers,
                 updatedAt: dienst.updatedAt,
                 minimumBemanning: dienst.minimumBemanning,
-                dienstType: dienst.dienstType
+                dienstType: dienst.dienstType,
+                offeredForTransfer: dienst.offeredForTransfer
             )
             
             upcoming[index] = revertedDienst
@@ -1408,7 +1411,8 @@ extension AppStore {
                 volunteers: volunteers,
                 updatedAt: dienst.updatedAt,
                 minimumBemanning: dienst.minimumBemanning,
-                dienstType: dienst.dienstType
+                dienstType: dienst.dienstType,
+                offeredForTransfer: dienst.offeredForTransfer
             )
             
             upcoming[index] = revertedDienst
