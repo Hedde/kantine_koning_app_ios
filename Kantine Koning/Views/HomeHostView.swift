@@ -414,7 +414,7 @@ private struct TopNavigationBar: View {
                     
                     if showBeschikbareDienstenButton {
                         Button(action: onBeschikbareDienstenAction) {
-                            Image(systemName: "list.bullet.rectangle.fill")
+                            Image(systemName: "hand.raised.fill")
                                 .font(.title2)
                                 .foregroundColor(KKTheme.textSecondary)
                         }
