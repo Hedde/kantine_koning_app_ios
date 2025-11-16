@@ -42,7 +42,7 @@ struct HomeHostView: View {
                 },
                 onSettingsAction: {
                     showSettings.toggle()
-                    if showSettings {
+            if showSettings {
                         showLeaderboard = false
                         showQRScanner = false
                         scanningActive = false
@@ -237,108 +237,108 @@ struct HomeHostView: View {
                                   onBack: { selectedTenant = nil })
                         .environmentObject(store)
                     }
-            } else {
-                // Smart tenant selection logic
-                let allTenants = Array(store.model.tenants.values)
-                let accessibleTenants = allTenants.filter { $0.isAccessible }
-                
-                // If only ONE tenant total and it's season ended -> still show team selection
-                if allTenants.count == 1, let singleTenant = allTenants.first, singleTenant.seasonEnded {
-                    SeasonEndedTeamsView(tenant: singleTenant,
-                                       onTeamSelected: { teamId in 
-                                           selectedTenant = singleTenant.slug
-                                           selectedTeam = teamId 
-                                       },
-                                       onBack: { /* No back for single tenant */ })
-                    .environmentObject(store)
-                } 
-                // If multiple tenants OR single accessible tenant -> show selection
-                else if allTenants.count > 1 || !accessibleTenants.isEmpty {
-                    ClubsViewInternal(
-                        onTenantSelected: { slug in
-                            selectedTenant = slug
-                            // Auto-select team when only one exists (for accessible tenants)
-                            if let tenant = store.model.tenants[slug], tenant.isAccessible, tenant.teams.count == 1, let onlyTeam = tenant.teams.first {
-                                selectedTeam = onlyTeam.id
+                } else {
+                    // Smart tenant selection logic
+                    let allTenants = Array(store.model.tenants.values)
+                    let accessibleTenants = allTenants.filter { $0.isAccessible }
+                    
+                    // If only ONE tenant total and it's season ended -> still show team selection
+                    if allTenants.count == 1, let singleTenant = allTenants.first, singleTenant.seasonEnded {
+                        SeasonEndedTeamsView(tenant: singleTenant,
+                                           onTeamSelected: { teamId in 
+                                               selectedTenant = singleTenant.slug
+                                               selectedTeam = teamId 
+                                           },
+                                           onBack: { /* No back for single tenant */ })
+                        .environmentObject(store)
+                    } 
+                    // If multiple tenants OR single accessible tenant -> show selection
+                    else if allTenants.count > 1 || !accessibleTenants.isEmpty {
+                        ClubsViewInternal(
+                            onTenantSelected: { slug in
+                                selectedTenant = slug
+                                // Auto-select team when only one exists (for accessible tenants)
+                                if let tenant = store.model.tenants[slug], tenant.isAccessible, tenant.teams.count == 1, let onlyTeam = tenant.teams.first {
+                                    selectedTeam = onlyTeam.id
+                                }
+                                // Note: Season ended tenants will be handled by selectedTenant logic above
                             }
-                            // Note: Season ended tenants will be handled by selectedTenant logic above
-                        }
-                    )
-                    .environmentObject(store)
-                } 
-                // No tenants at all -> should not happen here
-                else {
-                    EmptyView()
+                        )
+                        .environmentObject(store)
+                    } 
+                    // No tenants at all -> should not happen here
+                    else {
+                        EmptyView()
+                    }
                 }
-            }
 
-            // Back navigation is handled by home button in navigation bar
-        }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .background(KKTheme.surface.ignoresSafeArea())
-        .onAppear {
-            Logger.viewLifecycle("HomeHostView", event: "onAppear", details: "tenants: \(store.model.tenants.count)")
-        }
-        .onDisappear {
-            Logger.viewLifecycle("HomeHostView", event: "onDisappear")
-        }
-        .onChange(of: store.model.tenants) { oldTenants, newTenants in
-            // Only react to season ended changes for the currently selected tenant
-            guard let selectedTenantSlug = selectedTenant,
-                  let oldTenant = oldTenants[selectedTenantSlug],
-                  let newTenant = newTenants[selectedTenantSlug],
-                  oldTenant.seasonEnded != newTenant.seasonEnded else {
-                return
+                // Back navigation is handled by home button in navigation bar
             }
-            
-            if newTenant.seasonEnded {
-                Logger.auth("🔄 Selected tenant \(selectedTenantSlug) became season ended - clearing team selection")
-                selectedTeam = nil // This will trigger navigation to SeasonOverviewView
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .background(KKTheme.surface.ignoresSafeArea())
+            .onAppear {
+                Logger.viewLifecycle("HomeHostView", event: "onAppear", details: "tenants: \(store.model.tenants.count)")
             }
-        }
-        .onReceive(NotificationCenter.default.publisher(for: .pushNavigationRequested)) { notification in
-            // Handle push notification navigation with defensive programming
-            guard let userInfo = notification.userInfo,
-                  let tenantSlug = userInfo["tenant"] as? String,
-                  let teamCode = userInfo["team"] as? String,
-                  let source = userInfo["source"] as? String,
-                  source == "push_notification" else {
-                Logger.push("🚫 HomeHostView: Invalid push notification data received")
-                return
+            .onDisappear {
+                Logger.viewLifecycle("HomeHostView", event: "onDisappear")
             }
-            
-            // Enhanced safety: Don't override user's recent manual navigation
-            let userHasNavigated = (selectedTenant != nil || selectedTeam != nil)
-            if userHasNavigated {
-                Logger.push("🚫 HomeHostView: User already navigated manually - skipping push navigation")
-                Logger.push("   Current state: tenant=\(selectedTenant ?? "nil") team=\(selectedTeam ?? "nil")")
-                return
-            }
-            
-            // Additional safety: Verify user has correct role access for this team
-            if let tenant = store.model.tenants[tenantSlug] {
-                let correctTeamAccess = tenant.teams.contains { team in
-                    (team.id == teamCode || team.code == teamCode)
-                }
-                
-                if !correctTeamAccess {
-                    Logger.push("🚫 HomeHostView: Team access verification failed for '\(teamCode)' in tenant '\(tenantSlug)'")
+            .onChange(of: store.model.tenants) { oldTenants, newTenants in
+                // Only react to season ended changes for the currently selected tenant
+                guard let selectedTenantSlug = selectedTenant,
+                      let oldTenant = oldTenants[selectedTenantSlug],
+                      let newTenant = newTenants[selectedTenantSlug],
+                      oldTenant.seasonEnded != newTenant.seasonEnded else {
                     return
                 }
+                
+                if newTenant.seasonEnded {
+                    Logger.auth("🔄 Selected tenant \(selectedTenantSlug) became season ended - clearing team selection")
+                    selectedTeam = nil // This will trigger navigation to SeasonOverviewView
+                }
             }
-            
-            // Double-check tenant access (redundant safety check)
-            guard store.model.tenants[tenantSlug] != nil else {
-                Logger.push("🚫 HomeHostView: Push navigation denied - tenant '\(tenantSlug)' not accessible")
-                return
+            .onReceive(NotificationCenter.default.publisher(for: .pushNavigationRequested)) { notification in
+                // Handle push notification navigation with defensive programming
+                guard let userInfo = notification.userInfo,
+                      let tenantSlug = userInfo["tenant"] as? String,
+                      let teamCode = userInfo["team"] as? String,
+                      let source = userInfo["source"] as? String,
+                      source == "push_notification" else {
+                Logger.push("🚫 HomeHostView: Invalid push notification data received")
+                    return
+                }
+                
+                // Enhanced safety: Don't override user's recent manual navigation
+                let userHasNavigated = (selectedTenant != nil || selectedTeam != nil)
+                if userHasNavigated {
+                    Logger.push("🚫 HomeHostView: User already navigated manually - skipping push navigation")
+                    Logger.push("   Current state: tenant=\(selectedTenant ?? "nil") team=\(selectedTeam ?? "nil")")
+                    return
+                }
+                
+                // Additional safety: Verify user has correct role access for this team
+                if let tenant = store.model.tenants[tenantSlug] {
+                    let correctTeamAccess = tenant.teams.contains { team in
+                        (team.id == teamCode || team.code == teamCode)
+                    }
+                    
+                    if !correctTeamAccess {
+                        Logger.push("🚫 HomeHostView: Team access verification failed for '\(teamCode)' in tenant '\(tenantSlug)'")
+                        return
+                    }
+                }
+                
+                // Double-check tenant access (redundant safety check)
+                guard store.model.tenants[tenantSlug] != nil else {
+                    Logger.push("🚫 HomeHostView: Push navigation denied - tenant '\(tenantSlug)' not accessible")
+                    return
+                }
+                
+                Logger.push("✅ HomeHostView: Applying push navigation - tenant='\(tenantSlug)' team='\(teamCode)'")
+                
+                // Apply navigation state
+                selectedTenant = tenantSlug
+                selectedTeam = teamCode
             }
-            
-            Logger.push("✅ HomeHostView: Applying push navigation - tenant='\(tenantSlug)' team='\(teamCode)'")
-            
-            // Apply navigation state
-            selectedTenant = tenantSlug
-            selectedTeam = teamCode
-        }
         .onChange(of: selectedTeam) { _, newTeam in
             // Update AppStore with currently viewing team for QR scan context
             store.currentlyViewingTeamId = newTeam
@@ -352,7 +352,7 @@ struct HomeHostView: View {
         // Stop scanning and close scanner
         scanningActive = false
         showQRScanner = false
-        
+                            
         // Try to parse as URL
         guard let url = URL(string: code) else {
             Logger.qr("❌ Invalid URL format")
@@ -363,9 +363,9 @@ struct HomeHostView: View {
         if DeepLink.isClaim(url) {
             Logger.qr("✅ Detected claim deep link, processing...")
             store.handleIncomingURL(url)
-        } else {
+                        } else {
             Logger.qr("⚠️ Not a claim deep link, ignoring")
-        }
+            }
     }
 }
 
@@ -437,13 +437,13 @@ private struct TopNavigationBar: View {
                 
                 // Right side
                 HStack(spacing: 12) {
-                    Button(action: onLeaderboardAction) {
+                        Button(action: onLeaderboardAction) {
                         if showLeaderboard {
                             // In leaderboard - show trophy or question mark
                             Image(systemName: leaderboardShowingInfo ? "trophy.fill" : "questionmark.circle.fill")
                                 .font(.title2)
                                 .foregroundColor(KKTheme.textSecondary)
-                        } else {
+                    } else {
                             // Not in leaderboard - show trophy
                             Image(systemName: "trophy.fill")
                                 .font(.title2)
@@ -657,14 +657,14 @@ private struct TeamDienstenView: View {
                     .padding(.horizontal, 16)
                 } else {
                     VStack(spacing: 12) {
-                        ForEach(diensten) { d in
+                                        ForEach(diensten) { d in
                             DienstCardView(
                                 dienstId: d.id, 
                                 isManager: (tenant.teams.first{ $0.id == teamId }?.role == .manager),
                                 onOfferTransfer: onOfferTransfer
                             )
-                            .opacity(d.startTime < Date() ? 0.5 : 1.0)
-                        }
+                        .opacity(d.startTime < Date() ? 0.5 : 1.0)
+                }
                     }
                     .padding(.horizontal, 16)
                 }

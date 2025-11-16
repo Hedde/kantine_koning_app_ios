@@ -212,14 +212,14 @@ struct OnboardingHostView: View {
                             onSubmit: registerMember
                         )
                         .padding(.bottom, 8)
-                            // Terug - want misschien toch teammanager willen worden
-                            SubtleActionButton(icon: "chevron.left", text: "Terug") { 
-                                store.searchResults = []
-                                selectedMemberTeams = []
-                                searchQuery = ""
+                        // Terug - want misschien toch teammanager willen worden
+                        SubtleActionButton(icon: "chevron.left", text: "Terug") { 
+                            store.searchResults = []
+                            selectedMemberTeams = []
+                            searchQuery = ""
                                 tenantSearchQuery = ""
-                                step = nil 
-                            }
+                            step = nil 
+                        }
                     }
                 } else if showingQRScanner {
                     // QR Scanner (when explicitly chosen)
