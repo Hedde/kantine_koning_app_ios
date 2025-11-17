@@ -195,25 +195,26 @@ struct ClaimDienstView: View {
             .background(KKTheme.surfaceAlt)
             .cornerRadius(12)
             
-            // Tip buiten het grijze vlak
-            Text("💡 Tip: Super dat jullie helpen! Dit levert natuurlijk ook punten op voor je team 🎉")
-                .font(KKFont.body(14))
-                .foregroundStyle(KKTheme.accent)
-                .fontWeight(.medium)
-                .padding(.horizontal, 20)
-            
-            // Navigation button
-            Button(action: {
-                store.pendingClaimDienst = nil
-            }) {
-                Text("Naar het overzicht")
-                    .font(KKFont.body(16))
-                    .fontWeight(.semibold)
-                    .foregroundStyle(Color.white)
-                    .frame(maxWidth: .infinity)
-                    .padding(.vertical, 16)
-                    .background(KKTheme.accent)
-                    .cornerRadius(12)
+            // Tip + knop in eigen VStack voor minder spacing
+            VStack(spacing: 16) {
+                Text("💡 Tip: Super dat jullie helpen! Dit levert natuurlijk ook punten op voor je team 🎉")
+                    .font(KKFont.body(14))
+                    .foregroundStyle(KKTheme.accent)
+                    .fontWeight(.medium)
+                
+                // Navigation button
+                Button(action: {
+                    store.pendingClaimDienst = nil
+                }) {
+                    Text("Naar het overzicht")
+                        .font(KKFont.body(16))
+                        .fontWeight(.semibold)
+                        .foregroundStyle(Color.white)
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 16)
+                        .background(KKTheme.accent)
+                        .cornerRadius(12)
+                }
             }
             
             Spacer(minLength: 24)

@@ -2153,27 +2153,42 @@ private struct OfferDienstForTransferView: View {
                         .background(KKTheme.surfaceAlt)
                         .cornerRadius(12)
                         
-                        // Tip buiten het grijze vlak
+                        // Tip buiten het grijze vlak (met eigen VStack voor minder spacing)
                         if !isCurrentlyOffered {
-                            Text("💡 Tip: Communiceer ook direct met andere teams om de kans te vergroten dat de dienst wordt opgepakt")
-                                .font(KKFont.body(14))
-                                .foregroundStyle(KKTheme.accent)
-                                .fontWeight(.medium)
-                                .padding(.horizontal, 20)
-                        }
-                        
-                        // Navigation button
-                        Button(action: {
-                            isPresented = false
-                        }) {
-                            Text("Naar het overzicht")
-                                .font(KKFont.body(16))
-                                .fontWeight(.semibold)
-                                .foregroundStyle(Color.white)
-                                .frame(maxWidth: .infinity)
-                                .padding(.vertical, 16)
-                                .background(KKTheme.accent)
-                                .cornerRadius(12)
+                            VStack(spacing: 16) {
+                                Text("💡 Tip: Communiceer ook direct met andere teams om de kans te vergroten dat de dienst wordt opgepakt")
+                                    .font(KKFont.body(14))
+                                    .foregroundStyle(KKTheme.accent)
+                                    .fontWeight(.medium)
+                                
+                                // Navigation button
+                                Button(action: {
+                                    isPresented = false
+                                }) {
+                                    Text("Naar het overzicht")
+                                        .font(KKFont.body(16))
+                                        .fontWeight(.semibold)
+                                        .foregroundStyle(Color.white)
+                                        .frame(maxWidth: .infinity)
+                                        .padding(.vertical, 16)
+                                        .background(KKTheme.accent)
+                                        .cornerRadius(12)
+                                }
+                            }
+                        } else {
+                            // Navigation button (voor intrekken zonder tip)
+                            Button(action: {
+                                isPresented = false
+                            }) {
+                                Text("Naar het overzicht")
+                                    .font(KKFont.body(16))
+                                    .fontWeight(.semibold)
+                                    .foregroundStyle(Color.white)
+                                    .frame(maxWidth: .infinity)
+                                    .padding(.vertical, 16)
+                                    .background(KKTheme.accent)
+                                    .cornerRadius(12)
+                            }
                         }
                         
                         Spacer(minLength: 24)
