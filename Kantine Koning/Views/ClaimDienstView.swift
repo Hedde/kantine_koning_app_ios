@@ -49,14 +49,22 @@ struct ClaimDienstView: View {
         !managerTeamsForTenant.isEmpty
     }
     
-    // Check if we need team selection
+    // Check if we need team selection (always show selection if dienst has a team, to show disabled team)
     private var needsTeamSelection: Bool {
-        availableTeamsForClaiming.count > 1
+        // Always show selection screen if dienst already has a team (even if only 1 other team available)
+        // This makes it clear why the original team is not selectable
+        if dienst?.team?.id != nil {
+            return managerTeamsForTenant.count > 1
+        }
+        // For open diensten, only show selection if multiple teams
+        return availableTeamsForClaiming.count > 1
     }
     
-    // Get the single team if there's only one
+    // Get the single team if there's only one (only for open diensten)
     private var singleTeam: DomainModel.Team? {
-        availableTeamsForClaiming.count == 1 ? availableTeamsForClaiming.first : nil
+        // Only auto-select if it's an open dienst with 1 manager team
+        guard dienst?.team?.id == nil else { return nil }
+        return availableTeamsForClaiming.count == 1 ? availableTeamsForClaiming.first : nil
     }
     
     var body: some View {
@@ -96,7 +104,8 @@ struct ClaimDienstView: View {
                 title: "Geen toegang",
                 message: "Je bent geen teammanager voor deze vereniging. Alleen teammanagers kunnen diensten oppakken."
             )
-        } else if dienst != nil && availableTeamsForClaiming.isEmpty {
+        } else if dienst != nil && availableTeamsForClaiming.isEmpty && managerTeamsForTenant.count == 1 {
+            // Only show this error if user has exactly 1 manager team and it's the owner
             errorView(
                 icon: "checkmark.circle.fill",
                 iconColor: KKTheme.accent,
@@ -278,6 +287,9 @@ struct ClaimDienstView: View {
             if let suggestedTeamId = suggestedTeamId,
                availableTeamsForClaiming.contains(where: { $0.id == suggestedTeamId }) {
                 selectedTeamId = suggestedTeamId
+            } else if selectedTeamId == nil {
+                // If no team selected yet, auto-select the first available team
+                selectedTeamId = availableTeamsForClaiming.first?.id
             }
         }
     }
@@ -390,13 +402,18 @@ struct ClaimDienstView: View {
                 .fontWeight(.semibold)
                 .foregroundStyle(KKTheme.textPrimary)
             
-            ForEach(availableTeamsForClaiming) { team in
+            ForEach(managerTeamsForTenant) { team in
+                let isCurrentOwner = team.id == dienst?.team?.id
                 TeamSelectionRow(
                     team: team,
                     tenantName: tenant?.name ?? "",
                     isSelected: selectedTeamId == team.id,
+                    isDisabled: isCurrentOwner,
+                    disabledReason: isCurrentOwner ? "Dit is jouw team - je kunt deze dienst niet zelf oppakken" : nil,
                     action: {
-                        selectedTeamId = team.id
+                        if !isCurrentOwner {
+                            selectedTeamId = team.id
+                        }
                     }
                 )
             }
@@ -605,34 +622,51 @@ private struct TeamSelectionRow: View {
     let team: DomainModel.Team
     let tenantName: String
     let isSelected: Bool
+    let isDisabled: Bool
+    let disabledReason: String?
     let action: () -> Void
     
     var body: some View {
         Button(action: action) {
-            HStack(alignment: .center, spacing: 12) {
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(team.name)
-                        .font(KKFont.title(16))
-                        .foregroundStyle(KKTheme.textPrimary)
+            VStack(alignment: .leading, spacing: 8) {
+                HStack(alignment: .center, spacing: 12) {
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(team.name)
+                            .font(KKFont.title(16))
+                            .foregroundStyle(isDisabled ? KKTheme.textSecondary : KKTheme.textPrimary)
+                        
+                        Text(tenantName)
+                            .font(KKFont.body(12))
+                            .foregroundStyle(KKTheme.textSecondary)
+                    }
                     
-                    Text(tenantName)
-                        .font(KKFont.body(12))
-                        .foregroundStyle(KKTheme.textSecondary)
+                    Spacer()
+                    
+                    if isDisabled {
+                        Image(systemName: "xmark.circle.fill")
+                            .foregroundStyle(KKTheme.textSecondary)
+                    } else {
+                        Image(systemName: isSelected ? "checkmark.circle.fill" : "circle")
+                            .foregroundStyle(isSelected ? KKTheme.accent : KKTheme.textSecondary)
+                    }
                 }
                 
-                Spacer()
-                
-                Image(systemName: isSelected ? "checkmark.circle.fill" : "circle")
-                    .foregroundStyle(isSelected ? KKTheme.accent : KKTheme.textSecondary)
+                if let reason = disabledReason {
+                    Text(reason)
+                        .font(KKFont.body(12))
+                        .foregroundStyle(KKTheme.textSecondary)
+                        .italic()
+                }
             }
             .padding(16)
-            .background(isSelected ? KKTheme.accent.opacity(0.1) : KKTheme.surfaceAlt)
+            .background(isDisabled ? KKTheme.surfaceAlt.opacity(0.5) : (isSelected ? KKTheme.accent.opacity(0.1) : KKTheme.surfaceAlt))
             .overlay(
                 RoundedRectangle(cornerRadius: 12)
-                    .stroke(isSelected ? KKTheme.accent.opacity(0.6) : Color.clear, lineWidth: 1)
+                    .stroke(isDisabled ? Color.clear : (isSelected ? KKTheme.accent.opacity(0.6) : Color.clear), lineWidth: 1)
             )
             .cornerRadius(12)
         }
         .buttonStyle(PlainButtonStyle())
+        .disabled(isDisabled)
     }
 }
