@@ -185,8 +185,11 @@ struct HomeHostView: View {
                 .background(KKTheme.surface.ignoresSafeArea())
             } else if showBeschikbareDiensten, let tenantSlug = selectedTenant {
                 // Beschikbare diensten view (manager only)
-                BeschikbareDienstenView(tenantSlug: tenantSlug)
-                    .environmentObject(store)
+                BeschikbareDienstenView(
+                    tenantSlug: tenantSlug,
+                    onDismiss: { showBeschikbareDiensten = false }
+                )
+                .environmentObject(store)
             } else if let dienst = offerTransferForDienst {
                 // Transfer offer view (full page, not sheet)
                 OfferDienstForTransferView(

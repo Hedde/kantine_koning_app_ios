@@ -3,6 +3,7 @@ import SwiftUI
 struct BeschikbareDienstenView: View {
     @EnvironmentObject var store: AppStore
     let tenantSlug: String
+    let onDismiss: () -> Void
     
     @State private var diensten: [DienstDTO] = []
     @State private var isLoading = true
@@ -83,6 +84,17 @@ struct BeschikbareDienstenView: View {
                             }
                         }
                     }
+                    
+                    // Back button (like QR scanner)
+                    Button(action: onDismiss) {
+                        HStack(spacing: 6) {
+                            Image(systemName: "chevron.left").font(.body)
+                            Text("Terug").font(KKFont.body(12))
+                        }
+                    }
+                    .buttonStyle(.plain)
+                    .foregroundStyle(KKTheme.textSecondary)
+                    .padding(.top, 16)
                     
                     Spacer(minLength: 24)
                 }
