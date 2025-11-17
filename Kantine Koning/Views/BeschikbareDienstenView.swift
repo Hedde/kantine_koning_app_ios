@@ -38,7 +38,7 @@ struct BeschikbareDienstenView: View {
                             .kerning(-1.0)
                             .foregroundStyle(KKTheme.textPrimary)
                         Text("Help een ander team uit de brand")
-                            .font(KKFont.body(14))
+                            .font(KKFont.title(16))
                             .foregroundStyle(KKTheme.textSecondary)
                     }
                     .multilineTextAlignment(.center)

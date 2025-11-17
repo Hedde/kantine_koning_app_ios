@@ -144,12 +144,18 @@ struct ClaimDienstView: View {
     
     private func claimingView(dienst: DienstDTO) -> some View {
         VStack(spacing: 20) {
-            // Header (like ClubsViewInternal)
-            Text("DIENST OPPAKKEN")
-                .font(KKFont.heading(24))
-                .fontWeight(.regular)
-                .kerning(-1.0)
-                .foregroundStyle(KKTheme.textPrimary)
+            // Header with subtitle
+            VStack(spacing: 8) {
+                Text("DIENST OPPAKKEN")
+                    .font(KKFont.heading(24))
+                    .fontWeight(.regular)
+                    .kerning(-1.0)
+                    .foregroundStyle(KKTheme.textPrimary)
+                Text("Bevestig je keuze")
+                    .font(KKFont.title(16))
+                    .foregroundStyle(KKTheme.textSecondary)
+            }
+            .multilineTextAlignment(.center)
             
             // Dienst details card
             dienstDetailsCard(dienst: dienst)
@@ -315,7 +321,7 @@ struct ClaimDienstView: View {
     }
     
     private var actionButtons: some View {
-        VStack(spacing: 12) {
+        VStack(spacing: 16) {
             Button(action: claimDienst) {
                 if isClaiming {
                     HStack {
@@ -333,6 +339,16 @@ struct ClaimDienstView: View {
             .buttonStyle(KKPrimaryButton())
             .disabled(isClaiming || (needsTeamSelection && selectedTeamId == nil))
             .opacity((isClaiming || (needsTeamSelection && selectedTeamId == nil)) ? 0.5 : 1.0)
+            
+            // Back button (like QR scanner)
+            Button(action: onDismiss) {
+                HStack(spacing: 6) {
+                    Image(systemName: "chevron.left").font(.body)
+                    Text("Terug").font(KKFont.body(12))
+                }
+            }
+            .buttonStyle(.plain)
+            .foregroundStyle(KKTheme.textSecondary)
         }
         .padding(.top, 8)
     }
