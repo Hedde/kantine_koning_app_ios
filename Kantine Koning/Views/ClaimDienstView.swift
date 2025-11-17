@@ -134,7 +134,7 @@ struct ClaimDienstView: View {
     }
     
     private func successView(message: String) -> some View {
-        VStack(spacing: 20) {
+        VStack(spacing: 24) {
             Spacer()
             
             Image(systemName: "checkmark.circle.fill")
@@ -151,9 +151,64 @@ struct ClaimDienstView: View {
                 .multilineTextAlignment(.center)
                 .foregroundStyle(KKTheme.textSecondary)
             
+            // What happens now section
+            VStack(alignment: .leading, spacing: 16) {
+                Text("Wat moet je nu doen?")
+                    .font(KKFont.title(18))
+                    .fontWeight(.semibold)
+                    .foregroundStyle(KKTheme.textPrimary)
+                
+                VStack(alignment: .leading, spacing: 12) {
+                    HStack(alignment: .top, spacing: 12) {
+                        Image(systemName: "person.2.fill")
+                            .foregroundStyle(KKTheme.accent)
+                            .font(.system(size: 20))
+                        Text("Zorg dat je team weet dat jullie deze dienst hebben opgepakt")
+                            .font(KKFont.body(14))
+                            .foregroundStyle(KKTheme.textSecondary)
+                    }
+                    
+                    HStack(alignment: .top, spacing: 12) {
+                        Image(systemName: "calendar.badge.plus")
+                            .foregroundStyle(Color.blue)
+                            .font(.system(size: 20))
+                        Text("Geef direct door wie er gaan komen, zodat je team zich kan inschrijven")
+                            .font(KKFont.body(14))
+                            .foregroundStyle(KKTheme.textSecondary)
+                    }
+                    
+                    HStack(alignment: .top, spacing: 12) {
+                        Image(systemName: "star.fill")
+                            .foregroundStyle(Color.yellow)
+                            .font(.system(size: 20))
+                        Text("Super dat jullie helpen! Dit levert natuurlijk ook punten op voor je team 🎉")
+                            .font(KKFont.body(14))
+                            .foregroundStyle(KKTheme.textSecondary)
+                    }
+                }
+            }
+            .padding(20)
+            .background(KKTheme.surfaceAlt)
+            .cornerRadius(12)
+            
             Spacer()
+            
+            // Navigation button
+            Button(action: {
+                store.pendingClaimDienst = nil
+            }) {
+                Text("Naar het overzicht")
+                    .font(KKFont.body(16))
+                    .fontWeight(.semibold)
+                    .foregroundStyle(Color.white)
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 16)
+                    .background(KKTheme.accent)
+                    .cornerRadius(12)
+            }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .padding(.horizontal, 24)
     }
     
     private func claimingView(dienst: DienstDTO) -> some View {
@@ -472,10 +527,7 @@ struct ClaimDienstView: View {
                     // Refresh diensten to show the newly claimed dienst
                     self.store.refreshDiensten()
                     
-                    // Auto-dismiss after 2 seconds
-                    DispatchQueue.main.asyncAfter(deadline: .now() + 2) {
-                        self.onDismiss()
-                    }
+                    // Don't auto-dismiss - let user read info and click button
                     
                 case .failure(let error):
                     Logger.error("Failed to claim dienst: \(error)")
