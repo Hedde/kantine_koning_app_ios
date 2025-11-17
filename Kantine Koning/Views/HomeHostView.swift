@@ -2160,7 +2160,7 @@ private struct OfferDienstForTransferView: View {
                                 .foregroundStyle(Color.orange)
                                 .fontWeight(.medium)
                             
-                            Text("Kun je er echt niet bij? Stel de dienst beschikbaar voor andere teams. Je blijft verantwoordelijk totdat een ander team de dienst oppakt.")
+                            Text("Lukt het niet om iemand te vinden? Stel de dienst beschikbaar voor andere teams. Let op: je blijft verantwoordelijk totdat een ander team de dienst oppakt.")
                                 .font(KKFont.body(14))
                                 .foregroundStyle(KKTheme.textSecondary)
                         }
