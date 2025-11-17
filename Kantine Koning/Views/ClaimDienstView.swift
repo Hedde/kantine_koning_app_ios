@@ -194,6 +194,17 @@ struct ClaimDienstView: View {
             
             // Action buttons
             actionButtons
+            
+            // Back button (like QR scanner)
+            Button(action: onDismiss) {
+                HStack(spacing: 6) {
+                    Image(systemName: "chevron.left").font(.body)
+                    Text("Terug").font(KKFont.body(12))
+                }
+            }
+            .buttonStyle(.plain)
+            .foregroundStyle(KKTheme.textSecondary)
+            .padding(.top, 16)
         }
         .onAppear {
             // Pre-select suggested team if it's available for claiming (not the current owner)
@@ -340,35 +351,23 @@ struct ClaimDienstView: View {
     }
     
     private var actionButtons: some View {
-        VStack(spacing: 16) {
-            Button(action: claimDienst) {
-                if isClaiming {
-                    HStack {
-                        ProgressView()
-                            .tint(.white)
-                        Text("Bezig met oppakken...")
-                    }
-                } else {
-                    HStack {
-                        Image(systemName: "checkmark.circle.fill")
-                        Text("Dienst oppakken")
-                    }
+        Button(action: claimDienst) {
+            if isClaiming {
+                HStack {
+                    ProgressView()
+                        .tint(.white)
+                    Text("Bezig met oppakken...")
+                }
+            } else {
+                HStack {
+                    Image(systemName: "checkmark.circle.fill")
+                    Text("Dienst oppakken")
                 }
             }
-            .buttonStyle(KKPrimaryButton())
-            .disabled(isClaiming || (needsTeamSelection && selectedTeamId == nil))
-            .opacity((isClaiming || (needsTeamSelection && selectedTeamId == nil)) ? 0.5 : 1.0)
-            
-            // Back button (like QR scanner)
-            Button(action: onDismiss) {
-                HStack(spacing: 6) {
-                    Image(systemName: "chevron.left").font(.body)
-                    Text("Terug").font(KKFont.body(12))
-                }
-            }
-            .buttonStyle(.plain)
-            .foregroundStyle(KKTheme.textSecondary)
         }
+        .buttonStyle(KKPrimaryButton())
+        .disabled(isClaiming || (needsTeamSelection && selectedTeamId == nil))
+        .opacity((isClaiming || (needsTeamSelection && selectedTeamId == nil)) ? 0.5 : 1.0)
         .padding(.top, 8)
     }
     
