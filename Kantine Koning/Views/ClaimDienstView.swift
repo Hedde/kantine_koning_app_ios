@@ -74,7 +74,7 @@ struct ClaimDienstView: View {
                 Spacer()
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
-            .padding(.horizontal, 20)
+            .padding(.horizontal, 16)
         }
         .safeAreaInset(edge: .top) {
             // Fixed banner positioned under navigation
@@ -234,7 +234,7 @@ struct ClaimDienstView: View {
             Spacer(minLength: 24)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .padding(.horizontal, 20)
+        .padding(.horizontal, 16)
     }
     
     private func claimingView(dienst: DienstDTO) -> some View {

@@ -141,55 +141,62 @@ struct HomeHostView: View {
                     }
                 )
                 .environmentObject(store)
-            } else if showQRScanner {
+            } else if showQRScanner, let tenantSlug = selectedTenant {
                 // QR Scanner for claiming diensten
-                VStack(spacing: 20) {
-                    Spacer().frame(height: 40)
-                    
-                    // Header with subtitle
-                    VStack(spacing: 8) {
-                        Text("SCAN QR-CODE")
-                            .font(KKFont.heading(24))
-                            .fontWeight(.regular)
-                            .kerning(-1.0)
-                            .foregroundStyle(KKTheme.textPrimary)
-                        Text("Pak een dienst op met je team")
-                            .font(KKFont.title(16))
-                            .foregroundStyle(KKTheme.textSecondary)
-                    }
-                    .multilineTextAlignment(.center)
-                    .padding(.bottom, 8)
-                    
-                    Text("Richt je camera op een QR-code in de publieke planning")
-                        .font(KKFont.body(14))
+                ScrollView {
+                    VStack(spacing: 20) {
+                        // Header with subtitle
+                        VStack(spacing: 8) {
+                            Text("SCAN QR-CODE")
+                                .font(KKFont.heading(24))
+                                .fontWeight(.regular)
+                                .kerning(-1.0)
+                                .foregroundStyle(KKTheme.textPrimary)
+                            Text("Pak een dienst op met je team")
+                                .font(KKFont.title(16))
+                                .foregroundStyle(KKTheme.textSecondary)
+                        }
                         .multilineTextAlignment(.center)
-                        .foregroundStyle(KKTheme.textSecondary)
+                        .padding(.bottom, 8)
+                        
+                        Text("Richt je camera op een QR-code in de publieke planning")
+                            .font(KKFont.body(14))
+                            .multilineTextAlignment(.center)
+                            .foregroundStyle(KKTheme.textSecondary)
+                            .padding(.horizontal, 24)
+                        
+                        ZStack {
+                            QRScannerView(isActive: scanningActive) { code in
+                                handleQRScanned(code)
+                            }
+                            CrosshairOverlay()
+                        }
+                        .aspectRatio(1.0, contentMode: .fit)
+                        .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
                         .padding(.horizontal, 24)
-                    
-                    ZStack {
-                        QRScannerView(isActive: scanningActive) { code in
-                            handleQRScanned(code)
+                        
+                        Button(action: {
+                            showQRScanner = false
+                            scanningActive = false
+                        }) {
+                            HStack(spacing: 6) {
+                                Image(systemName: "chevron.left").font(.body)
+                                Text("Terug").font(KKFont.body(12))
+                            }
                         }
-                        CrosshairOverlay()
+                        .buttonStyle(.plain)
+                        .foregroundStyle(KKTheme.textSecondary)
+                        .padding(.top, 24)
+                        
+                        Spacer(minLength: 24)
                     }
-                    .aspectRatio(1.0, contentMode: .fit)
-                    .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
-                    .padding(.horizontal, 24)
-                    
-                    Button(action: {
-                        showQRScanner = false
-                        scanningActive = false
-                    }) {
-                        HStack(spacing: 6) {
-                            Image(systemName: "chevron.left").font(.body)
-                            Text("Terug").font(KKFont.body(12))
-                        }
-                    }
-                    .buttonStyle(.plain)
-                    .foregroundStyle(KKTheme.textSecondary)
-                    .padding(.top, 24)
-                    
-                    Spacer()
+                }
+                .safeAreaInset(edge: .top) {
+                    // Fixed banner positioned under navigation
+                    TenantBannerView(tenantSlug: tenantSlug)
+                        .environmentObject(store)
+                        .padding(.bottom, 12)
+                        .background(KKTheme.surface)
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
                 .background(KKTheme.surface.ignoresSafeArea())
