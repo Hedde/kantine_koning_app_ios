@@ -903,7 +903,7 @@ private struct DienstCardContent: View {
                         Button(action: { onOfferTransfer(dienst) }) {
                             Image(systemName: (dienst.offeredForTransfer ?? false) ? "arrow.left.arrow.right.circle.fill" : "arrow.left.arrow.right.circle")
                                 .font(.system(size: 20, weight: .medium))
-                                .foregroundStyle((dienst.offeredForTransfer ?? false) ? KKTheme.accent : KKTheme.textSecondary)
+                                .foregroundStyle(KKTheme.accent)
                         }
                         .accessibilityLabel("Dienst ter overname aanbieden")
                     }
