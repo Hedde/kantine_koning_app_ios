@@ -2082,7 +2082,7 @@ private struct OfferDienstForTransferView: View {
                             .multilineTextAlignment(.center)
                         
                         Text(dienst.teamName ?? "")
-                            .font(KKFont.body(14))
+                            .font(KKFont.title(16))
                             .foregroundStyle(KKTheme.textSecondary)
                     }
                     .padding(.horizontal, 20)
