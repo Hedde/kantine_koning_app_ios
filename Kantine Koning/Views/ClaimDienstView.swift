@@ -199,8 +199,7 @@ struct ClaimDienstView: View {
             VStack(spacing: 16) {
                 Text("💡 Tip: Super dat jullie helpen! Dit levert natuurlijk ook punten op voor je team 🎉")
                     .font(KKFont.body(14))
-                    .foregroundStyle(KKTheme.accent)
-                    .fontWeight(.medium)
+                    .foregroundStyle(KKTheme.textSecondary)
                 
                 // Navigation button
                 Button(action: {

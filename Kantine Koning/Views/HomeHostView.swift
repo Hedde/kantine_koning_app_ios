@@ -2158,8 +2158,7 @@ private struct OfferDienstForTransferView: View {
                             VStack(spacing: 16) {
                                 Text("💡 Tip: Communiceer ook direct met andere teams om de kans te vergroten dat de dienst wordt opgepakt")
                                     .font(KKFont.body(14))
-                                    .foregroundStyle(KKTheme.accent)
-                                    .fontWeight(.medium)
+                                    .foregroundStyle(KKTheme.textSecondary)
                                 
                                 // Navigation button
                                 Button(action: {
@@ -2268,8 +2267,7 @@ private struct OfferDienstForTransferView: View {
                         } else {
                             Text("💡 Tip: Probeer eerst binnen je eigen team te ruilen")
                                 .font(KKFont.body(14))
-                                .foregroundStyle(KKTheme.accent)
-                                .fontWeight(.medium)
+                                .foregroundStyle(KKTheme.textSecondary)
                             
                             Text("Lukt het niet om iemand te vinden? Stel de dienst beschikbaar voor andere teams. Let op: je blijft verantwoordelijk totdat een ander team de dienst oppakt.")
                                 .font(KKFont.body(14))
