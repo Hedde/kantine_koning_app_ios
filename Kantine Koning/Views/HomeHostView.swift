@@ -2146,17 +2146,21 @@ private struct OfferDienstForTransferView: View {
                                             .font(KKFont.body(14))
                                             .foregroundStyle(KKTheme.textSecondary)
                                     }
-                                    
-                                    Text("💡 Tip: Communiceer ook direct met andere teams om de kans te vergroten dat de dienst wordt opgepakt")
-                                        .font(KKFont.body(14))
-                                        .foregroundStyle(KKTheme.accent)
-                                        .fontWeight(.medium)
                                 }
                             }
                         }
                         .padding(20)
                         .background(KKTheme.surfaceAlt)
                         .cornerRadius(12)
+                        
+                        // Tip buiten het grijze vlak
+                        if !isCurrentlyOffered {
+                            Text("💡 Tip: Communiceer ook direct met andere teams om de kans te vergroten dat de dienst wordt opgepakt")
+                                .font(KKFont.body(14))
+                                .foregroundStyle(KKTheme.accent)
+                                .fontWeight(.medium)
+                                .padding(.horizontal, 20)
+                        }
                         
                         // Navigation button
                         Button(action: {

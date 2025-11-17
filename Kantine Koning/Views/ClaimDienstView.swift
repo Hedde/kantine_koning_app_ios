@@ -189,16 +189,18 @@ struct ClaimDienstView: View {
                             .font(KKFont.body(14))
                             .foregroundStyle(KKTheme.textSecondary)
                     }
-                    
-                    Text("💡 Tip: Super dat jullie helpen! Dit levert natuurlijk ook punten op voor je team 🎉")
-                        .font(KKFont.body(14))
-                        .foregroundStyle(KKTheme.accent)
-                        .fontWeight(.medium)
                 }
             }
             .padding(20)
             .background(KKTheme.surfaceAlt)
             .cornerRadius(12)
+            
+            // Tip buiten het grijze vlak
+            Text("💡 Tip: Super dat jullie helpen! Dit levert natuurlijk ook punten op voor je team 🎉")
+                .font(KKFont.body(14))
+                .foregroundStyle(KKTheme.accent)
+                .fontWeight(.medium)
+                .padding(.horizontal, 20)
             
             // Navigation button
             Button(action: {
