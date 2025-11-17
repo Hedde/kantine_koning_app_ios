@@ -190,16 +190,10 @@ struct ClaimDienstView: View {
                             .foregroundStyle(KKTheme.textSecondary)
                     }
                     
-                    HStack(alignment: .top, spacing: 12) {
-                        Image(systemName: "lightbulb.fill")
-                            .foregroundStyle(KKTheme.accent)
-                            .font(.system(size: 18))
-                            .frame(width: 20, alignment: .center)
-                        Text("Super dat jullie helpen! Dit levert natuurlijk ook punten op voor je team 🎉")
-                            .font(KKFont.body(14))
-                            .foregroundStyle(KKTheme.accent)
-                            .fontWeight(.medium)
-                    }
+                    Text("💡 Tip: Super dat jullie helpen! Dit levert natuurlijk ook punten op voor je team 🎉")
+                        .font(KKFont.body(14))
+                        .foregroundStyle(KKTheme.accent)
+                        .fontWeight(.medium)
                 }
             }
             .padding(20)

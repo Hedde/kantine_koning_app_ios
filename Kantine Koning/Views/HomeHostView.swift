@@ -2147,16 +2147,10 @@ private struct OfferDienstForTransferView: View {
                                             .foregroundStyle(KKTheme.textSecondary)
                                     }
                                     
-                                    HStack(alignment: .top, spacing: 12) {
-                                        Image(systemName: "lightbulb.fill")
-                                            .foregroundStyle(KKTheme.accent)
-                                            .font(.system(size: 18))
-                                            .frame(width: 20, alignment: .center)
-                                        Text("Tip: Communiceer ook direct met andere teams om de kans te vergroten dat de dienst wordt opgepakt")
-                                            .font(KKFont.body(14))
-                                            .foregroundStyle(KKTheme.accent)
-                                            .fontWeight(.medium)
-                                    }
+                                    Text("💡 Tip: Communiceer ook direct met andere teams om de kans te vergroten dat de dienst wordt opgepakt")
+                                        .font(KKFont.body(14))
+                                        .foregroundStyle(KKTheme.accent)
+                                        .fontWeight(.medium)
                                 }
                             }
                         }
