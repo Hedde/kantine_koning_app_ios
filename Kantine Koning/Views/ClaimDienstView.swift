@@ -197,9 +197,15 @@ struct ClaimDienstView: View {
             
             // Tip + knop in eigen VStack voor minder spacing
             VStack(spacing: 16) {
-                Text("💡 Tip: Super dat jullie helpen! Dit levert natuurlijk ook punten op voor je team 🎉")
-                    .font(KKFont.body(14))
-                    .foregroundStyle(KKTheme.textSecondary)
+                VStack(spacing: 8) {
+                    Text("💡 Tip: Super dat jullie helpen!")
+                        .font(KKFont.body(14))
+                        .foregroundStyle(KKTheme.textSecondary)
+                    
+                    Text("Dit levert natuurlijk ook punten op voor je team 🎉")
+                        .font(KKFont.body(14))
+                        .foregroundStyle(KKTheme.textSecondary)
+                }
                 
                 // Navigation button
                 Button(action: {

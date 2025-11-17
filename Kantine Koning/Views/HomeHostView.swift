@@ -2156,9 +2156,15 @@ private struct OfferDienstForTransferView: View {
                         // Tip buiten het grijze vlak (met eigen VStack voor minder spacing)
                         if !isCurrentlyOffered {
                             VStack(spacing: 16) {
-                                Text("💡 Tip: Communiceer ook direct met andere teams om de kans te vergroten dat de dienst wordt opgepakt")
-                                    .font(KKFont.body(14))
-                                    .foregroundStyle(KKTheme.textSecondary)
+                                VStack(spacing: 8) {
+                                    Text("💡 Tip: Communiceer ook direct met andere teams")
+                                        .font(KKFont.body(14))
+                                        .foregroundStyle(KKTheme.textSecondary)
+                                    
+                                    Text("Dit vergroot de kans dat de dienst wordt opgepakt")
+                                        .font(KKFont.body(14))
+                                        .foregroundStyle(KKTheme.textSecondary)
+                                }
                                 
                                 // Navigation button
                                 Button(action: {
