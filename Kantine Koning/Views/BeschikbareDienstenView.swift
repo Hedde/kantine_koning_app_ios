@@ -29,18 +29,19 @@ struct BeschikbareDienstenView: View {
             ScrollView {
                 VStack(spacing: 24) {
                     Spacer(minLength: 24)
-                    // Header (like ClubsViewInternal)
+                    // Header with subtitle
                     VStack(spacing: 8) {
-                        Text((tenant?.name ?? "").uppercased())
+                        Text("DIENST OPPAKKEN")
                             .font(KKFont.heading(24))
                             .fontWeight(.regular)
                             .kerning(-1.0)
                             .foregroundStyle(KKTheme.textPrimary)
-                        Text("Help \(tenant?.name ?? "de vereniging") een handje")
-                            .font(KKFont.title(16))
+                        Text("Help een ander team uit de brand")
+                            .font(KKFont.body(14))
                             .foregroundStyle(KKTheme.textSecondary)
                     }
                     .multilineTextAlignment(.center)
+                    .padding(.bottom, 8)
                     
                     Text("Voor deze diensten zoeken wij nog hulp")
                         .font(KKFont.body(14))
