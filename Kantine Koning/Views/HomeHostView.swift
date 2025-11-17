@@ -187,6 +187,7 @@ struct HomeHostView: View {
                     }
                     .buttonStyle(.plain)
                     .foregroundStyle(KKTheme.textSecondary)
+                    .padding(.top, 24)
                     
                     Spacer()
                 }

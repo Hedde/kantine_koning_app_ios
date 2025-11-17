@@ -146,17 +146,6 @@ struct ClaimDienstView: View {
                 .foregroundStyle(KKTheme.textSecondary)
             
             Spacer()
-            
-            // Back button (subtle style like onboarding)
-            Button(action: onDismiss) {
-                HStack(spacing: 6) {
-                    Image(systemName: "chevron.left").font(.body)
-                    Text("Terug").font(KKFont.body(12))
-                }
-            }
-            .buttonStyle(.plain)
-            .foregroundStyle(KKTheme.textSecondary)
-            .padding(.bottom, 24)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
