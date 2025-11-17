@@ -2086,7 +2086,7 @@ private struct OfferDienstForTransferView: View {
                 } else {
                     // Header with subtitle (like ClubsViewInternal)
                     VStack(spacing: 8) {
-                        Text((isCurrentlyOffered ? "AANBOD INTREKKEN" : "DIENST TER OVERNAME AANBIEDEN"))
+                        Text((isCurrentlyOffered ? "OVERNAME VERZOEK INTREKKEN" : "OVERNAME VERZOEK INDIENEN"))
                             .font(KKFont.heading(24))
                             .fontWeight(.regular)
                             .kerning(-1.0)
