@@ -2174,33 +2174,37 @@ private struct OfferDienstForTransferView: View {
                         .padding(.horizontal, 20)
                     }
                     
-                    // Action buttons
-                    VStack(spacing: 12) {
-                        Button(action: toggleTransferOffer) {
-                            if isOffering {
-                                HStack {
-                                    ProgressView()
-                                        .tint(.white)
-                                    Text("Even geduld...")
-                                }
-                            } else {
-                                HStack {
-                                    Image(systemName: isCurrentlyOffered ? "arrow.uturn.backward.circle.fill" : "hand.thumbsup.fill")
-                                    Text(isCurrentlyOffered ? "Aanbod intrekken" : "Dienst aanbieden")
-                                }
+                    // Action button
+                    Button(action: toggleTransferOffer) {
+                        if isOffering {
+                            HStack {
+                                ProgressView()
+                                    .tint(.white)
+                                Text("Even geduld...")
+                            }
+                        } else {
+                            HStack {
+                                Image(systemName: isCurrentlyOffered ? "arrow.uturn.backward.circle.fill" : "hand.thumbsup.fill")
+                                Text(isCurrentlyOffered ? "Aanbod intrekken" : "Dienst aanbieden")
                             }
                         }
-                        .buttonStyle(KKPrimaryButton())
-                        .disabled(isOffering)
-                        .opacity(isOffering ? 0.5 : 1.0)
-                        
-                        Button(action: { isPresented = false }) {
-                            Text("Terug")
-                        }
-                        .buttonStyle(KKSecondaryButton())
                     }
+                    .buttonStyle(KKPrimaryButton())
+                    .disabled(isOffering)
+                    .opacity(isOffering ? 0.5 : 1.0)
                     .padding(.horizontal, 20)
                     .padding(.top, 12)
+                    
+                    // Back button (like QR scanner)
+                    Button(action: { isPresented = false }) {
+                        HStack(spacing: 6) {
+                            Image(systemName: "chevron.left").font(.body)
+                            Text("Terug").font(KKFont.body(12))
+                        }
+                    }
+                    .buttonStyle(.plain)
+                    .foregroundStyle(KKTheme.textSecondary)
+                    .padding(.top, 16)
                 }
                 
                 Spacer(minLength: 24)
