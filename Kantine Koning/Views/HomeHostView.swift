@@ -2107,7 +2107,8 @@ private struct OfferDienstForTransferView: View {
                                     HStack(alignment: .top, spacing: 12) {
                                         Image(systemName: "checkmark.circle.fill")
                                             .foregroundStyle(KKTheme.accent)
-                                            .font(.system(size: 20))
+                                            .font(.system(size: 18))
+                                            .frame(width: 20, alignment: .center)
                                         Text("De dienst is niet meer zichtbaar voor andere teams")
                                             .font(KKFont.body(14))
                                             .foregroundStyle(KKTheme.textSecondary)
@@ -2116,7 +2117,8 @@ private struct OfferDienstForTransferView: View {
                                     HStack(alignment: .top, spacing: 12) {
                                         Image(systemName: "person.2.fill")
                                             .foregroundStyle(KKTheme.accent)
-                                            .font(.system(size: 20))
+                                            .font(.system(size: 18))
+                                            .frame(width: 20, alignment: .center)
                                         Text("Je blijft verantwoordelijk voor de bemanning van deze dienst")
                                             .font(KKFont.body(14))
                                             .foregroundStyle(KKTheme.textSecondary)
@@ -2128,7 +2130,8 @@ private struct OfferDienstForTransferView: View {
                                     HStack(alignment: .top, spacing: 12) {
                                         Image(systemName: "eye.fill")
                                             .foregroundStyle(KKTheme.accent)
-                                            .font(.system(size: 20))
+                                            .font(.system(size: 18))
+                                            .frame(width: 20, alignment: .center)
                                         Text("De dienst is nu zichtbaar in de publieke planning en in de app bij andere teams")
                                             .font(KKFont.body(14))
                                             .foregroundStyle(KKTheme.textSecondary)
@@ -2137,19 +2140,22 @@ private struct OfferDienstForTransferView: View {
                                     HStack(alignment: .top, spacing: 12) {
                                         Image(systemName: "exclamationmark.circle.fill")
                                             .foregroundStyle(KKTheme.accent)
-                                            .font(.system(size: 20))
+                                            .font(.system(size: 18))
+                                            .frame(width: 20, alignment: .center)
                                         Text("Je blijft verantwoordelijk totdat een ander team de dienst oppakt - er zijn geen garanties dat dit gebeurt")
                                             .font(KKFont.body(14))
                                             .foregroundStyle(KKTheme.textSecondary)
                                     }
                                     
                                     HStack(alignment: .top, spacing: 12) {
-                                        Image(systemName: "bubble.left.and.bubble.right.fill")
+                                        Image(systemName: "lightbulb.fill")
                                             .foregroundStyle(KKTheme.accent)
-                                            .font(.system(size: 20))
+                                            .font(.system(size: 18))
+                                            .frame(width: 20, alignment: .center)
                                         Text("Tip: Communiceer ook direct met andere teams om de kans te vergroten dat de dienst wordt opgepakt")
                                             .font(KKFont.body(14))
-                                            .foregroundStyle(KKTheme.textSecondary)
+                                            .foregroundStyle(KKTheme.accent)
+                                            .fontWeight(.medium)
                                     }
                                 }
                             }
@@ -2157,8 +2163,6 @@ private struct OfferDienstForTransferView: View {
                         .padding(20)
                         .background(KKTheme.surfaceAlt)
                         .cornerRadius(12)
-                        
-                        Spacer(minLength: 24)
                         
                         // Navigation button
                         Button(action: {
@@ -2173,6 +2177,8 @@ private struct OfferDienstForTransferView: View {
                                 .background(KKTheme.accent)
                                 .cornerRadius(12)
                         }
+                        
+                        Spacer(minLength: 24)
                     }
                     .padding(.horizontal, 20)
                 } else {

@@ -173,7 +173,8 @@ struct ClaimDienstView: View {
                     HStack(alignment: .top, spacing: 12) {
                         Image(systemName: "person.2.fill")
                             .foregroundStyle(KKTheme.accent)
-                            .font(.system(size: 20))
+                            .font(.system(size: 18))
+                            .frame(width: 20, alignment: .center)
                         Text("Zorg dat je team weet dat jullie deze dienst hebben opgepakt")
                             .font(KKFont.body(14))
                             .foregroundStyle(KKTheme.textSecondary)
@@ -182,27 +183,28 @@ struct ClaimDienstView: View {
                     HStack(alignment: .top, spacing: 12) {
                         Image(systemName: "calendar.badge.plus")
                             .foregroundStyle(KKTheme.accent)
-                            .font(.system(size: 20))
+                            .font(.system(size: 18))
+                            .frame(width: 20, alignment: .center)
                         Text("Geef direct door wie er gaan komen, zodat je team zich kan inschrijven")
                             .font(KKFont.body(14))
                             .foregroundStyle(KKTheme.textSecondary)
                     }
                     
                     HStack(alignment: .top, spacing: 12) {
-                        Image(systemName: "star.fill")
+                        Image(systemName: "lightbulb.fill")
                             .foregroundStyle(KKTheme.accent)
-                            .font(.system(size: 20))
+                            .font(.system(size: 18))
+                            .frame(width: 20, alignment: .center)
                         Text("Super dat jullie helpen! Dit levert natuurlijk ook punten op voor je team 🎉")
                             .font(KKFont.body(14))
-                            .foregroundStyle(KKTheme.textSecondary)
+                            .foregroundStyle(KKTheme.accent)
+                            .fontWeight(.medium)
                     }
                 }
             }
             .padding(20)
             .background(KKTheme.surfaceAlt)
             .cornerRadius(12)
-            
-            Spacer(minLength: 24)
             
             // Navigation button
             Button(action: {
@@ -217,6 +219,8 @@ struct ClaimDienstView: View {
                     .background(KKTheme.accent)
                     .cornerRadius(12)
             }
+            
+            Spacer(minLength: 24)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .padding(.horizontal, 20)
