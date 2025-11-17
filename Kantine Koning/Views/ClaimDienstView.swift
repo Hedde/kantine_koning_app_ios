@@ -32,6 +32,18 @@ struct ClaimDienstView: View {
         return tenant.teams.filter { $0.role == .manager }
     }
     
+    // Get teams available for claiming (excludes the team that already owns the dienst)
+    private var availableTeamsForClaiming: [DomainModel.Team] {
+        // If dienst already has a team, exclude it from selection
+        guard let dienstTeamId = dienst?.team?.id else {
+            // Open dienst - all manager teams are available
+            return managerTeamsForTenant
+        }
+        
+        // Filter out the team that currently owns the dienst
+        return managerTeamsForTenant.filter { $0.id != dienstTeamId }
+    }
+    
     // Check if user has manager access to this tenant
     private var hasManagerAccess: Bool {
         !managerTeamsForTenant.isEmpty
@@ -39,12 +51,12 @@ struct ClaimDienstView: View {
     
     // Check if we need team selection
     private var needsTeamSelection: Bool {
-        managerTeamsForTenant.count > 1
+        availableTeamsForClaiming.count > 1
     }
     
     // Get the single team if there's only one
     private var singleTeam: DomainModel.Team? {
-        managerTeamsForTenant.count == 1 ? managerTeamsForTenant.first : nil
+        availableTeamsForClaiming.count == 1 ? availableTeamsForClaiming.first : nil
     }
     
     var body: some View {
@@ -77,6 +89,13 @@ struct ClaimDienstView: View {
                 iconColor: Color.orange,
                 title: "Geen toegang",
                 message: "Je bent geen teammanager voor deze vereniging. Alleen teammanagers kunnen diensten oppakken."
+            )
+        } else if dienst != nil && availableTeamsForClaiming.isEmpty {
+            errorView(
+                icon: "checkmark.circle.fill",
+                iconColor: KKTheme.accent,
+                title: "Dienst hangt al aan jouw team",
+                message: "Deze dienst is al gekoppeld aan het enige team waar je manager van bent."
             )
         } else if isLoadingDienst {
             loadingView
@@ -177,9 +196,9 @@ struct ClaimDienstView: View {
             actionButtons
         }
         .onAppear {
-            // Pre-select suggested team if it's a valid manager team for this tenant
+            // Pre-select suggested team if it's available for claiming (not the current owner)
             if let suggestedTeamId = suggestedTeamId,
-               managerTeamsForTenant.contains(where: { $0.id == suggestedTeamId }) {
+               availableTeamsForClaiming.contains(where: { $0.id == suggestedTeamId }) {
                 selectedTeamId = suggestedTeamId
             }
         }
@@ -293,7 +312,7 @@ struct ClaimDienstView: View {
                 .fontWeight(.semibold)
                 .foregroundStyle(KKTheme.textPrimary)
             
-            ForEach(managerTeamsForTenant) { team in
+            ForEach(availableTeamsForClaiming) { team in
                 TeamSelectionRow(
                     team: team,
                     tenantName: tenant?.name ?? "",
