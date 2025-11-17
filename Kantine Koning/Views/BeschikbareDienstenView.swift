@@ -117,14 +117,17 @@ struct BeschikbareDienstenView: View {
         isLoading = true
         errorMessage = nil
         
-        backend.fetchBeschikbareDiensten { result in
+        // Get current team code to filter out only this team's diensten
+        let currentTeamCode = getCurrentTeamCode()
+        
+        backend.fetchBeschikbareDiensten(currentTeamCode: currentTeamCode) { result in
             DispatchQueue.main.async {
                 isLoading = false
                 
                 switch result {
                 case .success(let fetchedDiensten):
                     diensten = fetchedDiensten
-                    Logger.success("Fetched \(fetchedDiensten.count) beschikbare diensten")
+                    Logger.success("Fetched \(fetchedDiensten.count) beschikbare diensten (filtered for team: \(currentTeamCode ?? "all"))")
                     
                 case .failure(let error):
                     errorMessage = error.localizedDescription
@@ -132,6 +135,16 @@ struct BeschikbareDienstenView: View {
                 }
             }
         }
+    }
+    
+    private func getCurrentTeamCode() -> String? {
+        // Get team code of currently viewing team (if any)
+        guard let teamId = store.currentlyViewingTeamId,
+              let tenant = store.model.tenants[tenantSlug],
+              let team = tenant.teams.first(where: { $0.id == teamId }) else {
+            return nil
+        }
+        return team.code
     }
     
     private func claimDienst(_ dienst: DienstDTO) {

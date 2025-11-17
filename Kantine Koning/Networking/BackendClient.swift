@@ -647,9 +647,10 @@ final class BackendClient {
     }
     
     // MARK: - Available Diensten (manager only)
-    func fetchBeschikbareDiensten(completion: @escaping (Result<[DienstDTO], Error>) -> Void) {
-        // GET /api/mobile/v1/diensten/available
+    func fetchBeschikbareDiensten(currentTeamCode: String? = nil, completion: @escaping (Result<[DienstDTO], Error>) -> Void) {
+        // GET /api/mobile/v1/diensten/available?current_team_code=XXX
         // Tenant comes from JWT token (no param needed)
+        // current_team_code: optional, filters out only this team (not all teams in JWT)
         // authToken MUST be enrollment-specific (manager role)
         
         guard let token = authToken else {
@@ -657,7 +658,14 @@ final class BackendClient {
             return
         }
         
-        let url = baseURL.appendingPathComponent("/api/mobile/v1/diensten/available")
+        var urlComponents = URLComponents(url: baseURL.appendingPathComponent("/api/mobile/v1/diensten/available"), resolvingAgainstBaseURL: false)!
+        if let teamCode = currentTeamCode {
+            urlComponents.queryItems = [URLQueryItem(name: "current_team_code", value: teamCode)]
+        }
+        guard let url = urlComponents.url else {
+            completion(.failure(NSError(domain: "Backend", code: -3, userInfo: [NSLocalizedDescriptionKey: "Invalid URL"])))
+            return
+        }
         var req = URLRequest(url: url)
         req.httpMethod = "GET"
         req.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
