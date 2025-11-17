@@ -135,21 +135,32 @@ struct ClaimDienstView: View {
     
     private func successView(message: String) -> some View {
         VStack(spacing: 24) {
-            Spacer()
+            // Header with subtitle (like other pages)
+            VStack(spacing: 8) {
+                Text("DIENST OPGEPAKT")
+                    .font(KKFont.heading(24))
+                    .fontWeight(.regular)
+                    .kerning(-1.0)
+                    .foregroundStyle(KKTheme.textPrimary)
+                Text(dienst?.team?.naam ?? "")
+                    .font(KKFont.title(16))
+                    .foregroundStyle(KKTheme.textSecondary)
+            }
+            .multilineTextAlignment(.center)
+            .padding(.bottom, 8)
             
-            Image(systemName: "checkmark.circle.fill")
-                .font(.system(size: 60))
-                .foregroundStyle(Color.green)
-            
-            Text("Dienst opgepakt!")
-                .font(KKFont.heading(24))
-                .fontWeight(.semibold)
-                .foregroundStyle(KKTheme.textPrimary)
-            
-            Text(message)
-                .font(KKFont.body(14))
-                .multilineTextAlignment(.center)
-                .foregroundStyle(KKTheme.textSecondary)
+            // Success icon and message
+            VStack(spacing: 16) {
+                Image(systemName: "checkmark.circle.fill")
+                    .font(.system(size: 60))
+                    .foregroundStyle(KKTheme.accent)
+                
+                Text(message)
+                    .font(KKFont.body(16))
+                    .foregroundStyle(KKTheme.textSecondary)
+                    .multilineTextAlignment(.center)
+            }
+            .padding(.bottom, 8)
             
             // What happens now section
             VStack(alignment: .leading, spacing: 16) {
@@ -170,7 +181,7 @@ struct ClaimDienstView: View {
                     
                     HStack(alignment: .top, spacing: 12) {
                         Image(systemName: "calendar.badge.plus")
-                            .foregroundStyle(Color.blue)
+                            .foregroundStyle(KKTheme.accent)
                             .font(.system(size: 20))
                         Text("Geef direct door wie er gaan komen, zodat je team zich kan inschrijven")
                             .font(KKFont.body(14))
@@ -179,7 +190,7 @@ struct ClaimDienstView: View {
                     
                     HStack(alignment: .top, spacing: 12) {
                         Image(systemName: "star.fill")
-                            .foregroundStyle(Color.yellow)
+                            .foregroundStyle(KKTheme.accent)
                             .font(.system(size: 20))
                         Text("Super dat jullie helpen! Dit levert natuurlijk ook punten op voor je team 🎉")
                             .font(KKFont.body(14))
@@ -191,7 +202,7 @@ struct ClaimDienstView: View {
             .background(KKTheme.surfaceAlt)
             .cornerRadius(12)
             
-            Spacer()
+            Spacer(minLength: 24)
             
             // Navigation button
             Button(action: {
@@ -208,7 +219,7 @@ struct ClaimDienstView: View {
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .padding(.horizontal, 24)
+        .padding(.horizontal, 20)
     }
     
     private func claimingView(dienst: DienstDTO) -> some View {

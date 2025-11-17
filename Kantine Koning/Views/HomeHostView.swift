@@ -2065,19 +2065,34 @@ private struct OfferDienstForTransferView: View {
         ScrollView {
             VStack(spacing: 24) {
                 if let successMessage = successMessage {
-                    // Success state - expanded info
+                    // Success state - consistent header style
                     VStack(spacing: 24) {
-                        Spacer()
+                        // Header with subtitle (like other pages)
+                        VStack(spacing: 8) {
+                            Text(isCurrentlyOffered ? "VERZOEK INGETROKKEN" : "DIENST AANGEBODEN")
+                                .font(KKFont.heading(24))
+                                .fontWeight(.regular)
+                                .kerning(-1.0)
+                                .foregroundStyle(KKTheme.textPrimary)
+                            Text(dienst.teamName ?? "")
+                                .font(KKFont.title(16))
+                                .foregroundStyle(KKTheme.textSecondary)
+                        }
+                        .multilineTextAlignment(.center)
+                        .padding(.bottom, 8)
                         
-                        Image(systemName: "checkmark.circle.fill")
-                            .font(.system(size: 60))
-                            .foregroundStyle(Color.green)
-                        
-                        Text(successMessage)
-                            .font(KKFont.heading(24))
-                            .fontWeight(.semibold)
-                            .foregroundStyle(KKTheme.textPrimary)
-                            .multilineTextAlignment(.center)
+                        // Success icon and message
+                        VStack(spacing: 16) {
+                            Image(systemName: "checkmark.circle.fill")
+                                .font(.system(size: 60))
+                                .foregroundStyle(KKTheme.accent)
+                            
+                            Text(successMessage)
+                                .font(KKFont.body(16))
+                                .foregroundStyle(KKTheme.textSecondary)
+                                .multilineTextAlignment(.center)
+                        }
+                        .padding(.bottom, 8)
                         
                         // What happens now section
                         VStack(alignment: .leading, spacing: 16) {
@@ -2091,7 +2106,7 @@ private struct OfferDienstForTransferView: View {
                                 VStack(alignment: .leading, spacing: 12) {
                                     HStack(alignment: .top, spacing: 12) {
                                         Image(systemName: "checkmark.circle.fill")
-                                            .foregroundStyle(Color.green)
+                                            .foregroundStyle(KKTheme.accent)
                                             .font(.system(size: 20))
                                         Text("De dienst is niet meer zichtbaar voor andere teams")
                                             .font(KKFont.body(14))
@@ -2111,8 +2126,8 @@ private struct OfferDienstForTransferView: View {
                                 // Was not offered, now offered
                                 VStack(alignment: .leading, spacing: 12) {
                                     HStack(alignment: .top, spacing: 12) {
-                                        Image(systemName: "checkmark.circle.fill")
-                                            .foregroundStyle(Color.green)
+                                        Image(systemName: "eye.fill")
+                                            .foregroundStyle(KKTheme.accent)
                                             .font(.system(size: 20))
                                         Text("De dienst is nu zichtbaar in de publieke planning en in de app bij andere teams")
                                             .font(KKFont.body(14))
@@ -2120,7 +2135,7 @@ private struct OfferDienstForTransferView: View {
                                     }
                                     
                                     HStack(alignment: .top, spacing: 12) {
-                                        Image(systemName: "exclamationmark.triangle.fill")
+                                        Image(systemName: "exclamationmark.circle.fill")
                                             .foregroundStyle(KKTheme.accent)
                                             .font(.system(size: 20))
                                         Text("Je blijft verantwoordelijk totdat een ander team de dienst oppakt - er zijn geen garanties dat dit gebeurt")
@@ -2130,7 +2145,7 @@ private struct OfferDienstForTransferView: View {
                                     
                                     HStack(alignment: .top, spacing: 12) {
                                         Image(systemName: "bubble.left.and.bubble.right.fill")
-                                            .foregroundStyle(Color.blue)
+                                            .foregroundStyle(KKTheme.accent)
                                             .font(.system(size: 20))
                                         Text("Tip: Communiceer ook direct met andere teams om de kans te vergroten dat de dienst wordt opgepakt")
                                             .font(KKFont.body(14))
@@ -2143,7 +2158,7 @@ private struct OfferDienstForTransferView: View {
                         .background(KKTheme.surfaceAlt)
                         .cornerRadius(12)
                         
-                        Spacer()
+                        Spacer(minLength: 24)
                         
                         // Navigation button
                         Button(action: {
@@ -2159,7 +2174,7 @@ private struct OfferDienstForTransferView: View {
                                 .cornerRadius(12)
                         }
                     }
-                    .padding(.horizontal, 24)
+                    .padding(.horizontal, 20)
                 } else {
                     // Header with subtitle (like ClubsViewInternal)
                     VStack(spacing: 8) {
