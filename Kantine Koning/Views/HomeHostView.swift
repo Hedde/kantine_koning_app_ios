@@ -2146,12 +2146,12 @@ private struct OfferDienstForTransferView: View {
                     // Explanation text
                     VStack(alignment: .leading, spacing: 12) {
                         if isCurrentlyOffered {
-                            Text("Deze dienst is nu zichtbaar voor andere teams 🎯")
+                            Text("💪 Top dat jullie het toch gaan doen!")
                                 .font(KKFont.body(14))
-                                .foregroundStyle(KKTheme.textPrimary)
+                                .foregroundStyle(KKTheme.accent)
                                 .fontWeight(.medium)
                             
-                            Text("Wil je het aanbod intrekken? De dienst blijft gewoon op jouw team staan.")
+                            Text("Super dat jullie deze dienst alsnog zelf uitvoeren. Samen maken we onze vereniging sterker!")
                                 .font(KKFont.body(14))
                                 .foregroundStyle(KKTheme.textSecondary)
                         } else {
