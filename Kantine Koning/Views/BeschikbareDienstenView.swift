@@ -37,7 +37,7 @@ struct BeschikbareDienstenView: View {
                             .fontWeight(.regular)
                             .kerning(-1.0)
                             .foregroundStyle(KKTheme.textPrimary)
-                        Text("Help een ander team uit de brand")
+                        Text("Help je vereniging en verdien extra punten")
                             .font(KKFont.title(16))
                             .foregroundStyle(KKTheme.textSecondary)
                     }
