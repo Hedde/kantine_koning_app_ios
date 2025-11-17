@@ -2064,6 +2064,10 @@ private struct OfferDienstForTransferView: View {
     var body: some View {
         ScrollView {
             VStack(spacing: 24) {
+                // Tenant banners - positioned right under navigation with minimal spacing
+                TenantBannerView(tenantSlug: dienst.tenantId)
+                    .environmentObject(store)
+                
                 Spacer(minLength: 24)
                 
                 if let successMessage = successMessage {

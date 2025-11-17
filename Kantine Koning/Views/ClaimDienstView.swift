@@ -61,13 +61,19 @@ struct ClaimDienstView: View {
     
     var body: some View {
         ScrollView {
-            VStack(spacing: 24) {
-                Spacer(minLength: 24)
-                mainContent
-                Spacer()
+            VStack(spacing: 0) {
+                // Tenant banners - positioned right under navigation with minimal spacing
+                TenantBannerView(tenantSlug: tenantSlug)
+                    .environmentObject(store)
+                
+                VStack(spacing: 24) {
+                    Spacer(minLength: 24)
+                    mainContent
+                    Spacer()
+                }
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .padding(.horizontal, 20)
             }
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
-            .padding(.horizontal, 20)
         }
         .background(KKTheme.surface.ignoresSafeArea())
         .navigationBarBackButtonHidden(true)

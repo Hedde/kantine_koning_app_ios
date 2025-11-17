@@ -29,6 +29,10 @@ struct BeschikbareDienstenView: View {
             
             ScrollView {
                 VStack(spacing: 24) {
+                    // Tenant banners - positioned right under navigation with minimal spacing
+                    TenantBannerView(tenantSlug: tenantSlug)
+                        .environmentObject(store)
+                    
                     Spacer(minLength: 24)
                     // Header with subtitle
                     VStack(spacing: 8) {
