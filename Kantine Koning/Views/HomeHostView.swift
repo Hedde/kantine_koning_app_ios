@@ -2157,7 +2157,7 @@ private struct OfferDienstForTransferView: View {
                         } else {
                             Text("💡 Tip: Probeer eerst binnen je eigen team te ruilen")
                                 .font(KKFont.body(14))
-                                .foregroundStyle(Color.orange)
+                                .foregroundStyle(KKTheme.accent)
                                 .fontWeight(.medium)
                             
                             Text("Lukt het niet om iemand te vinden? Stel de dienst beschikbaar voor andere teams. Let op: je blijft verantwoordelijk totdat een ander team de dienst oppakt.")
