@@ -146,12 +146,21 @@ struct HomeHostView: View {
                 VStack(spacing: 20) {
                     Spacer().frame(height: 40)
                     
-                    Text("Scan QR-code")
-                        .font(KKFont.heading(24))
-                        .fontWeight(.regular)
-                        .foregroundStyle(KKTheme.textPrimary)
+                    // Header with subtitle
+                    VStack(spacing: 8) {
+                        Text("SCAN QR-CODE")
+                            .font(KKFont.heading(24))
+                            .fontWeight(.regular)
+                            .kerning(-1.0)
+                            .foregroundStyle(KKTheme.textPrimary)
+                        Text("Pak een dienst op met je team")
+                            .font(KKFont.title(16))
+                            .foregroundStyle(KKTheme.textSecondary)
+                    }
+                    .multilineTextAlignment(.center)
+                    .padding(.bottom, 8)
                     
-                    Text("Richt je camera op een QR-code om een dienst op te pakken voor jouw team")
+                    Text("Richt je camera op een QR-code in de publieke planning")
                         .font(KKFont.body(14))
                         .multilineTextAlignment(.center)
                         .foregroundStyle(KKTheme.textSecondary)
