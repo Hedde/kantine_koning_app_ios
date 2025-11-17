@@ -95,7 +95,6 @@ struct BeschikbareDienstenView: View {
                     Spacer(minLength: 24)
                 }
                 .padding(.horizontal, 16)
-            }
         }
         .safeAreaInset(edge: .top) {
             // Fixed banner positioned under navigation
