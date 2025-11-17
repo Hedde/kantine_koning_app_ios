@@ -24,29 +24,21 @@ struct BeschikbareDienstenView: View {
     }
     
     var body: some View {
-        ZStack {
-            KKTheme.surface.ignoresSafeArea()
-            
-            ScrollView {
-                VStack(spacing: 24) {
-                    // Tenant banners - positioned right under navigation with minimal spacing
-                    TenantBannerView(tenantSlug: tenantSlug)
-                        .environmentObject(store)
-                    
-                    Spacer(minLength: 24)
-                    // Header with subtitle
-                    VStack(spacing: 8) {
-                        Text("DIENST OPPAKKEN")
-                            .font(KKFont.heading(24))
-                            .fontWeight(.regular)
-                            .kerning(-1.0)
-                            .foregroundStyle(KKTheme.textPrimary)
-                        Text("Help je vereniging en verdien extra punten")
-                            .font(KKFont.title(16))
-                            .foregroundStyle(KKTheme.textSecondary)
-                    }
-                    .multilineTextAlignment(.center)
-                    .padding(.bottom, 8)
+        ScrollView {
+            VStack(spacing: 24) {
+                // Header with subtitle
+                VStack(spacing: 8) {
+                    Text("DIENST OPPAKKEN")
+                        .font(KKFont.heading(24))
+                        .fontWeight(.regular)
+                        .kerning(-1.0)
+                        .foregroundStyle(KKTheme.textPrimary)
+                    Text("Help je vereniging en verdien extra punten")
+                        .font(KKFont.title(16))
+                        .foregroundStyle(KKTheme.textSecondary)
+                }
+                .multilineTextAlignment(.center)
+                .padding(.bottom, 8)
                     
                     Text("Voor deze diensten zoeken wij nog hulp")
                         .font(KKFont.body(14))
@@ -105,6 +97,14 @@ struct BeschikbareDienstenView: View {
                 .padding(.horizontal, 16)
             }
         }
+        .safeAreaInset(edge: .top) {
+            // Fixed banner positioned under navigation
+            TenantBannerView(tenantSlug: tenantSlug)
+                .environmentObject(store)
+                .padding(.bottom, 12)
+                .background(KKTheme.surface)
+        }
+        .background(KKTheme.surface.ignoresSafeArea())
         .navigationTitle("Beschikbare diensten")
         .navigationBarTitleDisplayMode(.inline)
         .onAppear { fetchDiensten() }

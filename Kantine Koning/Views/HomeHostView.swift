@@ -2064,12 +2064,6 @@ private struct OfferDienstForTransferView: View {
     var body: some View {
         ScrollView {
             VStack(spacing: 24) {
-                // Tenant banners - positioned right under navigation with minimal spacing
-                TenantBannerView(tenantSlug: dienst.tenantId)
-                    .environmentObject(store)
-                
-                Spacer(minLength: 24)
-                
                 if let successMessage = successMessage {
                     // Success state
                     VStack(spacing: 20) {
@@ -2223,6 +2217,13 @@ private struct OfferDienstForTransferView: View {
                 
                 Spacer(minLength: 24)
             }
+        }
+        .safeAreaInset(edge: .top) {
+            // Fixed banner positioned under navigation
+            TenantBannerView(tenantSlug: dienst.tenantId)
+                .environmentObject(store)
+                .padding(.bottom, 12)
+                .background(KKTheme.surface)
         }
         .background(KKTheme.surface.ignoresSafeArea())
     }
