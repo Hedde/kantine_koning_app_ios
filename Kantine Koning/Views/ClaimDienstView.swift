@@ -511,34 +511,30 @@ private struct TeamSelectionRow: View {
     
     var body: some View {
         Button(action: action) {
-            HStack(spacing: 16) {
-                VStack(alignment: .leading, spacing: 4) {
+            HStack(alignment: .center, spacing: 12) {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(team.name)
+                        .font(KKFont.title(16))
+                        .foregroundStyle(KKTheme.textPrimary)
+                    
                     Text(tenantName)
                         .font(KKFont.body(12))
                         .foregroundStyle(KKTheme.textSecondary)
-                    
-                    Text(team.name)
-                        .font(KKFont.body(16))
-                        .fontWeight(.medium)
-                        .foregroundStyle(KKTheme.textPrimary)
                 }
                 
                 Spacer()
                 
-                if isSelected {
-                    Image(systemName: "checkmark.circle.fill")
-                        .font(.system(size: 24))
-                        .foregroundStyle(KKTheme.accent)
-                }
+                Image(systemName: isSelected ? "checkmark.circle.fill" : "circle")
+                    .foregroundStyle(isSelected ? KKTheme.accent : KKTheme.textSecondary)
             }
             .padding(16)
-            .background(isSelected ? KKTheme.accent.opacity(0.08) : KKTheme.surfaceAlt)
-            .cornerRadius(12)
+            .background(isSelected ? KKTheme.accent.opacity(0.1) : KKTheme.surfaceAlt)
             .overlay(
                 RoundedRectangle(cornerRadius: 12)
-                    .strokeBorder(isSelected ? KKTheme.accent : Color.clear, lineWidth: 2)
+                    .stroke(isSelected ? KKTheme.accent.opacity(0.6) : Color.clear, lineWidth: 1)
             )
+            .cornerRadius(12)
         }
-        .buttonStyle(.plain)
+        .buttonStyle(PlainButtonStyle())
     }
 }
