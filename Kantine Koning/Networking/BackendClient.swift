@@ -1186,6 +1186,9 @@ final class BackendClient {
         case "invalid_token":
             Logger.auth("Token invalid")
             return .tokenInvalid
+        case "device_not_found":
+            Logger.auth("Device not found")
+            return .deviceNotFound
         default:
             let message = json["message"] as? String
             return .unauthorized(message: message)
@@ -1210,6 +1213,12 @@ final class BackendClient {
                 "errorType": "invalid_token",
                 "context": context
             ])
+        case .deviceNotFound:
+            return NSError(domain: domain, code: 1004, userInfo: [
+                NSLocalizedDescriptionKey: "Apparaat niet gevonden",
+                "errorType": "device_not_found",
+                "context": context
+            ])
         case .unauthorized(let message):
             return NSError(domain: domain, code: 1003, userInfo: [
                 NSLocalizedDescriptionKey: message ?? "Niet geautoriseerd",
@@ -1228,6 +1237,7 @@ final class BackendClient {
 enum BackendError: Error, Equatable {
     case tokenRevoked(reason: String?)
     case tokenInvalid
+    case deviceNotFound
     case unauthorized(message: String?)
     case networkError(code: Int, message: String)
     case decodingError(String)
@@ -1237,6 +1247,7 @@ enum BackendError: Error, Equatable {
         switch (lhs, rhs) {
         case (.tokenRevoked(let l), .tokenRevoked(let r)): return l == r
         case (.tokenInvalid, .tokenInvalid): return true
+        case (.deviceNotFound, .deviceNotFound): return true
         case (.unauthorized(let l), .unauthorized(let r)): return l == r
         case (.networkError(let lc, let lm), .networkError(let rc, let rm)): return lc == rc && lm == rm
         case (.decodingError(let l), .decodingError(let r)): return l == r

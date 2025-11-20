@@ -98,7 +98,7 @@ final class AppStore: ObservableObject {
         // No cache system - using direct data model as single source of truth
         Logger.bootstrap("Using data-driven architecture")
         
-        // Listen for token revocation notifications from repositories
+        // Listen for token revocation notifications from repositories (whole tenant - season end)
         NotificationCenter.default.addObserver(
             forName: .tokenRevoked,
             object: nil,
@@ -109,6 +109,20 @@ final class AppStore: ObservableObject {
             
             Logger.auth("📢 Received token revocation notification for tenant \(tenant)")
             self?.handleTokenRevocation(for: tenant, reason: reason)
+        }
+        
+        // Listen for enrollment invalidation notifications (specific enrollment only)
+        NotificationCenter.default.addObserver(
+            forName: .enrollmentInvalidated,
+            object: nil,
+            queue: .main
+        ) { [weak self] notification in
+            guard let tenant = notification.userInfo?["tenant"] as? String,
+                  let enrollmentId = notification.userInfo?["enrollmentId"] as? String,
+                  let reason = notification.userInfo?["reason"] as? String else { return }
+            
+            Logger.auth("📢 Received enrollment invalidation notification for enrollment \(enrollmentId) in tenant \(tenant)")
+            self?.handleEnrollmentInvalidation(enrollmentId: enrollmentId, tenant: tenant, reason: reason)
         }
         
         if model.isEnrolled { 
@@ -544,6 +558,66 @@ final class AppStore: ObservableObject {
     
     // MARK: - Token Revocation Handling
     
+    /// Handle invalid token for a specific enrollment (granular cleanup)
+    /// This removes ONLY the invalid enrollment, not the entire tenant
+    func handleEnrollmentInvalidation(enrollmentId: String, tenant: TenantID, reason: String) {
+        Logger.auth("⚠️ Enrollment \(enrollmentId) invalidated for tenant \(tenant), reason: \(reason)")
+        
+        guard var tenantData = model.tenants[tenant] else {
+            Logger.warning("Tenant \(tenant) not found when handling enrollment invalidation")
+            return
+        }
+        
+        // Remove the specific enrollment
+        guard let enrollment = model.enrollments[enrollmentId] else {
+            Logger.warning("Enrollment \(enrollmentId) not found in model")
+            return
+        }
+        
+        Logger.auth("Removing enrollment \(enrollmentId) with \(enrollment.teams.count) team(s)")
+        
+        // Remove enrollment from model
+        model.enrollments.removeValue(forKey: enrollmentId)
+        
+        // Remove enrollment ID from tenant's enrollment list
+        tenantData.enrollments.removeAll { $0 == enrollmentId }
+        
+        // Remove teams that belonged to this enrollment
+        tenantData.teams.removeAll { team in
+            enrollment.teams.contains(team.id)
+        }
+        
+        Logger.auth("Tenant \(tenant) now has \(tenantData.enrollments.count) enrollment(s) remaining")
+        
+        // If no enrollments left for this tenant, remove the tenant entirely
+        if tenantData.enrollments.isEmpty {
+            Logger.auth("No enrollments left for tenant \(tenant) - removing tenant")
+            model.tenants.removeValue(forKey: tenant)
+        } else {
+            // Update tenant data
+            model.tenants[tenant] = tenantData
+        }
+        
+        // Clean up any orphaned enrollments
+        model.cleanupOrphanedEnrollments()
+        
+        // Persist the updated model
+        enrollmentRepository.persist(model: model)
+        
+        Logger.auth("✅ Enrollment \(enrollmentId) removed from tenant \(tenant)")
+        
+        // Check if we have any tenants left
+        if model.tenants.isEmpty {
+            Logger.auth("No tenants remaining - returning to onboarding")
+            appPhase = .onboarding
+        } else {
+            // Refresh data to update UI
+            refreshDiensten()
+        }
+    }
+    
+    /// Handle token revocation for entire tenant (season end)
+    /// This marks ALL enrollments as invalid and preserves data for season summary
     func handleTokenRevocation(for tenant: TenantID, reason: String?) {
         Logger.auth("🚨 Token revoked for tenant \(tenant), reason: \(reason ?? "unknown")")
         
@@ -587,9 +661,11 @@ final class AppStore: ObservableObject {
             case "token_revoked":
                 let reason = nsError.userInfo["reason"] as? String
                 handleTokenRevocation(for: tenant, reason: reason)
-            case "invalid_token":
-                Logger.auth("Invalid token for tenant \(tenant) - may need re-enrollment")
-                // Could also trigger re-enrollment flow in future
+            case "invalid_token", "device_not_found":
+                Logger.auth("⚠️ Invalid/unknown device token for tenant \(tenant) - triggering cleanup and re-enrollment")
+                // Treat invalid token same as revoked token - cleanup enrollment
+                // This happens when device_id changes (TestFlight builds, reinstalls, iOS updates)
+                handleTokenRevocation(for: tenant, reason: errorType)
             default:
                 Logger.debug("Other auth error for tenant \(tenant): \(errorType)")
             }

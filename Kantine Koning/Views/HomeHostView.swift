@@ -2357,9 +2357,28 @@ private struct OfferDienstForTransferView: View {
         
         let backend = BackendClient()
         
-        // Find the manager enrollment for this tenant
-        let managerEnrollment = store.model.enrollments.values.first { enrollment in
-            enrollment.tenantSlug == dienst.tenantId && enrollment.role == .manager
+        // CRITICAL: Find the manager enrollment that contains the team for this dienst
+        // This ensures the JWT token has the correct team permissions for multi-enrollment scenarios
+        var managerEnrollment: DomainModel.Enrollment?
+        if let teamId = dienst.teamId {
+            Logger.debug("Looking for enrollment containing team: \(teamId) for dienst transfer toggle")
+            managerEnrollment = store.model.enrollments.values.first { enrollment in
+                enrollment.tenantSlug == dienst.tenantId && 
+                enrollment.role == .manager && 
+                enrollment.teams.contains(teamId)
+            }
+            
+            if managerEnrollment != nil {
+                Logger.success("Found enrollment for dienst team \(teamId)")
+            }
+        }
+        
+        // Fallback to any manager enrollment for this tenant if team not found
+        if managerEnrollment == nil {
+            Logger.debug("No team-specific enrollment found, using any manager enrollment for tenant")
+            managerEnrollment = store.model.enrollments.values.first { enrollment in
+                enrollment.tenantSlug == dienst.tenantId && enrollment.role == .manager
+            }
         }
         
         guard let token = managerEnrollment?.signedDeviceToken else {
@@ -2368,6 +2387,7 @@ private struct OfferDienstForTransferView: View {
             return
         }
         
+        Logger.auth("Using manager enrollment token for transfer toggle: \(token.prefix(20))...")
         backend.authToken = token
         
         backend.toggleTransferOffer(dienstId: dienst.id, offered: !isCurrentlyOffered) { result in

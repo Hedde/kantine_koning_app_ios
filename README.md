@@ -20,8 +20,15 @@ De app gebruikt `UIDevice.current.identifierForVendor` als hardware identifier v
 - ❌ **Delete/reinstall als het de enige app van de vendor is**
 - ❌ Device restore/reset
 
-**Impact op reconciliation:**
-Wanneer `identifierForVendor` verandert, ziet de backend dit als een nieuw device. De enrollments van het oude device worden binnen 1 uur weggereconciled (revoked) wanneer de app met de nieuwe identifier naar foreground komt. Dit is **verwacht gedrag** tijdens testing maar **heeft geen impact op productie gebruikers** die alleen App Store updates ontvangen.
+**Impact op enrollment validity:**
+Wanneer `identifierForVendor` verandert, worden JWT tokens invalid omdat ze een `device_id` claim bevatten die niet meer bestaat in de backend. De app detecteert dit automatisch:
+
+1. **API call faalt** met `invalid_token` of `device_not_found`
+2. **Granulaire cleanup**: Alleen de invalide enrollment wordt verwijderd
+3. **Andere enrollments blijven werken** (bijv. als je 2 manager enrollments hebt voor verschillende teams)
+4. **Auto-redirect naar onboarding** als alle enrollments invalid zijn
+
+Dit is **verwacht gedrag** tijdens testing maar **heeft geen impact op productie gebruikers** die alleen App Store updates ontvangen.
 
 **Testing aanbeveling:**
 Wees bewust dat switchen tussen TestFlight en App Store builds de device identifier kan veranderen en enrollment cleanup triggert. Om betrouwbaar te testen, blijf bij één distributie methode per test sessie.
@@ -43,14 +50,36 @@ Wees bewust dat switchen tussen TestFlight en App Store builds de device identif
 - APNs-registratie en token doorgeven aan backend
 - Notificaties verversen automatisch de lijst met diensten
 
-### 🔄 Enrollment Reconciliation
-- **Automatische sync** bij app foreground: App stuurt huidige enrollment state naar backend
+### 🔄 Enrollment Management & Error Handling
+
+**Automatische Reconciliation:**
+- **Sync bij foreground**: App stuurt huidige enrollment state naar backend
 - **Cleanup orphaned enrollments**: Backend revoked enrollments die niet meer in app bestaan
 - **Safeguards**: 
   - Reconciliation alleen na tenant info refresh (voorkomt incomplete data)
   - Team code mapping MOET slagen (abort bij failures)
   - Throttling van 1 uur tussen syncs
-- **Use case**: Herstelt inconsistenties door gefaalde deletion API calls of "Alles resetten"
+- **Use case**: Herstelt inconsistenties door gefaalde deletion API calls
+
+**Granulaire Token Error Handling:**
+- **Invalid Token Detection**: `invalid_token` of `device_not_found` errors per enrollment
+- **Targeted Cleanup**: Verwijdert alleen de invalide enrollment, niet hele tenant
+- **Multi-enrollment Safety**: Andere enrollments van dezelfde tenant blijven werken
+- **Season End**: `token_revoked` met `season_ended` reason → hele tenant cleanup
+- **Auto-redirect**: Naar onboarding als geen enrollments meer over zijn
+
+**Error Flow Onderscheid:**
+```
+invalid_token → NotificationCenter.enrollmentInvalidated 
+              → handleEnrollmentInvalidation()
+              → Verwijder specifieke enrollment + teams
+              → Behoud tenant als andere enrollments bestaan
+
+token_revoked → NotificationCenter.tokenRevoked
+              → handleTokenRevocation()  
+              → Mark hele tenant seasonEnded
+              → Behoud data voor season summary
+```
 
 ### 👥 Vrijwilligersbeheer
 - Managers: vrijwilligers toevoegen/verwijderen per dienst
@@ -110,9 +139,11 @@ Home → Verenigingen → Teams → Diensten
 - **Eén enrollment = Eén tenant + Specifieke teams + Eigen JWT token**
 - **Meerdere enrollments mogelijk** voor hetzelfde device:
   - VV Wilhelmus - Manager voor JO11-3, JO11-5
+  - VV Wilhelmus - Manager voor JO10-4 (aparte enrollment, zelfde tenant!)
   - VV Wilhelmus - Lid voor JO13-1 (aparte enrollment!)  
   - AGOVV - Lid voor JO10-5
 - **Hardware identifier** linkt alle enrollments van hetzelfde fysieke device
+- **Kritiek**: Eén tenant kan meerdere enrollments hebben (bijv. 2 manager enrollments voor verschillende teams)
 
 ### 🔑 Auth Token Strategy
 - **Per tenant = Per JWT**: Elke tenant heeft eigen `signedDeviceToken`
@@ -121,18 +152,24 @@ Home → Verenigingen → Teams → Diensten
 
 ### 📡 API Call Patterns
 ```swift
-// ✅ CORRECT: Per-tenant calls met eigen auth
-for tenant in model.tenants.values {
-    let tenantBackend = BackendClient()
-    tenantBackend.authToken = tenant.signedDeviceToken  // Tenant-specific JWT
-    tenantBackend.fetchDiensten(tenant: tenant.slug)
+// ✅ CORRECT: Per-enrollment calls met eigen auth (huidige implementatie)
+for (enrollmentId, enrollment) in model.enrollments {
+    let backend = BackendClient()
+    backend.authToken = enrollment.signedDeviceToken  // Enrollment-specific JWT
+    backend.fetchDiensten(tenant: enrollment.tenantSlug)
+    // Backend filtert automatisch op team_codes uit JWT
 }
 
-// ❌ FOUT: Single call met één JWT (mist andere tenants)  
-// NOTE: Deze approach is deprecated - gebruik enrollment-specific tokens
+// ❌ FOUT: Per-tenant calls (mist multi-enrollment scenarios)
+for tenant in model.tenants.values {
+    backend.authToken = tenant.signedDeviceToken  // Pakt eerste enrollment!
+    backend.fetchDiensten(tenant: tenant.slug)    // Mist andere enrollments
+}
+
+// ❌ FOUT: Single call met één JWT (deprecated)
 let backend = BackendClient()
-backend.authToken = model.primaryAuthToken  // Alleen eerste tenant
-backend.fetchAllDiensten()  // Mist enrollments van andere tenants
+backend.authToken = model.primaryAuthToken
+backend.fetchAllDiensten()  // Mist enrollments
 ```
 
 ### 🏗️ Backend Enrollment Storage
@@ -143,10 +180,12 @@ backend.fetchAllDiensten()  // Mist enrollments van andere tenants
 - **Note**: Hardware identifier is the vendor UUID only, not concatenated with bundle ID
 
 ## Diensten en vrijwilligers
-- **Ophalen**: Per tenant via `/api/mobile/v1/diensten?tenant=slug` met tenant-specifieke JWT
+- **Ophalen**: Per enrollment via `/api/mobile/v1/diensten?tenant=slug` met enrollment-specifieke JWT
+- **Multi-enrollment**: Loop door `model.enrollments` (niet `model.tenants`!) voor correcte coverage
 - **Tijdvenster**: Standaard 365 dagen (1 jaar) in het verleden voor volledige seizoensgeschiedenis, 60 dagen in de toekomst (configureerbaar via `past_days`/`future_days`)
 - **Filtering**: Backend filtert op `team_codes` uit JWT token van die enrollment
-- **Aggregatie**: Client-side dedup en sortering (toekomst eerst)
+- **Aggregatie**: Client-side dedup en sortering over alle enrollment responses
+- **Error handling**: Per enrollment met granulaire cleanup bij token errors
 - **Validaties**: Managers kunnen vrijwilligers toevoegen/verwijderen; naam ≤ 15 tekens, geen duplicaten
 
 ## Leaderboard
@@ -184,35 +223,50 @@ Optioneel: override backend via Info.plist → `API_BASE_URL`.
 
 ### 🚨 Auth Token Mistakes (VAAK VOORKOMEND)
 ```swift
-// ❌ FOUT: Gebruik van primaryAuthToken voor alle API calls (DEPRECATED)
-let token = store.model.primaryAuthToken  // Alleen eerste tenant!
+// ❌ FOUT: Loop door tenants (mist multi-enrollment scenarios)
+for tenant in model.tenants.values {
+    let backend = BackendClient()
+    backend.authToken = tenant.signedDeviceToken  // Pakt eerste enrollment!
+    backend.fetchDiensten(tenant: tenant.slug)
+    // Probleem: Als 2 manager enrollments voor zelfde tenant → mist één!
+}
+
+// ✅ CORRECT: Loop door enrollments (huidige implementatie)
+for (enrollmentId, enrollment) in model.enrollments {
+    let backend = BackendClient()
+    backend.authToken = enrollment.signedDeviceToken  // Enrollment-specific!
+    backend.fetchDiensten(tenant: enrollment.tenantSlug)
+    // Werkt correct: Elke enrollment doet eigen API call
+}
+
+// ❌ FOUT: Gebruik van primaryAuthToken (DEPRECATED)
+let token = store.model.primaryAuthToken  // Alleen eerste enrollment!
 let backend = BackendClient()
 backend.authToken = token
-backend.fetchDiensten(tenant: "agovv")  // Fails - token is voor vvwilhelmus
+backend.fetchDiensten(tenant: "agovv")  // Mist andere enrollments
 
-// ✅ CORRECT: Gebruik enrollment-specific tokens
+// ✅ CORRECT voor specifieke operaties: authTokenForTeam
 let backend = BackendClient()
-backend.authToken = store.model.tenants["agovv"]?.signedDeviceToken
-backend.fetchDiensten(tenant: "agovv")  // Success - juiste token voor agovv
-
-// ✅ CORRECT: Tenant-specifieke tokens
-let tenant = store.model.tenants["agovv"]
-backend.authToken = tenant.signedDeviceToken  // AGOVV-specifieke JWT
-backend.fetchDiensten(tenant: "agovv")  // Works - juiste teams in JWT
+backend.authToken = model.authTokenForTeam(teamId, in: tenantSlug)
+backend.fetchDienstDetails(...)  // Juiste enrollment voor specifiek team
 ```
 
 ### 🏗️ Enrollment Complexity
 - **1 Device** kan **meerdere enrollments** hebben voor **dezelfde tenant**:
-  - Manager enrollment: JO11-3, JO11-5 (full access)
+  - Manager enrollment 1: JO11-3, JO11-5 (full access)
+  - Manager enrollment 2: JO10-4 (aparte enrollment, full access)
   - Lid enrollment: JO13-1 (read-only)
+- **Kritieke implicatie**: Loop ALTIJD door `model.enrollments`, NOOIT door `model.tenants`
 - **Hardware identifier** is de **enige** consistente link tussen enrollments
 - **Device ID** is **uniek per enrollment** (niet per device!)
+- **Token validity**: Per enrollment - één invalid token ≠ alle enrollments invalid
 
 ### 📡 API Design Principes
 1. **ALTIJD per-enrollment calls** doen met enrollment-specifieke JWT
-2. **NOOIT aggregated endpoints** gebruiken die cross-tenant data verwachten
+2. **Loop door `model.enrollments`**, NIET door `model.tenants` (kritiek voor multi-enrollment!)
 3. **Client-side aggregatie** van multiple enrollment responses
 4. **Deduplicatie** op dienst ID (zelfde dienst kan in multiple responses zitten)
+5. **Granulaire error handling** per enrollment (invalid token ≠ season end)
 
 ### 🔍 Debugging Multi-Tenant Issues
 ```elixir

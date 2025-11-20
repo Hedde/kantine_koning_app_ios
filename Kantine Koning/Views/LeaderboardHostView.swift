@@ -826,21 +826,18 @@ private struct UnifiedTeamRowView<T: TeamDisplayable>: View {
     
     var body: some View {
         HStack(spacing: 12) {
-            // Rank circle
+            // Rank circle - all ranks show number
             ZStack {
                 Circle()
-                    .fill(isHighlighted ? KKTheme.accent : rankColor)
+                    .fill(rankColor)
                     .frame(width: 32, height: 32)
-                if isHighlighted {
-                    Circle()
-                        .stroke(Color.white, lineWidth: 1)
-                        .frame(width: 32, height: 32)
-                }
+                
                 Text("\(team.rank)")
                     .font(KKFont.body(14))
-                    .fontWeight(isHighlighted ? .bold : .medium)
+                    .fontWeight(.medium)
                     .foregroundColor(.white)
             }
+            .frame(width: 32, height: 32)
             
             // Club logo (only for global)
             if showClubInfo, let logoUrl = team.getClubLogoUrl(), !logoUrl.isEmpty {
@@ -865,8 +862,8 @@ private struct UnifiedTeamRowView<T: TeamDisplayable>: View {
                 HStack(spacing: 8) {
                     Text(team.name)
                         .font(KKFont.title(16))
-                        .fontWeight(isHighlighted ? .bold : .regular)
-                        .foregroundStyle(isHighlighted ? KKTheme.accent : KKTheme.textPrimary)
+                        .fontWeight(.regular)
+                        .foregroundStyle(KKTheme.textPrimary)
                     if let code = team.code {
                         Text("(\(code))")
                             .font(KKFont.body(12))
@@ -919,16 +916,19 @@ private struct UnifiedTeamRowView<T: TeamDisplayable>: View {
         .padding(.vertical, 12)
         .background(highlightedBackground)
         .cornerRadius(8)
-        .overlay(
-            RoundedRectangle(cornerRadius: 8)
-                .stroke(isHighlighted ? Color.orange : Color.clear, lineWidth: 1)
-        )
         .shadow(color: isHighlighted ? Color.orange.opacity(0.4) : Color.clear, radius: 6, x: 0, y: 2)
         .scaleEffect(isHighlighted ? 1.02 : 1.0)
         .animation(.easeInOut(duration: 0.2), value: isHighlighted)
     }
     
     private var highlightedBackground: Color {
+        // Top 3 get colored backgrounds
+        if team.rank <= 3 {
+            let baseColor = rankColor
+            return isHighlighted ? baseColor.opacity(0.3) : baseColor.opacity(0.15)
+        }
+        
+        // Rank 4+
         if isHighlighted {
             return Color.orange.opacity(0.25)
         } else {
@@ -937,9 +937,7 @@ private struct UnifiedTeamRowView<T: TeamDisplayable>: View {
     }
     
     private var rankColor: Color {
-        if isHighlighted {
-            return KKTheme.accent
-        }
+        // Always preserve top 3 colors, even when highlighted
         switch team.rank {
         case 1: return Color.yellow
         case 2: return Color.gray

@@ -60,10 +60,10 @@ struct ClaimDienstView: View {
         return availableTeamsForClaiming.count > 1
     }
     
-    // Get the single team if there's only one (only for open diensten)
+    // Get the single team if there's only one available team for claiming
     private var singleTeam: DomainModel.Team? {
-        // Only auto-select if it's an open dienst with 1 manager team
-        guard dienst?.team?.id == nil else { return nil }
+        // Auto-select if there's exactly one team available for claiming
+        // This works for both open diensten AND diensten ter overname
         return availableTeamsForClaiming.count == 1 ? availableTeamsForClaiming.first : nil
     }
     
@@ -585,11 +585,30 @@ struct ClaimDienstView: View {
         }
         
         // Find a MANAGER enrollment token for this tenant
-        // (claiming diensten requires manager role)
-        let managerEnrollment = tenant.enrollments.compactMap { enrollmentId in
-            store.model.enrollments[enrollmentId]
-        }.first { enrollment in
-            enrollment.role == .manager
+        // CRITICAL: Use enrollment that contains the suggested team (from QR scan context)
+        // This ensures the JWT token has the correct team permissions
+        var managerEnrollment: DomainModel.Enrollment?
+        if let suggestedTeamId = suggestedTeamId {
+            Logger.debug("Looking for enrollment containing suggested team: \(suggestedTeamId)")
+            managerEnrollment = tenant.enrollments.compactMap { enrollmentId in
+                store.model.enrollments[enrollmentId]
+            }.first { enrollment in
+                enrollment.role == .manager && enrollment.teams.contains(suggestedTeamId)
+            }
+            
+            if managerEnrollment != nil {
+                Logger.success("Found enrollment for suggested team \(suggestedTeamId)")
+            }
+        }
+        
+        // Fallback to any manager enrollment if no suggested team
+        if managerEnrollment == nil {
+            Logger.debug("No team-specific enrollment found, using any manager enrollment")
+            managerEnrollment = tenant.enrollments.compactMap { enrollmentId in
+                store.model.enrollments[enrollmentId]
+            }.first { enrollment in
+                enrollment.role == .manager
+            }
         }
         
         guard let signedToken = managerEnrollment?.signedDeviceToken else {
@@ -597,7 +616,7 @@ struct ClaimDienstView: View {
             return nil
         }
         
-        Logger.auth("Using manager enrollment token for claiming dienst")
+        Logger.auth("Using manager enrollment token for claiming dienst: \(signedToken.prefix(20))...")
         let backend = BackendClient()
         backend.authToken = signedToken
         return backend

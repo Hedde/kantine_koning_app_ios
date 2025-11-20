@@ -40,12 +40,6 @@ struct BeschikbareDienstenView: View {
                 .multilineTextAlignment(.center)
                 .padding(.bottom, 8)
                     
-                    Text("Voor deze diensten zoeken wij nog hulp")
-                        .font(KKFont.body(14))
-                        .foregroundStyle(KKTheme.textSecondary)
-                        .multilineTextAlignment(.center)
-                        .padding(.horizontal, 24)
-                    
                     // Content
                     if isLoading {
                         ProgressView()
@@ -72,6 +66,13 @@ struct BeschikbareDienstenView: View {
                         )
                     } else {
                         VStack(spacing: 12) {
+                            Text("Voor deze diensten zoeken wij nog hulp")
+                                .font(KKFont.body(14))
+                                .foregroundStyle(KKTheme.textSecondary)
+                                .multilineTextAlignment(.center)
+                                .padding(.horizontal, 24)
+                                .padding(.bottom, 8)
+                            
                             ForEach(diensten, id: \.id) { dienst in
                                 BeschikbareDienstCard(
                                     dienst: dienst,
@@ -181,22 +182,44 @@ struct BeschikbareDienstenView: View {
     
     private func createAuthenticatedBackend() -> BackendClient? {
         // Find MANAGER enrollment token for this tenant
-        // (same pattern as ClaimDienstView)
+        // CRITICAL: Use enrollment that contains the currently viewing team
+        // This ensures the JWT token has the correct team permissions
         guard let tenant = tenant else {
             Logger.error("Tenant not found: \(tenantSlug)")
             return nil
         }
         
-        let managerEnrollment = tenant.enrollments.compactMap { enrollmentId in
-            store.model.enrollments[enrollmentId]
-        }.first { enrollment in
-            enrollment.role == .manager
+        // Try to find enrollment for the currently viewing team first
+        var managerEnrollment: DomainModel.Enrollment?
+        if let currentTeamId = store.currentlyViewingTeamId {
+            Logger.debug("Looking for enrollment containing team: \(currentTeamId)")
+            managerEnrollment = tenant.enrollments.compactMap { enrollmentId in
+                store.model.enrollments[enrollmentId]
+            }.first { enrollment in
+                enrollment.role == .manager && enrollment.teams.contains(currentTeamId)
+            }
+            
+            if managerEnrollment != nil {
+                Logger.success("Found enrollment for current team \(currentTeamId)")
+            }
+        }
+
+        // Fallback to any manager enrollment if no team is selected
+        if managerEnrollment == nil {
+            Logger.debug("No team-specific enrollment found, using any manager enrollment")
+            managerEnrollment = tenant.enrollments.compactMap { enrollmentId in
+                store.model.enrollments[enrollmentId]
+            }.first { enrollment in
+                enrollment.role == .manager
+            }
         }
         
         guard let signedToken = managerEnrollment?.signedDeviceToken else {
             Logger.error("No manager enrollment token available for tenant \(tenantSlug)")
             return nil
         }
+        
+        Logger.auth("Using enrollment token for beschikbare diensten: \(signedToken.prefix(20))...")
         
         let backend = BackendClient()
         backend.authToken = signedToken

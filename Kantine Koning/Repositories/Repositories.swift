@@ -96,28 +96,30 @@ final class DefaultDienstRepository: DienstRepository {
     // NOTE: Auth tokens are now handled per-operation with enrollment-specific tokens
 
         func fetchUpcoming(for model: DomainModel, completion: @escaping (Result<[Dienst], Error>) -> Void) {
-        // Per-tenant approach: each tenant has its own auth token and team access
+        // Per-enrollment approach: each enrollment has its own auth token and team access
+        // This ensures multi-enrollment scenarios work correctly (e.g., manager for multiple teams in same tenant)
         let group = DispatchGroup()
         var collected: [Dienst] = []
         var firstError: Error?
         
         Logger.section("DIENSTEN REFRESH")
-        Logger.debug("Fetching diensten for \(model.tenants.count) tenants with separate auth tokens")
+        Logger.debug("Fetching diensten for \(model.enrollments.count) enrollment(s) across \(model.tenants.count) tenant(s)")
         
-        for tenant in model.tenants.values {
+        // Loop through enrollments instead of tenants to handle multi-enrollment scenarios
+        for (enrollmentId, enrollment) in model.enrollments {
             group.enter()
             
-            // Skip season-ended tenants or get team-specific token
-            guard !tenant.seasonEnded else {
-                Logger.auth("⏭️ Skipping season-ended tenant \(tenant.slug)")
+            // Skip season-ended tenants
+            guard let tenant = model.tenants[enrollment.tenantSlug], !tenant.seasonEnded else {
+                Logger.auth("⏭️ Skipping enrollment \(enrollmentId) for season-ended tenant \(enrollment.tenantSlug)")
                 group.leave()
                 continue
             }
             
-            // Use team-specific auth token (safer than direct tenant token)
-            guard let firstTeam = tenant.teams.first,
-                  let authToken = model.authTokenForTeam(firstTeam.id, in: tenant.slug) else {
-                Logger.auth("❌ No valid auth token for tenant \(tenant.slug)")
+            // Use enrollment-specific auth token (each enrollment has its own token and team access)
+            let authToken = enrollment.signedDeviceToken
+            guard !authToken.isEmpty else {
+                Logger.auth("❌ No valid auth token for enrollment \(enrollmentId) in tenant \(enrollment.tenantSlug)")
                 group.leave()
                 continue
             }
@@ -125,12 +127,12 @@ final class DefaultDienstRepository: DienstRepository {
             let tenantBackend = BackendClient()
             tenantBackend.authToken = authToken
             
-            Logger.network("Fetching diensten for tenant \(tenant.slug) with team-specific token \(authToken.prefix(20))")
+            Logger.network("Fetching diensten for enrollment \(enrollmentId) (tenant: \(enrollment.tenantSlug), teams: \(enrollment.teams.count)) with token \(authToken.prefix(20))")
             
-            tenantBackend.fetchDiensten(tenant: tenant.slug) { [weak self] result in
+            tenantBackend.fetchDiensten(tenant: enrollment.tenantSlug) { [weak self] result in
                 switch result {
                 case .success(let items):
-                    Logger.success("Fetched \(items.count) diensten for tenant \(tenant.slug)")
+                    Logger.success("Fetched \(items.count) diensten for enrollment \(enrollmentId) (tenant: \(enrollment.tenantSlug))")
                     guard let self = self else { 
                         group.leave()
                         return 
@@ -138,10 +140,10 @@ final class DefaultDienstRepository: DienstRepository {
                     let mapped = items.map(self.mapDTOToDienst)
                     collected.append(contentsOf: mapped)
                 case .failure(let err):
-                    Logger.error("Failed to fetch diensten for tenant \(tenant.slug): \(err)")
+                    Logger.error("Failed to fetch diensten for enrollment \(enrollmentId) (tenant: \(enrollment.tenantSlug)): \(err)")
                     
-                    // Check for token revocation
-                    self?.checkTokenRevocation(error: err, tenant: tenant.slug)
+                    // Check for token revocation - pass enrollmentId for granular cleanup
+                    self?.checkTokenRevocation(error: err, tenant: enrollment.tenantSlug, enrollmentId: enrollmentId)
                     
                     if firstError == nil { firstError = err }
                 }
@@ -322,7 +324,7 @@ struct TenantSearchResult: Identifiable, Decodable {
 // MARK: - DienstRepository Extension for Token Revocation
 
 extension DienstRepository {
-    fileprivate func checkTokenRevocation(error: Error, tenant: TenantID) {
+    fileprivate func checkTokenRevocation(error: Error, tenant: TenantID, enrollmentId: String? = nil) {
         // Check if error indicates token revocation
         if let nsError = error as NSError?, 
            nsError.domain == "BackendTokenError",
@@ -333,11 +335,21 @@ extension DienstRepository {
                 let reason = nsError.userInfo["reason"] as? String
                 Logger.auth("🚨 Token revoked for tenant \(tenant), reason: \(reason ?? "unknown")")
                 
-                // Need to notify AppStore about revocation
+                // Season end: revoke entire tenant (all enrollments)
                 NotificationCenter.default.post(
                     name: .tokenRevoked,
                     object: nil,
                     userInfo: ["tenant": tenant, "reason": reason ?? "unknown"]
+                )
+            case "invalid_token", "device_not_found":
+                Logger.auth("⚠️ Invalid/unknown device token for enrollment \(enrollmentId ?? "unknown") in tenant \(tenant)")
+                
+                // Invalid token: only revoke specific enrollment (not entire tenant)
+                // This happens when device_id changes (TestFlight builds, reinstalls, iOS updates)
+                NotificationCenter.default.post(
+                    name: .enrollmentInvalidated,
+                    object: nil,
+                    userInfo: ["tenant": tenant, "enrollmentId": enrollmentId ?? "", "reason": errorType]
                 )
             default:
                 Logger.debug("Other auth error for tenant \(tenant): \(errorType)")
@@ -350,6 +362,7 @@ extension DienstRepository {
 
 extension Notification.Name {
     static let tokenRevoked = Notification.Name("TokenRevoked")
+    static let enrollmentInvalidated = Notification.Name("EnrollmentInvalidated")
     static let pushNavigationRequested = Notification.Name("PushNavigationRequested")
 }
 
