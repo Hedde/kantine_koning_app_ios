@@ -3,6 +3,8 @@ import UIKit
 
 struct EnrollmentPendingHostView: View {
     @EnvironmentObject var store: AppStore
+    @State private var enrollmentError: String?
+    
     var body: some View {
         NavigationStack {
             VStack(spacing: 0) {
@@ -32,19 +34,54 @@ struct EnrollmentPendingHostView: View {
                             .padding(.vertical, 16)
 
                         VStack(alignment: .leading, spacing: 12) {
-                            Text("Instructies")
-                                .font(KKFont.body(12))
-                                .foregroundStyle(KKTheme.textSecondary)
-                            Text("We hebben een bevestigingslink naar je e-mailadres gestuurd. Open de link op dit toestel om je aanmelding te voltooien.")
-                                .font(KKFont.body(14))
-                                .foregroundStyle(KKTheme.textSecondary)
-                            
-                            // Development paste button for magic links
-                            #if DEBUG
-                            developmentPasteButton()
-                            #elseif ENABLE_LOGGING
-                            developmentPasteButton()
-                            #endif
+                            // Error state - consistent with OnboardingHostView error styling
+                            if let errorText = enrollmentError {
+                                HStack(alignment: .top, spacing: 12) {
+                                    Image(systemName: "exclamationmark.triangle")
+                                        .foregroundStyle(KKTheme.textSecondary.opacity(0.7))
+                                        .font(.system(size: 20))
+                                    
+                                    VStack(alignment: .leading, spacing: 4) {
+                                        Text("Er ging iets mis")
+                                            .font(KKFont.body(13))
+                                            .foregroundStyle(KKTheme.textPrimary)
+                                            .fontWeight(.medium)
+                                        
+                                        Text(errorText)
+                                            .font(KKFont.body(13))
+                                            .foregroundStyle(KKTheme.textSecondary)
+                                    }
+                                    
+                                    Spacer(minLength: 0)
+                                }
+                                .padding(12)
+                                .background(KKTheme.surface)
+                                .cornerRadius(8)
+                                .overlay(
+                                    RoundedRectangle(cornerRadius: 8)
+                                        .stroke(KKTheme.textSecondary.opacity(0.1), lineWidth: 1)
+                                )
+                                
+                                Button("Probeer opnieuw") {
+                                    store.startNewEnrollment()
+                                }
+                                .buttonStyle(KKPrimaryButton())
+                            } else {
+                                // Normal instructions
+                                Text("Instructies")
+                                    .font(KKFont.body(12))
+                                    .foregroundStyle(KKTheme.textSecondary)
+                                Text("We hebben een bevestigingslink naar je e-mailadres gestuurd. Open de link op dit toestel om je aanmelding te voltooien.")
+                                    .font(KKFont.body(14))
+                                    .foregroundStyle(KKTheme.textSecondary)
+                                
+                                // Development paste button for magic links
+                                #if DEBUG
+                                developmentPasteButton()
+                                #elseif ENABLE_LOGGING
+                                developmentPasteButton()
+                                #endif
+                            }
                         }
                         .kkCard()
                         .padding(.horizontal, 24)
@@ -57,6 +94,11 @@ struct EnrollmentPendingHostView: View {
             .background(KKTheme.surface)
             .navigationTitle("")
             .navigationBarHidden(true)
+            .onReceive(NotificationCenter.default.publisher(for: .enrollmentError)) { notification in
+                if let error = notification.object as? String {
+                    enrollmentError = error
+                }
+            }
         }
     }
     

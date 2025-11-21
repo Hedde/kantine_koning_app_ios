@@ -364,6 +364,7 @@ extension Notification.Name {
     static let tokenRevoked = Notification.Name("TokenRevoked")
     static let enrollmentInvalidated = Notification.Name("EnrollmentInvalidated")
     static let pushNavigationRequested = Notification.Name("PushNavigationRequested")
+    static let enrollmentError = Notification.Name("EnrollmentError")
 }
 
 

@@ -41,6 +41,12 @@ enum ErrorTranslations {
             return "Dit apparaat is al aangemeld voor deze teams."
         case "team_access_denied":
             return "Je bent niet gemachtigd om vrijwilligers te beheren voor dit team."
+        case "invalid_or_expired_token":
+            return "Deze koppellink is verlopen. Vraag een nieuwe link aan."
+        case "team_conflict":
+            return "Dit team is al gekoppeld met een andere rol."
+        case "enrollment_failed":
+            return "De koppeling kon niet worden voltooid. Probeer het opnieuw."
         default:
             return "Er is een onbekende fout opgetreden. Probeer het opnieuw."
         }

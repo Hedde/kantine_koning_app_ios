@@ -1106,7 +1106,28 @@ final class AppStore: ObservableObject {
     // MARK: - Deep links
     private func handleEnrollmentDeepLink(_ url: URL) {
         guard let token = DeepLink.extractToken(from: url) else { return }
-        completeEnrollment(token: token) { _ in }
+        
+        completeEnrollment(token: token) { [weak self] result in
+            switch result {
+            case .success:
+                Logger.success("✅ Enrollment completed via deep link")
+                // App is already in .registered state via completeEnrollment
+                
+            case .failure(let error):
+                Logger.error("❌ Enrollment failed via deep link: \(error)")
+                
+                // Translate error to user-friendly message
+                let userMessage = ErrorTranslations.translate(error)
+                
+                // Post notification to show error in EnrollmentPendingHostView
+                DispatchQueue.main.async {
+                    NotificationCenter.default.post(
+                        name: .enrollmentError,
+                        object: userMessage
+                    )
+                }
+            }
+        }
     }
 
     private func handleCTALink(_ url: URL) {
