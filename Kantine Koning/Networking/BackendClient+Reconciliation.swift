@@ -29,6 +29,14 @@ extension BackendClient {
                     dict["hardware_identifier"] = hardware
                 }
                 
+                // Add app version info for debugging (optional, backward compatible)
+                if let v = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String {
+                    dict["app_version"] = v
+                }
+                if let b = Bundle.main.object(forInfoDictionaryKey: "CFBundleVersion") as? String {
+                    dict["build_number"] = b
+                }
+                
                 return dict
             }
         ]
