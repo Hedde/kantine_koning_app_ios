@@ -40,6 +40,9 @@ final class AppStore: ObservableObject {
     @Published var tenantInfo: [String: TenantInfo] = [:] // tenantSlug -> TenantInfo (club logos etc.)
     @Published var banners: [String: [DomainModel.Banner]] = [:] // tenantSlug -> [Banner] (cached banner data)
     
+    // Calendar tracking - diensten that were added to calendar (persistent across app restarts)
+    @Published var calendarDienstIds: Set<String> = []
+    
     // Network connectivity
     @Published var isOnline: Bool = true
     let networkMonitor = NetworkMonitor.shared
@@ -91,6 +94,13 @@ final class AppStore: ObservableObject {
         
         self.model = enrollmentRepository.loadModel()
         Logger.bootstrap("Loaded domain model: \(model.tenants.count) tenants")
+        
+        // Load calendar dienst IDs from UserDefaults
+        if let data = UserDefaults.standard.data(forKey: "kk_calendar_dienst_ids"),
+           let ids = try? JSONDecoder().decode(Set<String>.self, from: data) {
+            self.calendarDienstIds = ids
+            Logger.bootstrap("Loaded \(ids.count) calendar dienst IDs")
+        }
         
         self.appPhase = model.isEnrolled ? .registered : .onboarding
         Logger.bootstrap("App phase: \(appPhase)")
@@ -329,6 +339,22 @@ final class AppStore: ObservableObject {
     }
     
     
+    // MARK: - Calendar Diensten Tracking
+    
+    func markDienstAddedToCalendar(_ dienstId: String) {
+        calendarDienstIds.insert(dienstId)
+        
+        // Persist to UserDefaults
+        if let data = try? JSONEncoder().encode(calendarDienstIds) {
+            UserDefaults.standard.set(data, forKey: "kk_calendar_dienst_ids")
+            Logger.debug("Marked dienst \(dienstId) as added to calendar (total: \(calendarDienstIds.count))")
+        }
+    }
+    
+    func isDienstInCalendar(_ dienstId: String) -> Bool {
+        return calendarDienstIds.contains(dienstId)
+    }
+    
     private func clearLocalState() {
         Logger.debug("Clearing local state...")
         Logger.debug("Before clear: \(model.tenants.count) tenants, \(upcoming.count) diensten")
@@ -340,6 +366,11 @@ final class AppStore: ObservableObject {
         searchResults = []
         onboardingScan = nil
         pushToken = nil
+        calendarDienstIds = []
+        
+        // Clear UserDefaults for calendar IDs
+        UserDefaults.standard.removeObject(forKey: "kk_calendar_dienst_ids")
+        
         Logger.debug("After clear: \(model.tenants.count) tenants, \(upcoming.count) diensten")
         Logger.debug("Setting appPhase to .onboarding")
         appPhase = .onboarding
@@ -707,15 +738,35 @@ final class AppStore: ObservableObject {
             // SAFEGUARD: First refresh tenant info to ensure we have latest team data
             // This prevents reconciliation from running with stale/incomplete team data
             // CRITICAL: Wait for ACTUAL completion, not just a fixed timeout
-            await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
-                refreshTenantInfoAsync { 
-                    continuation.resume()
+            Logger.reconcile("🔄 Refreshing tenant info before reconciliation (blocking)")
+            let tenantInfoSuccess = await withCheckedContinuation { (continuation: CheckedContinuation<Bool, Never>) in
+                refreshTenantInfoAsync { success in
+                    continuation.resume(returning: success)
                 }
             }
+            
+            if !tenantInfoSuccess {
+                Logger.warning("🛡️ SAFEGUARD: Tenant info refresh failed - SKIPPING reconciliation")
+                Logger.warning("   This prevents accidental revocation when backend is unreachable")
+                // Still refresh diensten, just skip reconciliation
+                Logger.reconcile("Refreshing diensten (without reconciliation)")
+                refreshDiensten()
+                return
+            }
+            
+            Logger.reconcile("✅ Tenant info refreshed successfully - proceeding with reconciliation")
             
             // Clean up any orphaned enrollments before reconciliation
             model.cleanupOrphanedEnrollments()
             enrollmentRepository.persist(model: model)
+            
+            // DEFENSIVE CHECK: Verify we still have enrollments after refresh
+            if !model.isEnrolled || model.enrollments.isEmpty {
+                Logger.warning("🛡️ SAFEGUARD: No enrollments after refresh - SKIPPING reconciliation")
+                Logger.warning("   This prevents accidental revocation of backend enrollments")
+                refreshDiensten()
+                return
+            }
             
             // Get hardware identifier and auth token for reconciliation
             let hardwareId = UIDevice.current.identifierForVendor?.uuidString
@@ -731,6 +782,14 @@ final class AppStore: ObservableObject {
                 .sorted { $0.enrolledAt > $1.enrolledAt }  // Newest first
                 .first?.signedDeviceToken
             
+            guard let authToken = authToken else {
+                Logger.warning("🛡️ SAFEGUARD: No valid auth token - SKIPPING reconciliation")
+                refreshDiensten()
+                return
+            }
+            
+            // Proceed with reconciliation
+            Logger.reconcile("🔄 Starting reconciliation with \(model.enrollments.count) enrollment(s)")
             await reconciliationService.reconcileIfNeeded(model: model, hardwareIdentifier: hardwareId, authToken: authToken)
             
             // After reconciliation, refresh diensten
@@ -835,9 +894,10 @@ final class AppStore: ObservableObject {
         Logger.debug("Banner refresh triggered - will use on-demand loading per tenant")
     }
     
-    /// Async version of refreshTenantInfo that calls completion when done
+    /// Async version of refreshTenantInfo that calls completion with success status
     /// Used before reconciliation to ensure we have fresh tenant data
-    func refreshTenantInfoAsync(completion: @escaping () -> Void) {
+    /// Returns true if successful, false if failed (for reconciliation safety)
+    func refreshTenantInfoAsync(completion: @escaping (Bool) -> Void) {
         Logger.reconcile("🔄 refreshTenantInfoAsync START (for reconciliation)")
         
         // Get ALL tenants with tokens (not just active ones) to ensure club logos load for new enrollments
@@ -853,7 +913,7 @@ final class AppStore: ObservableObject {
               let firstTenant = availableTenants.first,
               let authToken = model.authTokenForTeam(firstTenant.teams.first?.id ?? "", in: firstTenant.slug) else {
             Logger.warning("No tenants with auth tokens available for tenant info")
-            completion()  // Complete immediately if no tenants
+            completion(false)  // Return failure if no tenants
             return
         }
         
@@ -868,15 +928,15 @@ final class AppStore: ObservableObject {
                 case .success(let response):
                     Logger.success("✅ Received tenant info for \(response.tenants.count) tenants")
                     self?.updateTenantInfoFromResponse(response)
-                    Logger.reconcile("🏁 refreshTenantInfoAsync COMPLETE")
-                    completion()  // Complete after successful update
+                    Logger.reconcile("🏁 refreshTenantInfoAsync COMPLETE (success)")
+                    completion(true)  // Return success after successful update
                     
                 case .failure(let error):
                     Logger.error("❌ Failed to fetch tenant info: \(error)")
                     // Check if this is a token revocation for the specific tenant we used
                     self?.handlePotentialTokenRevocation(error: error, tenant: firstTenant.slug)
                     Logger.reconcile("🏁 refreshTenantInfoAsync COMPLETE (with error)")
-                    completion()  // Complete even on failure (don't block reconciliation indefinitely)
+                    completion(false)  // Return failure to skip reconciliation
                 }
             }
         }
@@ -955,44 +1015,84 @@ final class AppStore: ObservableObject {
                     modelUpdated = true
                 }
                 
-                // CRITICAL: Update team names from tenant info (fix team codes showing as names)
-                for i in 0..<existingTenant.teams.count {
-                    let existingTeam = existingTenant.teams[i]
+                // CRITICAL: Update team names from tenant info AND remove orphaned teams
+                // Backend gave us a valid HTTP 200 response, so we trust it completely
+                // If it says 0 teams, that's legitimate (e.g., nightly cron removed enrollment)
+                var updatedTeams: [DomainModel.Team] = []
+                var orphanedTeamIds: [String] = []
+                
+                for existingTeam in existingTenant.teams {
                     // Find matching team in tenant info by ID or code
                     if let tenantTeam = tenantData.teams.first(where: { 
                         $0.id == existingTeam.id || $0.code == existingTeam.code || $0.code == existingTeam.id 
                     }) {
                         Logger.debug("🔄 Updating team name: '\(existingTeam.name)' → '\(tenantTeam.name)' for id='\(existingTeam.id)'")
-                        existingTenant.teams[i] = DomainModel.Team(
+                        updatedTeams.append(DomainModel.Team(
                             id: existingTeam.id,
                             code: tenantTeam.code,
                             name: tenantTeam.name, // Use correct name from tenant info
                             role: existingTeam.role,
                             email: existingTeam.email,
                             enrolledAt: existingTeam.enrolledAt
-                        )
+                        ))
+                    } else {
+                        Logger.warning("🗑️ Removing orphaned team: \(existingTeam.name) (\(existingTeam.code ?? existingTeam.id)) - not in backend response")
+                        orphanedTeamIds.append(existingTeam.id)
                     }
                 }
                 
-                model.tenants[tenantData.slug] = existingTenant
+                existingTenant.teams = updatedTeams
+                
+                // Also remove enrollments for orphaned teams
+                if !orphanedTeamIds.isEmpty {
+                    let validTeamIds = Set(updatedTeams.map { $0.id })
+                    let validTeamCodes = Set(updatedTeams.compactMap { $0.code })
+                    var cleanedEnrollmentIds: [String] = []
+                    
+                    for enrollmentId in existingTenant.enrollments {
+                        if let enrollment = model.enrollments[enrollmentId] {
+                            let enrollmentStillValid = enrollment.teams.contains { teamId in
+                                validTeamIds.contains(teamId) || validTeamCodes.contains(teamId)
+                            }
+                            if enrollmentStillValid {
+                                cleanedEnrollmentIds.append(enrollmentId)
+                            } else {
+                                Logger.warning("🗑️ Removing orphaned enrollment: \(enrollmentId)")
+                                model.enrollments.removeValue(forKey: enrollmentId)
+                            }
+                        }
+                    }
+                    
+                    existingTenant.enrollments = cleanedEnrollmentIds
+                    modelUpdated = true
+                }
+                
+                // If tenant has no teams left, remove it entirely
+                if existingTenant.teams.isEmpty {
+                    Logger.warning("🗑️ Removing tenant \(tenantData.slug) - no teams remaining")
+                    model.tenants.removeValue(forKey: tenantData.slug)
+                    modelUpdated = true
+                } else {
+                    model.tenants[tenantData.slug] = existingTenant
+                }
                 
                 // Persist team name updates
                 enrollmentRepository.persist(model: model)
                 
                 // CRITICAL: If tenant is season ended, update our domain model
+                // IMPORTANT: Season end should NOT remove enrollments/teams!
+                // These must remain for historical access (viewing season end page)
+                // Only clear the token to prevent new actions
+                // Enrollments will be cleaned up later when backend physically deletes them (step 2: data reset)
                 if tenantData.seasonEnded && !existingTenant.seasonEnded {
                     Logger.auth("🔄 Tenant \(tenantData.slug) detected as season ended from API")
+                    Logger.auth("   Keeping enrollments/teams for season end page display")
                     existingTenant.seasonEnded = true
                     existingTenant.signedDeviceToken = nil
                     model.tenants[tenantData.slug] = existingTenant
                     
-                    // Clear enrollments for this tenant
-                    let tenantEnrollmentIds = existingTenant.enrollments
-                    for enrollmentId in tenantEnrollmentIds {
-                        model.enrollments.removeValue(forKey: enrollmentId)
-                    }
-                    existingTenant.enrollments.removeAll()
-                    model.tenants[tenantData.slug] = existingTenant
+                    // Keep enrollments and teams for viewing season end page!
+                    // They'll be removed automatically when backend deletes them (step 2: data reset)
                     
                     // Persist the changes
                     enrollmentRepository.persist(model: model)
@@ -1005,9 +1105,16 @@ final class AppStore: ObservableObject {
         // Force SwiftUI update by reassigning tenantInfo
         tenantInfo = newTenantInfo
         
+        // If no tenants left, transition to onboarding
+        if model.tenants.isEmpty {
+            Logger.auth("📱 No enrollments remaining - transitioning to onboarding")
+            appPhase = .onboarding
+            modelUpdated = true
+        }
+        
         // Force model save to persist logo URL updates
         if modelUpdated {
-            Logger.debug("🔄 Saving model with updated logo URLs")
+            Logger.debug("🔄 Saving model with updated changes")
             enrollmentRepository.persist(model: model)
         }
     }
@@ -1107,7 +1214,7 @@ final class AppStore: ObservableObject {
     private func handleEnrollmentDeepLink(_ url: URL) {
         guard let token = DeepLink.extractToken(from: url) else { return }
         
-        completeEnrollment(token: token) { [weak self] result in
+        completeEnrollment(token: token) { result in
             switch result {
             case .success:
                 Logger.success("✅ Enrollment completed via deep link")
@@ -1634,5 +1741,6 @@ private extension Array where Element == Dienst {
         }
     }
 }
+
 
 

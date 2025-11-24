@@ -878,7 +878,8 @@ private struct DienstCardContent: View {
     @State private var errorText: String?
     @State private var removingVolunteers: Set<String> = []
     @State private var calendarService = CalendarService()
-    @State private var showingCalendarSuccess = false
+    // Calendar success is now tracked persistently in AppStore
+    private var isInCalendar: Bool { store.isDienstInCalendar(dienst.id) }
     @State private var calendarError: String?
     @EnvironmentObject var store: AppStore
     
@@ -898,12 +899,12 @@ private struct DienstCardContent: View {
                     // Calendar button (only for future diensten)
                     if dienst.startTime >= Date() && calendarService.isCalendarAvailable {
                         Button(action: { addToCalendar() }) {
-                            Image(systemName: showingCalendarSuccess ? "calendar.badge.checkmark" : "calendar.badge.plus")
+                            Image(systemName: isInCalendar ? "calendar.badge.checkmark" : "calendar.badge.plus")
                                 .font(.system(size: 20, weight: .medium))
-                                .foregroundStyle(showingCalendarSuccess ? Color.green : KKTheme.accent)
+                                .foregroundStyle(isInCalendar ? Color.green : KKTheme.accent)
                         }
                         .accessibilityLabel("Toevoegen aan agenda")
-                        .disabled(showingCalendarSuccess)
+                        .disabled(isInCalendar)
                     }
                     
                     // Transfer offer toggle (only for future diensten and managers)
@@ -1070,13 +1071,7 @@ private struct DienstCardContent: View {
         .background(KKTheme.surfaceAlt)
         .cornerRadius(12)
         .overlay(ConfettiView(trigger: confettiTrigger).allowsHitTesting(false))
-        .alert("Agenda", isPresented: $showingCalendarSuccess) {
-            Button("OK") { 
-                showingCalendarSuccess = false 
-            }
-        } message: {
-            Text("Dienst toegevoegd aan je agenda!")
-        }
+        // Calendar success alert removed - state is now persistent via isInCalendar computed property
         .alert("Agenda Fout", isPresented: Binding<Bool>(
             get: { calendarError != nil },
             set: { _ in calendarError = nil }
@@ -1121,7 +1116,8 @@ private struct DienstCardContent: View {
             DispatchQueue.main.async {
                 switch result {
                 case .success:
-                    showingCalendarSuccess = true
+                    // Mark as added in persistent storage
+                    store.markDienstAddedToCalendar(dienst.id)
                     calendarError = nil
                     
                     // Haptic feedback for success
@@ -1132,7 +1128,6 @@ private struct DienstCardContent: View {
                     
                 case .failure(let error):
                     calendarError = error.localizedDescription
-                    showingCalendarSuccess = false
                     
                     // Haptic feedback for error
                     let feedback = UINotificationFeedbackGenerator()
