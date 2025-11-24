@@ -1086,7 +1086,7 @@ private struct DienstCardContent: View {
     private var dateText: String {
         let formatter = DateFormatter()
         formatter.locale = Locale(identifier: "nl_NL")
-        formatter.dateFormat = "d MMMM"
+        formatter.dateFormat = "EEE d MMM ''yy"
         return formatter.string(from: dienst.startTime)
     }
     private var locationText: String { dienst.locationName?.isEmpty == false ? dienst.locationName! : "Kantine" }
@@ -2049,7 +2049,7 @@ private struct OfferDienstForTransferView: View {
     private var dateFormatter: DateFormatter {
         let formatter = DateFormatter()
         formatter.locale = Locale(identifier: "nl_NL")
-        formatter.dateFormat = "EEEE d MMMM"
+        formatter.dateFormat = "EEE d MMM ''yy"
         return formatter
     }
     
@@ -2222,7 +2222,7 @@ private struct OfferDienstForTransferView: View {
                     VStack(alignment: .leading, spacing: 16) {
                         // Date and location header
                         HStack {
-                            Text(dateFormatter.string(from: dienst.startTime).capitalized)
+                            Text(dateFormatter.string(from: dienst.startTime))
                                 .font(KKFont.title(18))
                                 .foregroundStyle(KKTheme.textPrimary)
                             Spacer()

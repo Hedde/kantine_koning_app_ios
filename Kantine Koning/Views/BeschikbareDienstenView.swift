@@ -235,7 +235,7 @@ struct BeschikbareDienstCard: View {
     private var dateFormatter: DateFormatter {
         let formatter = DateFormatter()
         formatter.locale = Locale(identifier: "nl_NL")
-        formatter.dateFormat = "d MMMM"
+        formatter.dateFormat = "EEE d MMM ''yy"
         return formatter
     }
     
@@ -266,7 +266,7 @@ struct BeschikbareDienstCard: View {
                 VStack(alignment: .leading, spacing: 12) {
                     // Compact header - date and location
                     HStack {
-                        Text(dateFormatter.string(from: dienst.start_tijd).capitalized)
+                        Text(dateFormatter.string(from: dienst.start_tijd))
                             .font(KKFont.title(16))
                             .foregroundStyle(KKTheme.textPrimary)
                         
