@@ -1329,57 +1329,17 @@ struct LeaderboardResponse: Codable {
         }
     }
     
+    // SIMPLIFIED: Backend always sends id as String and naam (not name)
+    // Custom decoders removed - backend API is now consistent
     struct TeamEntry: Codable {
         struct Team: Codable {
             let id: String
             let name: String
             let code: String?
             
-            // Custom decoder to handle both String and Int for id, and naam vs name
-            init(from decoder: Decoder) throws {
-                let container = try decoder.container(keyedBy: CodingKeys.self)
-                
-                // Try to decode id as String first, then as Int
-                if let idString = try? container.decode(String.self, forKey: .id) {
-                    self.id = idString
-                } else if let idInt = try? container.decode(Int.self, forKey: .id) {
-                    self.id = String(idInt)
-                } else {
-                    throw DecodingError.dataCorrupted(
-                        DecodingError.Context(
-                            codingPath: container.codingPath + [CodingKeys.id],
-                            debugDescription: "Could not decode id as String or Int"
-                        )
-                    )
-                }
-                
-                // Handle naam vs name  
-                if let naam = try? container.decode(String.self, forKey: .naam) {
-                    self.name = naam
-                } else if let name = try? container.decode(String.self, forKey: .name) {
-                    self.name = name
-                } else {
-                    throw DecodingError.dataCorrupted(
-                        DecodingError.Context(
-                            codingPath: container.codingPath + [CodingKeys.naam],
-                            debugDescription: "Could not decode naam or name"
-                        )
-                    )
-                }
-                
-                self.code = try container.decodeIfPresent(String.self, forKey: .code)
-            }
-            
-            // Custom encoder for Codable conformance
-            func encode(to encoder: Encoder) throws {
-                var container = encoder.container(keyedBy: CodingKeys.self)
-                try container.encode(id, forKey: .id)
-                try container.encode(name, forKey: .naam)  // Always encode as naam
-                try container.encodeIfPresent(code, forKey: .code)
-            }
-            
-            private enum CodingKeys: String, CodingKey {
-                case id, naam, name, code
+            enum CodingKeys: String, CodingKey {
+                case id, code
+                case name = "naam"  // Backend always sends "naam"
             }
         }
         
@@ -1389,29 +1349,13 @@ struct LeaderboardResponse: Codable {
         let totalHours: Double
         let recentChange: Int
         let positionChange: Int
-        let highlighted: Bool
+        let highlighted: Bool?  // Can be null from backend
         
-        // Custom decoder to handle the entire TeamEntry
-        init(from decoder: Decoder) throws {
-            let container = try decoder.container(keyedBy: CodingKeys.self)
-            
-            self.rank = try container.decode(Int.self, forKey: .rank)
-            self.team = try container.decode(Team.self, forKey: .team)
-            self.points = try container.decode(Int.self, forKey: .points)
-            self.totalHours = try container.decode(Double.self, forKey: .totalHours)
-            self.recentChange = try container.decode(Int.self, forKey: .recentChange)
-            self.positionChange = try container.decode(Int.self, forKey: .positionChange)
-            
-            // Handle highlighted field that can be null/nil
-            self.highlighted = try container.decodeIfPresent(Bool.self, forKey: .highlighted) ?? false
-        }
-        
-        private enum CodingKeys: String, CodingKey {
-            case rank, team, points
+        enum CodingKeys: String, CodingKey {
+            case rank, team, points, highlighted
             case totalHours = "total_hours"
             case recentChange = "recent_change"
             case positionChange = "position_change"
-            case highlighted
         }
     }
     
@@ -1422,57 +1366,16 @@ struct LeaderboardResponse: Codable {
 }
 
 struct GlobalLeaderboardResponse: Codable {
+    // SIMPLIFIED: Backend always sends id as String and naam (not name)
     struct TeamEntry: Codable {
         struct Team: Codable {
             let id: String
             let name: String
             let code: String?
             
-            // Custom decoder to handle both String and Int for id, and naam vs name
-            init(from decoder: Decoder) throws {
-                let container = try decoder.container(keyedBy: CodingKeys.self)
-                
-                // Try to decode id as String first, then as Int
-                if let idString = try? container.decode(String.self, forKey: .id) {
-                    self.id = idString
-                } else if let idInt = try? container.decode(Int.self, forKey: .id) {
-                    self.id = String(idInt)
-                } else {
-                    throw DecodingError.dataCorrupted(
-                        DecodingError.Context(
-                            codingPath: container.codingPath + [CodingKeys.id],
-                            debugDescription: "Could not decode id as String or Int"
-                        )
-                    )
-                }
-                
-                // Handle naam vs name  
-                if let naam = try? container.decode(String.self, forKey: .naam) {
-                    self.name = naam
-                } else if let name = try? container.decode(String.self, forKey: .name) {
-                    self.name = name
-                } else {
-                    throw DecodingError.dataCorrupted(
-                        DecodingError.Context(
-                            codingPath: container.codingPath + [CodingKeys.naam],
-                            debugDescription: "Could not decode naam or name"
-                        )
-                    )
-                }
-                
-                self.code = try container.decodeIfPresent(String.self, forKey: .code)
-            }
-            
-            // Custom encoder for Codable conformance
-            func encode(to encoder: Encoder) throws {
-                var container = encoder.container(keyedBy: CodingKeys.self)
-                try container.encode(id, forKey: .id)
-                try container.encode(name, forKey: .naam)  // Always encode as naam
-                try container.encodeIfPresent(code, forKey: .code)
-            }
-            
-            private enum CodingKeys: String, CodingKey {
-                case id, naam, name, code
+            enum CodingKeys: String, CodingKey {
+                case id, code
+                case name = "naam"  // Backend always sends "naam"
             }
         }
         
@@ -1481,38 +1384,9 @@ struct GlobalLeaderboardResponse: Codable {
             let slug: String
             let logoUrl: String?
             
-            // Custom decoder to handle naam vs name
-            init(from decoder: Decoder) throws {
-                let container = try decoder.container(keyedBy: CodingKeys.self)
-                
-                // Handle naam vs name  
-                if let naam = try? container.decode(String.self, forKey: .naam) {
-                    self.name = naam
-                } else if let name = try? container.decode(String.self, forKey: .name) {
-                    self.name = name
-                } else {
-                    throw DecodingError.dataCorrupted(
-                        DecodingError.Context(
-                            codingPath: container.codingPath + [CodingKeys.naam],
-                            debugDescription: "Could not decode club naam or name"
-                        )
-                    )
-                }
-                
-                self.slug = try container.decode(String.self, forKey: .slug)
-                self.logoUrl = try container.decodeIfPresent(String.self, forKey: .logoUrl)
-            }
-            
-            // Custom encoder for Codable conformance
-            func encode(to encoder: Encoder) throws {
-                var container = encoder.container(keyedBy: CodingKeys.self)
-                try container.encode(name, forKey: .naam)  // Always encode as naam
-                try container.encode(slug, forKey: .slug)
-                try container.encodeIfPresent(logoUrl, forKey: .logoUrl)
-            }
-            
-            private enum CodingKeys: String, CodingKey {
-                case naam, name, slug
+            enum CodingKeys: String, CodingKey {
+                case slug
+                case name = "naam"  // Backend always sends "naam"
                 case logoUrl = "logo_url"
             }
         }
@@ -1524,25 +1398,9 @@ struct GlobalLeaderboardResponse: Codable {
         let totalHours: Double
         let recentChange: Int
         let positionChange: Int
-        let highlighted: Bool
+        let highlighted: Bool?  // Can be null from backend
         
-        // Custom decoder to handle the entire TeamEntry
-        init(from decoder: Decoder) throws {
-            let container = try decoder.container(keyedBy: CodingKeys.self)
-            
-            self.rank = try container.decode(Int.self, forKey: .rank)
-            self.team = try container.decode(Team.self, forKey: .team)
-            self.club = try container.decode(Club.self, forKey: .club)
-            self.points = try container.decode(Int.self, forKey: .points)
-            self.totalHours = try container.decode(Double.self, forKey: .totalHours)
-            self.recentChange = try container.decode(Int.self, forKey: .recentChange)
-            self.positionChange = try container.decode(Int.self, forKey: .positionChange)
-            
-            // Handle highlighted field that can be null/nil
-            self.highlighted = try container.decodeIfPresent(Bool.self, forKey: .highlighted) ?? false
-        }
-        
-        private enum CodingKeys: String, CodingKey {
+        enum CodingKeys: String, CodingKey {
             case rank, team, club, points, highlighted
             case totalHours = "total_hours"
             case recentChange = "recent_change"
