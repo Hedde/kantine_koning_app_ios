@@ -414,7 +414,7 @@ struct LeaderboardHostView: View {
                                 totalHours: teamEntry.totalHours,
                                 recentChange: teamEntry.recentChange,
                                 positionChange: teamEntry.positionChange,
-                                highlighted: teamEntry.highlighted,
+                                highlighted: teamEntry.highlighted ?? false,
                                 clubName: teamEntry.club.name,
                                 clubSlug: teamEntry.club.slug,
                                 clubLogoUrl: teamEntry.club.logoUrl

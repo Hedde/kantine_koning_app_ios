@@ -1177,7 +1177,7 @@ final class AppStore: ObservableObject {
                     totalHours: teamEntry.totalHours,
                     recentChange: teamEntry.recentChange,
                     positionChange: teamEntry.positionChange,
-                    highlighted: teamEntry.highlighted
+                    highlighted: teamEntry.highlighted ?? false
                 )
             },
             leaderboardOptOut: response.tenant.leaderboardOptOut,
