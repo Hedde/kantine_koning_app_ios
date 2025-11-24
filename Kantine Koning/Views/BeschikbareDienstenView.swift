@@ -306,14 +306,13 @@ struct BeschikbareDienstCard: View {
                         
                         Spacer()
                         
-                        // Compact status indicator - just the dot
-                        HStack(spacing: 4) {
-                            Text("\(dienst.aanmeldingen_count ?? 0)/\(dienst.minimum_bemanning)")
-                                .font(KKFont.body(12))
-                                .fontWeight(.medium)
-                            Circle().fill(statusColor).frame(width: 8, height: 8)
-                        }
-                        .foregroundStyle(statusColor)
+                        // Human-readable bezetting text
+                        let needed = max(0, dienst.minimum_bemanning - (dienst.aanmeldingen_count ?? 0))
+                        let bezettingText = needed == 1 ? "nog 1 persoon nodig" : "nog \(needed) personen nodig"
+                        
+                        Text(bezettingText)
+                            .font(KKFont.body(12))
+                            .foregroundStyle(statusColor)
                     }
                 }
                 
