@@ -21,7 +21,7 @@ final class BackendClient {
         var req = URLRequest(url: baseURL.appendingPathComponent("/api/mobile/v1/enrollments/request"))
         req.httpMethod = "POST"
         req.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        let body: [String: Any] = ["email": email, "tenant_slug": tenantSlug, "team_codes": teamCodes]
+        let body: [String: Any] = ["email": email, "tenant_slug": tenantSlug, "team_codes": teamCodes, "platform": "ios"]
         req.httpBody = try? JSONSerialization.data(withJSONObject: body)
         URLSession.shared.dataTask(with: req) { data, response, error in
             if let error = error { completion(.failure(error)); return }
@@ -39,7 +39,7 @@ final class BackendClient {
         var req = URLRequest(url: baseURL.appendingPathComponent("/api/mobile/v1/enrollments/request"))
         req.httpMethod = "POST"
         req.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        let body: [String: Any] = ["email": email, "tenant_slug": tenantSlug, "team_codes": []]
+        let body: [String: Any] = ["email": email, "tenant_slug": tenantSlug, "team_codes": [], "platform": "ios"]
         req.httpBody = try? JSONSerialization.data(withJSONObject: body)
         URLSession.shared.dataTask(with: req) { data, response, error in
             if let error = error { Logger.enrollment("❌ network: \(error)"); completion(.failure(error)); return }
