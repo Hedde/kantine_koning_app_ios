@@ -625,7 +625,7 @@ struct ClaimDienstView: View {
     private func formatDate(_ date: Date) -> String {
         let formatter = DateFormatter()
         formatter.locale = Locale(identifier: "nl_NL")
-        formatter.dateFormat = "EEE d MMM ''yy"
+        formatter.dateFormat = "EEEE d MMM"
         return formatter.string(from: date)
     }
     

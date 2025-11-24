@@ -235,7 +235,7 @@ struct BeschikbareDienstCard: View {
     private var dateFormatter: DateFormatter {
         let formatter = DateFormatter()
         formatter.locale = Locale(identifier: "nl_NL")
-        formatter.dateFormat = "EEE d MMM ''yy"
+        formatter.dateFormat = "EEEE d MMM"
         return formatter
     }
     
