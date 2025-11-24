@@ -891,9 +891,15 @@ private struct DienstCardContent: View {
             // Header with date and time
             VStack(alignment: .leading, spacing: 8) {
                 HStack {
-                    Text(dateText)
-                        .font(KKFont.title(18))
-                        .foregroundStyle(KKTheme.textPrimary)
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(dateText)
+                            .font(KKFont.title(18))
+                            .foregroundStyle(KKTheme.textPrimary)
+                        Text(dayText)
+                            .font(.system(size: 11, weight: .medium))
+                            .foregroundStyle(KKTheme.textSecondary)
+                            .tracking(1)
+                    }
                     Spacer()
                     
                     // Calendar button (only for future diensten)
@@ -1086,8 +1092,15 @@ private struct DienstCardContent: View {
     private var dateText: String {
         let formatter = DateFormatter()
         formatter.locale = Locale(identifier: "nl_NL")
-        formatter.dateFormat = "EEEE d MMM"
+        formatter.dateFormat = "d MMMM"
         return formatter.string(from: dienst.startTime)
+    }
+    
+    private var dayText: String {
+        let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: "nl_NL")
+        formatter.dateFormat = "EEEE"
+        return formatter.string(from: dienst.startTime).uppercased()
     }
     private var locationText: String { dienst.locationName?.isEmpty == false ? dienst.locationName! : "Kantine" }
     private var timeRangeText: String {
@@ -2049,7 +2062,14 @@ private struct OfferDienstForTransferView: View {
     private var dateFormatter: DateFormatter {
         let formatter = DateFormatter()
         formatter.locale = Locale(identifier: "nl_NL")
-        formatter.dateFormat = "EEEE d MMM"
+        formatter.dateFormat = "d MMMM"
+        return formatter
+    }
+    
+    private var dayFormatter: DateFormatter {
+        let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: "nl_NL")
+        formatter.dateFormat = "EEEE"
         return formatter
     }
     
@@ -2222,9 +2242,15 @@ private struct OfferDienstForTransferView: View {
                     VStack(alignment: .leading, spacing: 16) {
                         // Date and location header
                         HStack {
-                            Text(dateFormatter.string(from: dienst.startTime))
-                                .font(KKFont.title(18))
-                                .foregroundStyle(KKTheme.textPrimary)
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text(dateFormatter.string(from: dienst.startTime))
+                                    .font(KKFont.title(18))
+                                    .foregroundStyle(KKTheme.textPrimary)
+                                Text(dayFormatter.string(from: dienst.startTime).uppercased())
+                                    .font(.system(size: 11, weight: .medium))
+                                    .foregroundStyle(KKTheme.textSecondary)
+                                    .tracking(1)
+                            }
                             Spacer()
                             
                             // Location badge

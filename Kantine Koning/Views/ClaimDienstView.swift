@@ -334,9 +334,15 @@ struct ClaimDienstView: View {
     
     private func dateAndLocation(dienst: DienstDTO) -> some View {
         HStack {
-            Text(formatDate(dienst.start_tijd))
-                .font(KKFont.title(18))
-                .foregroundStyle(KKTheme.textPrimary)
+            VStack(alignment: .leading, spacing: 2) {
+                Text(formatDate(dienst.start_tijd))
+                    .font(KKFont.title(18))
+                    .foregroundStyle(KKTheme.textPrimary)
+                Text(formatDay(dienst.start_tijd))
+                    .font(.system(size: 11, weight: .medium))
+                    .foregroundStyle(KKTheme.textSecondary)
+                    .tracking(1)
+            }
             Spacer()
             
             // Location badge
@@ -625,8 +631,15 @@ struct ClaimDienstView: View {
     private func formatDate(_ date: Date) -> String {
         let formatter = DateFormatter()
         formatter.locale = Locale(identifier: "nl_NL")
-        formatter.dateFormat = "EEEE d MMM"
+        formatter.dateFormat = "d MMMM"
         return formatter.string(from: date)
+    }
+    
+    private func formatDay(_ date: Date) -> String {
+        let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: "nl_NL")
+        formatter.dateFormat = "EEEE"
+        return formatter.string(from: date).uppercased()
     }
     
     private func formatTime(_ date: Date) -> String {
