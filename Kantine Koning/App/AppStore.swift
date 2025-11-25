@@ -155,11 +155,17 @@ final class AppStore: ObservableObject {
         networkMonitor.$isConnected
             .receive(on: DispatchQueue.main)
             .sink { [weak self] isConnected in
-                self?.isOnline = isConnected
+                guard let self = self else { return }
+                let wasOffline = !self.isOnline
+                self.isOnline = isConnected
                 Logger.network("Network state: \(isConnected ? "Online" : "Offline")")
                 
                 if !isConnected {
                     Logger.warning("App is offline - some features will be disabled")
+                } else if wasOffline {
+                    // Connection restored - refresh data
+                    Logger.network("📶 Connection restored - refreshing diensten")
+                    self.refreshDiensten()
                 }
             }
             .store(in: &cancellables)

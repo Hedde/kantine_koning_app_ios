@@ -128,6 +128,14 @@ struct HomeHostView: View {
             )
             .background(KKTheme.surface)
             
+            // Offline Banner - shows when no internet connection
+            if !store.isOnline {
+                OfflineBanner(onRetry: {
+                    store.refreshDiensten()
+                })
+                .transition(.move(edge: .top).combined(with: .opacity))
+            }
+            
             // Main Content
             if let claimParams = store.pendingClaimDienst {
                 // Claim dienst view
@@ -714,17 +722,19 @@ private struct TeamDienstenView: View {
                     .padding(.horizontal, 16)
                 } else if diensten.isEmpty {
                     VStack(spacing: 16) {
-                        Image(systemName: "calendar.badge.exclamationmark")
+                        Image(systemName: store.isOnline ? "calendar.badge.exclamationmark" : "wifi.slash")
                             .font(.system(size: 48))
-                            .foregroundStyle(KKTheme.textSecondary.opacity(0.5))
+                            .foregroundStyle(store.isOnline ? KKTheme.textSecondary.opacity(0.5) : KKTheme.accent.opacity(0.7))
                         
                         VStack(spacing: 8) {
-                            Text("Geen diensten gevonden")
+                            Text(store.isOnline ? "Geen diensten gevonden" : "Geen internetverbinding")
                                 .font(KKFont.title(18))
                                 .foregroundStyle(KKTheme.textPrimary)
                                 .fontWeight(.medium)
                             
-                            Text("Er zijn momenteel geen aankomende diensten voor dit team.")
+                            Text(store.isOnline 
+                                ? "Er zijn momenteel geen aankomende diensten voor dit team."
+                                : "Controleer je internetverbinding en probeer opnieuw.")
                                 .font(KKFont.body(14))
                                 .foregroundStyle(KKTheme.textSecondary)
                                 .multilineTextAlignment(.center)
@@ -2493,5 +2503,45 @@ private struct OfferDienstForTransferView: View {
                 }
             }
         }
+    }
+}
+
+// MARK: - Offline Banner
+
+/// Banner shown when the device has no internet connection
+/// Helps users understand why they might see "Geen diensten" or other empty states
+private struct OfflineBanner: View {
+    let onRetry: () -> Void
+    
+    var body: some View {
+        HStack(spacing: 12) {
+            Image(systemName: "wifi.slash")
+                .font(.system(size: 16, weight: .semibold))
+                .foregroundStyle(.white)
+            
+            Text("Geen internetverbinding")
+                .font(KKFont.body(14))
+                .fontWeight(.medium)
+                .foregroundStyle(.white)
+            
+            Spacer()
+            
+            Button {
+                onRetry()
+            } label: {
+                Text("Opnieuw")
+                    .font(KKFont.body(12))
+                    .fontWeight(.semibold)
+                    .foregroundStyle(KKTheme.accent)
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 6)
+                    .background(.white)
+                    .clipShape(Capsule())
+            }
+        }
+        .padding(.horizontal, 16)
+        .padding(.vertical, 12)
+        .background(KKTheme.accent)
+        .padding(.bottom, 8)  // Extra margin to content below
     }
 }

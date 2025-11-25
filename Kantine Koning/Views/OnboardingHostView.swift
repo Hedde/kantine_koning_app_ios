@@ -1082,34 +1082,65 @@ private struct TenantSearchSection: View {
                     .padding(.top, 4)
                 }
                 
-                // Show demo message when search has been performed but no results found
+                // Show offline message or demo message when search has no results
                 // Only show after typing at least 3 characters to avoid flickering
                 if searchQuery.count >= 3 && results.isEmpty {
-                    HStack(alignment: .top, spacing: 12) {
-                        Image(systemName: "questionmark.circle")
-                            .foregroundStyle(KKTheme.textSecondary.opacity(0.7))
-                            .font(.system(size: 20))
-                        
-                        VStack(alignment: .leading, spacing: 4) {
-                            Text("Vereniging niet gevonden?")
-                                .font(KKFont.body(13))
-                                .foregroundStyle(KKTheme.textPrimary)
-                                .fontWeight(.medium)
+                    if !store.isOnline {
+                        // Offline message
+                        HStack(alignment: .top, spacing: 12) {
+                            Image(systemName: "wifi.slash")
+                                .foregroundStyle(KKTheme.accent.opacity(0.7))
+                                .font(.system(size: 20))
                             
-                            Text(attributedDemoText())
+                            VStack(alignment: .leading, spacing: 4) {
+                                Text("Geen internetverbinding")
+                                    .font(KKFont.body(13))
+                                    .foregroundStyle(KKTheme.textPrimary)
+                                    .fontWeight(.medium)
+                                
+                                Text("Controleer je internetverbinding en probeer opnieuw.")
+                                    .font(KKFont.body(12))
+                                    .foregroundStyle(KKTheme.textSecondary)
+                            }
+                            
+                            Spacer(minLength: 0)
                         }
-                        .tint(KKTheme.accent)
-                        
-                        Spacer(minLength: 0)
+                        .padding(12)
+                        .background(KKTheme.surface)
+                        .cornerRadius(8)
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 8)
+                                .stroke(KKTheme.accent.opacity(0.3), lineWidth: 1)
+                        )
+                        .padding(.top, 4)
+                    } else {
+                        // Demo message - association not found
+                        HStack(alignment: .top, spacing: 12) {
+                            Image(systemName: "questionmark.circle")
+                                .foregroundStyle(KKTheme.textSecondary.opacity(0.7))
+                                .font(.system(size: 20))
+                            
+                            VStack(alignment: .leading, spacing: 4) {
+                                Text("Vereniging niet gevonden?")
+                                    .font(KKFont.body(13))
+                                    .foregroundStyle(KKTheme.textPrimary)
+                                    .fontWeight(.medium)
+                                
+                                Text(attributedDemoText())
+                            }
+                            .tint(KKTheme.accent)
+                            
+                            Spacer(minLength: 0)
+                        }
+                        .padding(12)
+                        .background(KKTheme.surface)
+                        .cornerRadius(8)
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 8)
+                                .stroke(KKTheme.textSecondary.opacity(0.1), lineWidth: 1)
+                        )
+                        .padding(.top, 4)
                     }
-                    .padding(12)
-                    .background(KKTheme.surface)
-                    .cornerRadius(8)
-                    .overlay(
-                        RoundedRectangle(cornerRadius: 8)
-                            .stroke(KKTheme.textSecondary.opacity(0.1), lineWidth: 1)
-                    )
-                    .padding(.top, 4)
                 }
             }
             }
