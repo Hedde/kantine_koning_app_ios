@@ -542,7 +542,11 @@ private struct TeamsView: View {
                         }
                         return $0.name < $1.name 
                     }), id: \.id) { team in
-                        SwipeableRow(onTap: { onTeamSelected(team.id) }, onDelete: { store.removeTeam(team.id, from: tenant.slug) }) {
+                        let isInvalid = isTeamInvalid(team.id)
+                        SwipeableRow(
+                            onTap: isInvalid ? nil : { onTeamSelected(team.id) },  // Block tap if invalid
+                            onDelete: { store.removeTeam(team.id, from: tenant.slug) }
+                        ) {
                             HStack(spacing: 16) {
                                 // Club logo (same for all teams in this tenant)
                                 CachedAsyncImage(url: (store.tenantInfo[tenant.slug]?.clubLogoUrl ?? tenant.clubLogoUrl).flatMap(URL.init)) { image in
@@ -553,13 +557,14 @@ private struct TeamsView: View {
                                 }
                                 .frame(width: 40, height: 40)
                                 .cornerRadius(6)
+                                .opacity(isInvalid ? 0.5 : 1.0)
                                 
                                 VStack(alignment: .leading, spacing: 4) {
                                     HStack(spacing: 8) {
-                Text(team.name)
+                                        Text(team.name)
                                             .font(KKFont.title(18))
-                                            .foregroundStyle(KKTheme.textPrimary)
-                                        if team.role == .manager {
+                                            .foregroundStyle(isInvalid ? KKTheme.textSecondary : KKTheme.textPrimary)
+                                        if team.role == .manager && !isInvalid {
                                             Text("Manager")
                                                 .font(KKFont.body(10))
                                                 .padding(.horizontal, 8)
@@ -571,12 +576,14 @@ private struct TeamsView: View {
                                     }
                                     Text(dienstCountText(for: team.id))
                                         .font(KKFont.body(14))
-                                        .foregroundStyle(KKTheme.textSecondary)
+                                        .foregroundStyle(isInvalid ? KKTheme.error : KKTheme.textSecondary)
                                 }
                                 Spacer()
-                                Image(systemName: "chevron.right")
-                                    .foregroundStyle(KKTheme.textSecondary)
-                                    .font(.title2)
+                                if !isInvalid {
+                                    Image(systemName: "chevron.right")
+                                        .foregroundStyle(KKTheme.textSecondary)
+                                        .font(.title2)
+                                }
                             }
                             .padding(.horizontal, 20)
                             .padding(.vertical, 16)
@@ -599,6 +606,11 @@ private struct TeamsView: View {
         }
     }
     private func dienstCountText(for teamId: String) -> String {
+        // Check if enrollment is invalid (device_not_found, invalid_token)
+        if store.isTeamEnrollmentInvalid(teamId, in: tenant.slug) {
+            return "Uitgelogd"
+        }
+        
         // Find the team first to get both ID and code
         guard let team = tenant.teams.first(where: { $0.id == teamId }) else {
             return "Geen diensten"
@@ -612,6 +624,11 @@ private struct TeamsView: View {
         }.count
         
         return count == 0 ? "Geen diensten" : count == 1 ? "1 dienst" : "\(count) diensten"
+    }
+    
+    /// Check if team enrollment is invalid (for blocking navigation)
+    private func isTeamInvalid(_ teamId: String) -> Bool {
+        store.isTeamEnrollmentInvalid(teamId, in: tenant.slug)
     }
 }
 
@@ -638,6 +655,11 @@ private struct TeamDienstenView: View {
     let teamId: String
     let onOfferTransfer: (Dienst) -> Void
     @EnvironmentObject var store: AppStore
+    @Environment(\.dismiss) private var dismiss
+    
+    private var isTeamInvalid: Bool {
+        store.isTeamEnrollmentInvalid(teamId, in: tenant.slug)
+    }
     
     var body: some View {
         ScrollView {
@@ -647,14 +669,50 @@ private struct TeamDienstenView: View {
                         .font(KKFont.heading(24))
                         .fontWeight(.regular)
                         .kerning(-1.0)
-                        .foregroundStyle(KKTheme.textPrimary)
-                    Text("Aankomende diensten")
+                        .foregroundStyle(isTeamInvalid ? KKTheme.textSecondary : KKTheme.textPrimary)
+                    Text(isTeamInvalid ? "Uitgelogd" : "Aankomende diensten")
                         .font(KKFont.title(16))
-                        .foregroundStyle(KKTheme.textSecondary)
+                        .foregroundStyle(isTeamInvalid ? KKTheme.error : KKTheme.textSecondary)
                 }
                 .multilineTextAlignment(.center)
                 
-                if diensten.isEmpty {
+                if isTeamInvalid {
+                    // Show logged out message for invalid enrollments
+                    VStack(spacing: 16) {
+                        Image(systemName: "person.slash")
+                            .font(.system(size: 48))
+                            .foregroundStyle(KKTheme.error.opacity(0.7))
+                        
+                        VStack(spacing: 8) {
+                            Text("Sessie verlopen")
+                                .font(KKFont.title(18))
+                                .foregroundStyle(KKTheme.textPrimary)
+                                .fontWeight(.medium)
+                            
+                            Text("Je bent uitgelogd voor dit team. Verwijder het team en voeg opnieuw toe om door te gaan.")
+                                .font(KKFont.body(14))
+                                .foregroundStyle(KKTheme.textSecondary)
+                                .multilineTextAlignment(.center)
+                                .padding(.horizontal, 24)
+                        }
+                        
+                        Button {
+                            dismiss()
+                        } label: {
+                            Text("Terug naar overzicht")
+                                .font(KKFont.body(16))
+                                .fontWeight(.medium)
+                                .foregroundStyle(.white)
+                                .padding(.horizontal, 24)
+                                .padding(.vertical, 12)
+                                .background(KKTheme.accent)
+                                .clipShape(RoundedRectangle(cornerRadius: 8))
+                        }
+                        .padding(.top, 8)
+                    }
+                    .padding(.vertical, 48)
+                    .padding(.horizontal, 16)
+                } else if diensten.isEmpty {
                     VStack(spacing: 16) {
                         Image(systemName: "calendar.badge.exclamationmark")
                             .font(.system(size: 48))
@@ -1348,7 +1406,7 @@ private struct ClubsViewInternal: View {
 
 // MARK: - Swipeable Row (ported)
 private struct SwipeableRow<Content: View>: View {
-    let onTap: () -> Void
+    let onTap: (() -> Void)?  // Optional - nil disables tap navigation
     let onDelete: () -> Void
     let content: () -> Content
     @State private var offset: CGFloat = 0
@@ -1359,7 +1417,13 @@ private struct SwipeableRow<Content: View>: View {
             content()
                 .frame(maxWidth: .infinity)
                 .offset(x: offset)
-                .onTapGesture { if offset == 0 { onTap() } else { withAnimation(.spring()) { offset = 0 } } }
+                .onTapGesture { 
+                    if offset == 0 { 
+                        onTap?()  // Only call if not nil
+                    } else { 
+                        withAnimation(.spring()) { offset = 0 } 
+                    } 
+                }
                 .gesture(
                     DragGesture()
                         .onChanged { value in let t = value.translation.width; if t < 0 { offset = max(t, -deleteButtonWidth) } else if offset < 0 { offset = min(0, offset + t) } }

@@ -7,6 +7,7 @@ enum KKTheme {
     static let textSecondary = Color(hex: 0x6B7280)
     static let surface = Color.white
     static let surfaceAlt = Color(hex: 0xFAFAFB)
+    static let error = Color(hex: 0xDC2626) // Red for error states
 }
 
 enum KKFont {

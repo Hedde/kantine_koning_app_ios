@@ -81,9 +81,16 @@ final class DefaultEnrollmentRepository: EnrollmentRepository {
 }
 
 // MARK: - Dienst Repository
+
+/// Result of fetching diensten, including any enrollments that have invalid tokens
+struct DienstFetchResult {
+    let diensten: [Dienst]
+    let invalidEnrollments: [(enrollmentId: String, tenant: String, reason: String)]
+}
+
 protocol DienstRepository {
     // NOTE: Auth tokens are now handled per-operation with enrollment-specific tokens
-    func fetchUpcoming(for model: DomainModel, completion: @escaping (Result<[Dienst], Error>) -> Void)
+    func fetchUpcoming(for model: DomainModel, completion: @escaping (Result<DienstFetchResult, Error>) -> Void)
     func addVolunteer(tenant: TenantID, dienstId: String, name: String, completion: @escaping (Result<Dienst, Error>) -> Void)
     func removeVolunteer(tenant: TenantID, dienstId: String, name: String, completion: @escaping (Result<Dienst, Error>) -> Void)
     func submitVolunteers(actionToken: String, names: [String], completion: @escaping (Result<Void, Error>) -> Void)
@@ -95,12 +102,13 @@ final class DefaultDienstRepository: DienstRepository {
     
     // NOTE: Auth tokens are now handled per-operation with enrollment-specific tokens
 
-        func fetchUpcoming(for model: DomainModel, completion: @escaping (Result<[Dienst], Error>) -> Void) {
+    func fetchUpcoming(for model: DomainModel, completion: @escaping (Result<DienstFetchResult, Error>) -> Void) {
         // Per-enrollment approach: each enrollment has its own auth token and team access
         // This ensures multi-enrollment scenarios work correctly (e.g., manager for multiple teams in same tenant)
         let group = DispatchGroup()
         var collected: [Dienst] = []
-        var firstError: Error?
+        var invalidEnrollments: [(enrollmentId: String, tenant: String, reason: String)] = []
+        let lock = NSLock()  // Thread-safe access to collected arrays
         
         Logger.section("DIENSTEN REFRESH")
         Logger.debug("Fetching diensten for \(model.enrollments.count) enrollment(s) across \(model.tenants.count) tenant(s)")
@@ -138,23 +146,35 @@ final class DefaultDienstRepository: DienstRepository {
                         return 
                     }
                     let mapped = items.map(self.mapDTOToDienst)
+                    lock.lock()
                     collected.append(contentsOf: mapped)
+                    lock.unlock()
                 case .failure(let err):
                     Logger.error("Failed to fetch diensten for enrollment \(enrollmentId) (tenant: \(enrollment.tenantSlug)): \(err)")
                     
-                    // Check for token revocation - pass enrollmentId for granular cleanup
-                    self?.checkTokenRevocation(error: err, tenant: enrollment.tenantSlug, enrollmentId: enrollmentId)
-                    
-                    if firstError == nil { firstError = err }
+                    // Check for token errors and track invalid enrollments
+                    if let tokenError = self?.extractTokenError(error: err) {
+                        Logger.auth("📛 Token error detected for enrollment \(enrollmentId): \(tokenError)")
+                        lock.lock()
+                        invalidEnrollments.append((enrollmentId: enrollmentId, tenant: enrollment.tenantSlug, reason: tokenError))
+                        lock.unlock()
+                        
+                        // NOTE: We do NOT post notification here anymore
+                        // The invalidEnrollments are returned synchronously for immediate UI feedback ("Uitgelogd")
+                        // Cleanup happens via:
+                        // 1. User swipe-to-delete
+                        // 2. Reconciliation on app foreground
+                    } else {
+                        // Check for season_ended token revocation (whole tenant)
+                        self?.checkTokenRevocation(error: err, tenant: enrollment.tenantSlug, enrollmentId: enrollmentId)
+                    }
                 }
                 group.leave()
             }
         }
         
         group.notify(queue: .global()) {
-            if let err = firstError { completion(.failure(err)); return }
-            
-            Logger.debug("Collected \(collected.count) diensten from all tenants")
+            Logger.debug("Collected \(collected.count) diensten from all tenants, \(invalidEnrollments.count) invalid enrollment(s)")
             
             // Dedup by id; keep newest by updatedAt then startTime
             var byId: [String: Dienst] = [:]
@@ -175,7 +195,34 @@ final class DefaultDienstRepository: DienstRepository {
             let future = deduped.filter { $0.startTime >= Date() }.sorted { $0.startTime < $1.startTime }
             let past = deduped.filter { $0.startTime < Date() }.sorted { $0.startTime > $1.startTime }
             Logger.success("Final result: \(deduped.count) diensten (\(future.count) future, \(past.count) past)")
-            completion(.success(future + past))
+            
+            // Return both diensten and invalid enrollments
+            let result = DienstFetchResult(diensten: future + past, invalidEnrollments: invalidEnrollments)
+            completion(.success(result))
+        }
+    }
+    
+    /// Extract token error type from error if present
+    /// Returns the error type for invalid enrollments (NOT season_ended which needs whole-tenant handling)
+    private func extractTokenError(error: Error) -> String? {
+        guard let nsError = error as NSError?,
+              nsError.domain == "BackendTokenError",
+              let errorType = nsError.userInfo["errorType"] as? String else {
+            return nil
+        }
+        
+        switch errorType {
+        case "invalid_token", "device_not_found":
+            return errorType
+        case "token_revoked":
+            // Check reason - season_ended needs whole-tenant handling, other reasons are enrollment-specific
+            let reason = nsError.userInfo["reason"] as? String
+            if reason != "season_ended" {
+                return "token_revoked"  // admin_revoked, security_breach, etc.
+            }
+            return nil  // season_ended handled separately via checkTokenRevocation
+        default:
+            return nil
         }
     }
     

@@ -114,6 +114,7 @@ struct DomainModel: Codable, Equatable {
     }
     
     // MARK: - Token Management
+    
     func authTokenForTeam(_ teamId: TeamID, in tenant: TenantID) -> String? {
         // Check if this tenant has ended season - refuse token if so
         guard let tenantData = tenants[tenant], !tenantData.seasonEnded else {

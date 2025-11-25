@@ -39,6 +39,7 @@ final class AppStore: ObservableObject {
     @Published var globalLeaderboard: GlobalLeaderboardData?
     @Published var tenantInfo: [String: TenantInfo] = [:] // tenantSlug -> TenantInfo (club logos etc.)
     @Published var banners: [String: [DomainModel.Banner]] = [:] // tenantSlug -> [Banner] (cached banner data)
+    @Published var invalidEnrollmentIds: Set<String> = [] // Enrollment IDs with invalid tokens (for immediate UI feedback)
     
     // Calendar tracking - diensten that were added to calendar (persistent across app restarts)
     @Published var calendarDienstIds: Set<String> = []
@@ -590,18 +591,20 @@ final class AppStore: ObservableObject {
     // MARK: - Token Revocation Handling
     
     /// Handle invalid token for a specific enrollment (granular cleanup)
-    /// This removes ONLY the invalid enrollment, not the entire tenant
+    /// Removes the enrollment from the model after showing "Uitgelogd" briefly
     func handleEnrollmentInvalidation(enrollmentId: String, tenant: TenantID, reason: String) {
         Logger.auth("⚠️ Enrollment \(enrollmentId) invalidated for tenant \(tenant), reason: \(reason)")
         
         guard var tenantData = model.tenants[tenant] else {
             Logger.warning("Tenant \(tenant) not found when handling enrollment invalidation")
+            invalidEnrollmentIds.remove(enrollmentId)
             return
         }
         
-        // Remove the specific enrollment
+        // Get enrollment info before removing
         guard let enrollment = model.enrollments[enrollmentId] else {
             Logger.warning("Enrollment \(enrollmentId) not found in model")
+            invalidEnrollmentIds.remove(enrollmentId)
             return
         }
         
@@ -631,6 +634,9 @@ final class AppStore: ObservableObject {
         
         // Clean up any orphaned enrollments
         model.cleanupOrphanedEnrollments()
+        
+        // Remove from invalid set (enrollment is now deleted)
+        invalidEnrollmentIds.remove(enrollmentId)
         
         // Persist the updated model
         enrollmentRepository.persist(model: model)
@@ -701,6 +707,18 @@ final class AppStore: ObservableObject {
                 Logger.debug("Other auth error for tenant \(tenant): \(errorType)")
             }
         }
+    }
+    
+    /// Check if a team's enrollment is marked as invalid (device_not_found, invalid_token)
+    /// Used by UI to show "Uitgelogd" instead of "Geen diensten"
+    func isTeamEnrollmentInvalid(_ teamId: TeamID, in tenant: TenantID) -> Bool {
+        // Find enrollment for this team and check if it's in the invalid set
+        guard let enrollment = model.enrollments.values.first(where: { enrollment in
+            enrollment.tenantSlug == tenant && enrollment.teams.contains(teamId)
+        }) else {
+            return false
+        }
+        return invalidEnrollmentIds.contains(enrollment.id)
     }
     
     func removeSeasonEndedTenant(_ tenantSlug: TenantID) {
@@ -817,12 +835,26 @@ final class AppStore: ObservableObject {
         // Fetch diensten using enrollment-specific tokens (handled in repository)
         dienstRepository.fetchUpcoming(for: model) { [weak self] result in
             DispatchQueue.main.async {
+                guard let self = self else { return }
                 let duration = Date().timeIntervalSince(startTime)
-                if case .success(let items) = result { 
-                    Logger.success("Received \(items.count) diensten")
-                    Logger.performanceMeasure("Refresh Diensten", duration: duration, additionalInfo: "\(items.count) items")
-                    self?.upcoming = items 
-                } else {
+                
+                switch result {
+                case .success(let fetchResult):
+                    // FIRST: Mark invalid enrollments BEFORE updating diensten (for correct UI state)
+                    if !fetchResult.invalidEnrollments.isEmpty {
+                        Logger.auth("📛 Marking \(fetchResult.invalidEnrollments.count) enrollment(s) as invalid for UI")
+                        for invalid in fetchResult.invalidEnrollments {
+                            self.invalidEnrollmentIds.insert(invalid.enrollmentId)
+                        }
+                    }
+                    
+                    // THEN: Update diensten (UI will show "Uitgelogd" for invalid enrollments)
+                    Logger.success("Received \(fetchResult.diensten.count) diensten")
+                    Logger.performanceMeasure("Refresh Diensten", duration: duration, additionalInfo: "\(fetchResult.diensten.count) items")
+                    self.upcoming = fetchResult.diensten
+                    
+                case .failure(let error):
+                    Logger.error("Refresh diensten failed: \(error)")
                     Logger.performanceMeasure("Refresh Diensten (Failed)", duration: duration)
                 }
             }
