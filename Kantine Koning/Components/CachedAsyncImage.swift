@@ -1,7 +1,7 @@
 import SwiftUI
 
 /// Simple image cache that can be used by any view
-private class ImageCache {
+class ImageCache {
     static let shared = ImageCache()
     private let cache = NSCache<NSString, UIImage>()
     
@@ -15,6 +15,12 @@ private class ImageCache {
     
     func setImage(_ image: UIImage, for url: URL) {
         cache.setObject(image, forKey: NSString(string: url.absoluteString))
+    }
+    
+    /// Clear all cached images (called during app reset)
+    func clearAll() {
+        cache.removeAllObjects()
+        Logger.debug("🖼️ ImageCache cleared")
     }
 }
 

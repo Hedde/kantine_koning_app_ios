@@ -366,14 +366,28 @@ final class AppStore: ObservableObject {
         Logger.debug("Clearing local state...")
         Logger.debug("Before clear: \(model.tenants.count) tenants, \(upcoming.count) diensten")
         
-        // Clear local state (auth tokens are now handled per-operation)
+        // Clear ALL local state for complete reset
         
+        // Core data
         model = .empty
         upcoming = []
         searchResults = []
         onboardingScan = nil
         pushToken = nil
         calendarDienstIds = []
+        
+        // Cached data (was missing - caused stale logos/data after reset)
+        tenantInfo = [:]
+        leaderboards = [:]
+        globalLeaderboard = nil
+        banners = [:]
+        invalidEnrollmentIds = []
+        
+        // Clear image cache (fixes stale club logos)
+        ImageCache.shared.clearAll()
+        
+        // Clear URL session cache for images
+        URLCache.shared.removeAllCachedResponses()
         
         // Clear UserDefaults for calendar IDs
         UserDefaults.standard.removeObject(forKey: "kk_calendar_dienst_ids")
@@ -382,7 +396,7 @@ final class AppStore: ObservableObject {
         Logger.debug("Setting appPhase to .onboarding")
         appPhase = .onboarding
         enrollmentRepository.persist(model: model)
-        Logger.success("Local reset complete - should now see onboarding")
+        Logger.success("Local reset complete - all caches cleared")
     }
 
     // QR handling: a simplified representation of scanned tenant
@@ -512,6 +526,7 @@ final class AppStore: ObservableObject {
         upcoming.removeAll { $0.tenantId == tenant }
         tenantInfo.removeValue(forKey: tenant)
         leaderboards.removeValue(forKey: tenant)
+        banners.removeValue(forKey: tenant)
         
         // Clear global leaderboard cache to prevent stale highlighting
         globalLeaderboard = nil
