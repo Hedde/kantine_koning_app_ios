@@ -86,6 +86,7 @@ final class DefaultEnrollmentRepository: EnrollmentRepository {
 struct DienstFetchResult {
     let diensten: [Dienst]
     let invalidEnrollments: [(enrollmentId: String, tenant: String, reason: String)]
+    let hasServerErrors: Bool // True if any API calls returned 5xx errors
 }
 
 protocol DienstRepository {
@@ -108,6 +109,7 @@ final class DefaultDienstRepository: DienstRepository {
         let group = DispatchGroup()
         var collected: [Dienst] = []
         var invalidEnrollments: [(enrollmentId: String, tenant: String, reason: String)] = []
+        var hasServerErrors = false
         let lock = NSLock()  // Thread-safe access to collected arrays
         
         Logger.section("DIENSTEN REFRESH")
@@ -151,6 +153,15 @@ final class DefaultDienstRepository: DienstRepository {
                     lock.unlock()
                 case .failure(let err):
                     Logger.error("Failed to fetch diensten for enrollment \(enrollmentId) (tenant: \(enrollment.tenantSlug)): \(err)")
+                    
+                    // Check for server errors (5xx)
+                    let nsError = err as NSError
+                    if nsError.code >= 500 && nsError.code < 600 {
+                        Logger.warning("🚨 Server error (HTTP \(nsError.code)) detected - marking backend unavailable")
+                        lock.lock()
+                        hasServerErrors = true
+                        lock.unlock()
+                    }
                     
                     // Check for token errors and track invalid enrollments
                     if let tokenError = self?.extractTokenError(error: err) {
@@ -196,8 +207,12 @@ final class DefaultDienstRepository: DienstRepository {
             let past = deduped.filter { $0.startTime < Date() }.sorted { $0.startTime > $1.startTime }
             Logger.success("Final result: \(deduped.count) diensten (\(future.count) future, \(past.count) past)")
             
+            if hasServerErrors {
+                Logger.warning("⚠️ Server errors detected during fetch - returning hasServerErrors=true")
+            }
+            
             // Return both diensten and invalid enrollments
-            let result = DienstFetchResult(diensten: future + past, invalidEnrollments: invalidEnrollments)
+            let result = DienstFetchResult(diensten: future + past, invalidEnrollments: invalidEnrollments, hasServerErrors: hasServerErrors)
             completion(.success(result))
         }
     }

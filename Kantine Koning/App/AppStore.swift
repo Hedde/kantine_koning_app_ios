@@ -48,6 +48,10 @@ final class AppStore: ObservableObject {
     @Published var isOnline: Bool = true
     let networkMonitor = NetworkMonitor.shared
     
+    // Backend availability - shows maintenance overlay when false
+    // Set to false when API calls return 500, set to true when they succeed
+    @Published var isBackendAvailable: Bool = true
+    
     // Reactive push navigation state
     private var pendingPushNavigation: (tenant: String, team: String)?
     private var pushNavigationCancellable: AnyCancellable?
@@ -169,6 +173,28 @@ final class AppStore: ObservableObject {
                 }
             }
             .store(in: &cancellables)
+    }
+    
+    // MARK: - Backend Availability
+    
+    /// Called when an API call fails with a server error (5xx)
+    func markBackendUnavailable() {
+        guard isBackendAvailable else { return }
+        Logger.error("🚨 Backend marked as unavailable due to server error")
+        isBackendAvailable = false
+    }
+    
+    /// Called when an API call succeeds - clears the unavailable state
+    func markBackendAvailable() {
+        guard !isBackendAvailable else { return }
+        Logger.success("✅ Backend is available again")
+        isBackendAvailable = true
+    }
+    
+    /// User tapped retry on maintenance overlay
+    func retryBackendConnection() {
+        Logger.network("🔄 User retrying backend connection")
+        refreshDiensten()
     }
 
     // MARK: - Intent
@@ -861,6 +887,15 @@ final class AppStore: ObservableObject {
                 
                 switch result {
                 case .success(let fetchResult):
+                    // Check if any API calls returned server errors (5xx)
+                    if fetchResult.hasServerErrors {
+                        Logger.warning("🚨 Server errors detected - showing maintenance overlay")
+                        self.markBackendUnavailable()
+                    } else {
+                        // Backend is working - clear any maintenance state
+                        self.markBackendAvailable()
+                    }
+                    
                     // FIRST: Mark invalid enrollments BEFORE updating diensten (for correct UI state)
                     if !fetchResult.invalidEnrollments.isEmpty {
                         Logger.auth("📛 Marking \(fetchResult.invalidEnrollments.count) enrollment(s) as invalid for UI")
@@ -877,6 +912,9 @@ final class AppStore: ObservableObject {
                 case .failure(let error):
                     Logger.error("Refresh diensten failed: \(error)")
                     Logger.performanceMeasure("Refresh Diensten (Failed)", duration: duration)
+                    
+                    // Note: Server errors (5xx) are now tracked in DienstFetchResult.hasServerErrors
+                    // This .failure case only triggers for catastrophic failures
                 }
             }
         }
