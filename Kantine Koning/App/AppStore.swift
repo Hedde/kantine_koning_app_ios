@@ -30,6 +30,9 @@ final class AppStore: ObservableObject {
     @Published var upcoming: [Dienst] = []
     @Published var searchResults: [SearchTeam] = []
     @Published var tenantSearchResults: [TenantSearchResult] = []
+    @Published var tenantSearchError: String? = nil  // Error message when tenant search fails
+    @Published var isSearchingTenants: Bool = false  // True while a search is in progress
+    private var tenantSearchRequestId: UUID? = nil  // Track current search to prevent race conditions
     @Published var onboardingScan: ScannedTenant?
     @Published var pendingCTA: CTA?
     @Published var pendingClaimDienst: ClaimDienstParams?
@@ -40,6 +43,7 @@ final class AppStore: ObservableObject {
     @Published var tenantInfo: [String: TenantInfo] = [:] // tenantSlug -> TenantInfo (club logos etc.)
     @Published var banners: [String: [DomainModel.Banner]] = [:] // tenantSlug -> [Banner] (cached banner data)
     @Published var invalidEnrollmentIds: Set<String> = [] // Enrollment IDs with invalid tokens (for immediate UI feedback)
+    @Published var dienstenError: String? = nil // Error message when diensten fetch fails (API errors, not offline)
     
     // Calendar tracking - diensten that were added to calendar (persistent across app restarts)
     @Published var calendarDienstIds: Set<String> = []
@@ -873,10 +877,12 @@ final class AppStore: ObservableObject {
                     Logger.success("Received \(fetchResult.diensten.count) diensten")
                     Logger.performanceMeasure("Refresh Diensten", duration: duration, additionalInfo: "\(fetchResult.diensten.count) items")
                     self.upcoming = fetchResult.diensten
+                    self.dienstenError = nil // Clear any previous error on success
                     
                 case .failure(let error):
                     Logger.error("Refresh diensten failed: \(error)")
                     Logger.performanceMeasure("Refresh Diensten (Failed)", duration: duration)
+                    self.dienstenError = self.formatDienstenError(error)
                 }
             }
         }
@@ -1252,15 +1258,59 @@ final class AppStore: ObservableObject {
     }
     
     private func formatLeaderboardError(_ error: Error) -> String {
+        // User-friendly error messages consistent with diensten errors
         if let nsError = error as NSError? {
-            if nsError.domain == "Backend" && nsError.code == -2 {
-                return "Ongeldig antwoord ontvangen van server"
+            // Network errors (NSURLErrorDomain)
+            if nsError.domain == NSURLErrorDomain {
+                switch nsError.code {
+                case NSURLErrorNotConnectedToInternet:
+                    return "Je hebt geen internetverbinding. Controleer je verbinding en probeer het opnieuw."
+                case NSURLErrorTimedOut:
+                    return "Het laden duurt te lang. Probeer het later nog eens."
+                case NSURLErrorCannotFindHost, NSURLErrorCannotConnectToHost:
+                    return "We kunnen de ranglijst even niet ophalen. Probeer het later nog eens."
+                case NSURLErrorNetworkConnectionLost:
+                    return "Je internetverbinding is weggevallen. Probeer het opnieuw."
+                case NSURLErrorSecureConnectionFailed, -1200: // SSL/TLS errors
+                    return "We kunnen de ranglijst even niet ophalen door een tijdelijke storing. Probeer het later nog eens."
+                default:
+                    return "We kunnen de ranglijst even niet ophalen. Probeer het later nog eens."
+                }
             }
-            if nsError.localizedDescription.contains("Geen antwoord") {
-                return "Geen verbinding met server"
+            // Backend errors - all get the same friendly "storing" message
+            if nsError.domain == "Backend" {
+                return "We kunnen de ranglijst even niet ophalen door een tijdelijke storing. Probeer het later nog eens."
             }
         }
-        return "Kon leaderboard niet laden"
+        return "We kunnen de ranglijst even niet ophalen door een tijdelijke storing. Probeer het later nog eens."
+    }
+    
+    private func formatDienstenError(_ error: Error) -> String {
+        // User-friendly error messages for non-technical audience
+        if let nsError = error as NSError? {
+            // Network errors (NSURLErrorDomain)
+            if nsError.domain == NSURLErrorDomain {
+                switch nsError.code {
+                case NSURLErrorNotConnectedToInternet:
+                    return "Je hebt geen internetverbinding. Controleer je verbinding en probeer het opnieuw."
+                case NSURLErrorTimedOut:
+                    return "Het laden duurt te lang. Probeer het later nog eens."
+                case NSURLErrorCannotFindHost, NSURLErrorCannotConnectToHost:
+                    return "We kunnen de diensten even niet ophalen. Probeer het later nog eens."
+                case NSURLErrorNetworkConnectionLost:
+                    return "Je internetverbinding is weggevallen. Probeer het opnieuw."
+                case NSURLErrorSecureConnectionFailed, -1200: // SSL/TLS errors
+                    return "We kunnen de diensten even niet ophalen door een tijdelijke storing. Probeer het later nog eens."
+                default:
+                    return "We kunnen de diensten even niet ophalen. Probeer het later nog eens."
+                }
+            }
+            // Backend errors - all get the same friendly message
+            if nsError.domain == "Backend" {
+                return "We kunnen de diensten even niet ophalen door een tijdelijke storing. Probeer het later nog eens."
+            }
+        }
+        return "We kunnen de diensten even niet ophalen. Probeer het later nog eens."
     }
 
     // MARK: - Deep links
@@ -1357,10 +1407,39 @@ extension AppStore {
     }
     
     func searchTenants(query: String) {
+        // Generate unique ID for this search request to prevent race conditions
+        let requestId = UUID()
+        tenantSearchRequestId = requestId
+        
+        // Mark as searching (don't clear error yet - wait for response)
+        isSearchingTenants = true
+        
+        // If query is too short, just clear results and stop
+        guard query.count >= 3 else {
+            tenantSearchResults = []
+            tenantSearchError = nil
+            isSearchingTenants = false
+            return
+        }
+        
         enrollmentRepository.searchTenants(query: query) { [weak self] result in
-            DispatchQueue.main.async { 
-                if case .success(let items) = result { 
-                    self?.tenantSearchResults = items 
+            DispatchQueue.main.async {
+                // Only process if this is still the current request (prevents race conditions)
+                guard self?.tenantSearchRequestId == requestId else {
+                    Logger.debug("Ignoring stale tenant search response")
+                    return
+                }
+                
+                self?.isSearchingTenants = false
+                
+                switch result {
+                case .success(let items):
+                    self?.tenantSearchResults = items
+                    self?.tenantSearchError = nil  // Clear error only on success
+                case .failure(let error):
+                    Logger.error("Tenant search failed: \(error)")
+                    self?.tenantSearchError = "We kunnen verenigingen even niet opzoeken door een tijdelijke storing. Probeer het later nog eens."
+                    // Don't clear results - keep previous results visible
                 }
             }
         }

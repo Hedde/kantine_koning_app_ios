@@ -108,6 +108,9 @@ final class DefaultDienstRepository: DienstRepository {
         let group = DispatchGroup()
         var collected: [Dienst] = []
         var invalidEnrollments: [(enrollmentId: String, tenant: String, reason: String)] = []
+        var networkErrors: [Error] = []  // Track network/API errors (not token errors)
+        var successfulFetches = 0  // Track how many enrollments succeeded
+        var attemptedFetches = 0  // Track how many enrollments were attempted
         let lock = NSLock()  // Thread-safe access to collected arrays
         
         Logger.section("DIENSTEN REFRESH")
@@ -132,6 +135,10 @@ final class DefaultDienstRepository: DienstRepository {
                 continue
             }
             
+            lock.lock()
+            attemptedFetches += 1
+            lock.unlock()
+            
             let tenantBackend = BackendClient()
             tenantBackend.authToken = authToken
             
@@ -148,6 +155,7 @@ final class DefaultDienstRepository: DienstRepository {
                     let mapped = items.map(self.mapDTOToDienst)
                     lock.lock()
                     collected.append(contentsOf: mapped)
+                    successfulFetches += 1
                     lock.unlock()
                 case .failure(let err):
                     Logger.error("Failed to fetch diensten for enrollment \(enrollmentId) (tenant: \(enrollment.tenantSlug)): \(err)")
@@ -167,6 +175,11 @@ final class DefaultDienstRepository: DienstRepository {
                     } else {
                         // Check for season_ended token revocation (whole tenant)
                         self?.checkTokenRevocation(error: err, tenant: enrollment.tenantSlug, enrollmentId: enrollmentId)
+                        
+                        // Track network/API errors (not token errors) for UI feedback
+                        lock.lock()
+                        networkErrors.append(err)
+                        lock.unlock()
                     }
                 }
                 group.leave()
@@ -174,7 +187,16 @@ final class DefaultDienstRepository: DienstRepository {
         }
         
         group.notify(queue: .global()) {
-            Logger.debug("Collected \(collected.count) diensten from all tenants, \(invalidEnrollments.count) invalid enrollment(s)")
+            Logger.debug("Collected \(collected.count) diensten from all tenants, \(invalidEnrollments.count) invalid enrollment(s), \(networkErrors.count) network error(s)")
+            Logger.debug("Fetches: \(successfulFetches) successful out of \(attemptedFetches) attempted")
+            
+            // If ALL fetches failed with network errors (not token errors), return failure
+            // This ensures the UI shows an error message instead of "Geen diensten"
+            if attemptedFetches > 0 && successfulFetches == 0 && !networkErrors.isEmpty {
+                Logger.error("❌ All diensten fetches failed with network errors - returning failure")
+                completion(.failure(networkErrors.first!))
+                return
+            }
             
             // Dedup by id; keep newest by updatedAt then startTime
             var byId: [String: Dienst] = [:]

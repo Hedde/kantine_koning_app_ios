@@ -1099,35 +1099,39 @@ final class BackendClient {
     private func createUserFriendlyError(from error: Error, context: String) -> NSError {
         let nsError = error as NSError
         
-        // Check for common network errors
+        // User-friendly error messages consistent with "storing" terminology
         if nsError.domain == NSURLErrorDomain {
             switch nsError.code {
             case NSURLErrorNotConnectedToInternet:
                 return NSError(domain: "Backend", code: nsError.code, userInfo: [
-                    NSLocalizedDescriptionKey: "Geen internetverbinding beschikbaar"
+                    NSLocalizedDescriptionKey: "Je hebt geen internetverbinding. Controleer je verbinding en probeer het opnieuw."
                 ])
             case NSURLErrorTimedOut:
                 return NSError(domain: "Backend", code: nsError.code, userInfo: [
-                    NSLocalizedDescriptionKey: "Verbinding met server is verlopen"
+                    NSLocalizedDescriptionKey: "Het laden duurt te lang. Probeer het later nog eens."
                 ])
             case NSURLErrorCannotFindHost, NSURLErrorCannotConnectToHost:
                 return NSError(domain: "Backend", code: nsError.code, userInfo: [
-                    NSLocalizedDescriptionKey: "Kan geen verbinding maken met de server"
+                    NSLocalizedDescriptionKey: "We kunnen de \(context) even niet ophalen. Probeer het later nog eens."
                 ])
             case NSURLErrorNetworkConnectionLost:
                 return NSError(domain: "Backend", code: nsError.code, userInfo: [
-                    NSLocalizedDescriptionKey: "Netwerkverbinding is verbroken"
+                    NSLocalizedDescriptionKey: "Je internetverbinding is weggevallen. Probeer het opnieuw."
+                ])
+            case NSURLErrorSecureConnectionFailed, -1200: // SSL/TLS errors
+                return NSError(domain: "Backend", code: nsError.code, userInfo: [
+                    NSLocalizedDescriptionKey: "We kunnen de \(context) even niet ophalen door een tijdelijke storing. Probeer het later nog eens."
                 ])
             default:
                 return NSError(domain: "Backend", code: nsError.code, userInfo: [
-                    NSLocalizedDescriptionKey: "Netwerkfout opgetreden bij het laden van \(context)"
+                    NSLocalizedDescriptionKey: "We kunnen de \(context) even niet ophalen door een tijdelijke storing. Probeer het later nog eens."
                 ])
             }
         }
         
-        // For other errors, provide a generic message
+        // For other errors, use "storing" message
         return NSError(domain: "Backend", code: nsError.code, userInfo: [
-            NSLocalizedDescriptionKey: "Er is een fout opgetreden bij het laden van \(context)"
+            NSLocalizedDescriptionKey: "We kunnen de \(context) even niet ophalen door een tijdelijke storing. Probeer het later nog eens."
         ])
     }
     
@@ -1146,22 +1150,23 @@ final class BackendClient {
             }
         }
         
+        // User-friendly error messages consistent with "storing" terminology
         let userMessage: String
         switch statusCode {
         case 400:
-            userMessage = "Ongeldige aanvraag voor \(context)"
+            userMessage = "Er is iets misgegaan. Probeer het opnieuw."
         case 401:
-            userMessage = "Niet geautoriseerd - probeer opnieuw in te loggen"
+            userMessage = "Je sessie is verlopen. Log opnieuw in."
         case 403:
-            userMessage = "Geen toegang tot \(context)"
+            userMessage = "Je hebt geen toegang tot deze \(context)."
         case 404:
-            userMessage = "\(context.capitalized) niet gevonden"
+            userMessage = "De \(context) kon niet worden gevonden."
         case 422:
-            userMessage = "Ongeldige gegevens voor \(context)"
+            userMessage = "De gegevens konden niet worden verwerkt. Probeer het opnieuw."
         case 500...599:
-            userMessage = "Serverfout bij het laden van \(context) - probeer het later opnieuw"
+            userMessage = "We kunnen de \(context) even niet ophalen door een tijdelijke storing. Probeer het later nog eens."
         default:
-            userMessage = "Onbekende fout (\(statusCode)) bij het laden van \(context)"
+            userMessage = "We kunnen de \(context) even niet ophalen door een tijdelijke storing. Probeer het later nog eens."
         }
         
         return NSError(domain: "Backend", code: statusCode, userInfo: [

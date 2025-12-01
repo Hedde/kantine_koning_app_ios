@@ -364,7 +364,8 @@ struct LeaderboardHostView: View {
                 if self.isLoading && self.store.leaderboards[tenantSlug] == nil {
                     Logger.error("Leaderboard load timeout for \(tenantSlug)")
                     self.isLoading = false
-                    self.errorMessage = "Kon leaderboard niet laden"
+                    // Use "storing" terminology so ErrorView shows correct title
+                    self.errorMessage = "We kunnen de ranglijst even niet ophalen door een tijdelijke storing. Probeer het later nog eens."
                 }
             }
         }
@@ -436,32 +437,35 @@ struct LeaderboardHostView: View {
     }
     
     // MARK: - Error Formatting
+    // Consistent with diensten and tenant leaderboard error messages
     private func formatErrorMessage(_ error: Error, context: String) -> String {
         let nsError = error as NSError
         
-        // Check if it's a user-friendly error from BackendClient
-        if nsError.domain == "Backend" && !nsError.localizedDescription.isEmpty {
-            return nsError.localizedDescription
-        }
-        
-        // Fallback for other errors
+        // Network errors (NSURLErrorDomain) - use friendly "storing" message
         if nsError.domain == NSURLErrorDomain {
             switch nsError.code {
             case NSURLErrorNotConnectedToInternet:
-                return "Geen internetverbinding beschikbaar"
+                return "Je hebt geen internetverbinding. Controleer je verbinding en probeer het opnieuw."
             case NSURLErrorTimedOut:
-                return "Verbinding met server is verlopen"
+                return "Het laden duurt te lang. Probeer het later nog eens."
             case NSURLErrorCannotFindHost, NSURLErrorCannotConnectToHost:
-                return "Kan geen verbinding maken met de server"
+                return "We kunnen de \(context) even niet ophalen. Probeer het later nog eens."
             case NSURLErrorNetworkConnectionLost:
-                return "Netwerkverbinding is verbroken"
+                return "Je internetverbinding is weggevallen. Probeer het opnieuw."
+            case NSURLErrorSecureConnectionFailed, -1200: // SSL/TLS errors
+                return "We kunnen de \(context) even niet ophalen door een tijdelijke storing. Probeer het later nog eens."
             default:
-                return "Netwerkfout opgetreden"
+                return "We kunnen de \(context) even niet ophalen door een tijdelijke storing. Probeer het later nog eens."
             }
         }
         
-        // Generic fallback
-        return "Er is een fout opgetreden bij het laden van \(context)"
+        // Backend errors - use friendly "storing" message
+        if nsError.domain == "Backend" {
+            return "We kunnen de \(context) even niet ophalen door een tijdelijke storing. Probeer het later nog eens."
+        }
+        
+        // Generic fallback - also use "storing" message
+        return "We kunnen de \(context) even niet ophalen door een tijdelijke storing. Probeer het later nog eens."
     }
 }
 
@@ -955,9 +959,9 @@ private struct ErrorView: View {
     let onRetry: () -> Void
     
     private var errorType: ErrorType {
-        if message.contains("internetverbinding") || message.contains("Netwerkfout") {
+        if message.contains("internetverbinding") || message.contains("Netwerkfout") || message.contains("verbinding") {
             return .network
-        } else if message.contains("server") || message.contains("Serverfout") {
+        } else if message.contains("storing") || message.contains("server") || message.contains("Serverfout") {
             return .server
         } else if message.contains("afgemeld") || message.contains("toegang") {
             return .permission
@@ -981,7 +985,7 @@ private struct ErrorView: View {
         var title: String {
             switch self {
             case .network: return "Verbindingsprobleem"
-            case .server: return "Serverfout"
+            case .server: return "Tijdelijke storing"
             case .permission: return "Geen toegang"
             case .generic: return "Fout opgetreden"
             }
@@ -1013,3 +1017,4 @@ private struct ErrorView: View {
         .padding(.horizontal, 24)
     }
 }
+

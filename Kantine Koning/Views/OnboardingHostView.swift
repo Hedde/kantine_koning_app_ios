@@ -1082,10 +1082,38 @@ private struct TenantSearchSection: View {
                     .padding(.top, 4)
                 }
                 
-                // Show offline message or demo message when search has no results
-                // Only show after typing at least 3 characters to avoid flickering
-                if searchQuery.count >= 3 && results.isEmpty {
-                    if !store.isOnline {
+                // Show error, offline message, or demo message when search has no results
+                // Only show after typing at least 3 characters and NOT while actively searching
+                if searchQuery.count >= 3 && results.isEmpty && !store.isSearchingTenants {
+                    if let error = store.tenantSearchError {
+                        // API error message (tijdelijke storing)
+                        HStack(alignment: .top, spacing: 12) {
+                            Image(systemName: "exclamationmark.triangle")
+                                .foregroundStyle(KKTheme.accent)
+                                .font(.system(size: 20))
+                            
+                            VStack(alignment: .leading, spacing: 4) {
+                                Text("Tijdelijke storing")
+                                    .font(KKFont.body(13))
+                                    .foregroundStyle(KKTheme.textPrimary)
+                                    .fontWeight(.medium)
+                                
+                                Text(error)
+                                    .font(KKFont.body(12))
+                                    .foregroundStyle(KKTheme.textSecondary)
+                            }
+                            
+                            Spacer(minLength: 0)
+                        }
+                        .padding(12)
+                        .background(KKTheme.surface)
+                        .cornerRadius(8)
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 8)
+                                .stroke(KKTheme.accent.opacity(0.3), lineWidth: 1)
+                        )
+                        .padding(.top, 4)
+                    } else if !store.isOnline {
                         // Offline message
                         HStack(alignment: .top, spacing: 12) {
                             Image(systemName: "wifi.slash")

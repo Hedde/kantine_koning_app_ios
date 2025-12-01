@@ -720,6 +720,9 @@ private struct TeamDienstenView: View {
                     }
                     .padding(.vertical, 48)
                     .padding(.horizontal, 16)
+                } else if let error = store.dienstenError, store.isOnline {
+                    // API error state - show error with retry button (only when online)
+                    DienstenErrorView(message: error, onRetry: { store.refreshDiensten() })
                 } else if diensten.isEmpty {
                     VStack(spacing: 16) {
                         Image(systemName: store.isOnline ? "calendar.badge.exclamationmark" : "wifi.slash")
@@ -2502,6 +2505,120 @@ private struct OfferDienstForTransferView: View {
                     errorMessage = error.localizedDescription
                 }
             }
+        }
+    }
+}
+
+// MARK: - Diensten Error View
+
+/// Error view shown when diensten fetch fails (API errors, server errors, timeouts)
+/// Displays user-friendly error message with retry button and loading feedback
+private struct DienstenErrorView: View {
+    let message: String
+    let onRetry: () -> Void
+    
+    @State private var isRetrying = false
+    @State private var retryCount = 0
+    
+    private var errorType: ErrorType {
+        if message.contains("internetverbinding") || message.contains("verbinding") {
+            return .network
+        } else if message.contains("storing") || message.contains("server") {
+            return .server
+        } else if message.contains("duurt te lang") || message.contains("timeout") {
+            return .timeout
+        } else {
+            return .generic
+        }
+    }
+    
+    private enum ErrorType {
+        case network, server, timeout, generic
+        
+        var icon: String {
+            switch self {
+            case .network: return "wifi.exclamationmark"
+            case .server: return "server.rack"
+            case .timeout: return "clock.badge.exclamationmark"
+            case .generic: return "exclamationmark.triangle"
+            }
+        }
+        
+        var title: String {
+            switch self {
+            case .network: return "Verbindingsprobleem"
+            case .server: return "Tijdelijke storing"
+            case .timeout: return "Trage verbinding"
+            case .generic: return "Kon niet laden"
+            }
+        }
+    }
+    
+    var body: some View {
+        VStack(spacing: 16) {
+            // Icon
+            Image(systemName: errorType.icon)
+                .font(.system(size: 48))
+                .foregroundStyle(KKTheme.accent)
+            
+            // Title and message
+            VStack(spacing: 8) {
+                Text(errorType.title)
+                    .font(KKFont.title(18))
+                    .foregroundStyle(KKTheme.textPrimary)
+                    .fontWeight(.medium)
+                
+                Text(message)
+                    .font(KKFont.body(14))
+                    .foregroundStyle(KKTheme.textSecondary)
+                    .multilineTextAlignment(.center)
+            }
+            
+            // Retry button with loading state
+            Button {
+                performRetry()
+            } label: {
+                HStack(spacing: 8) {
+                    if isRetrying {
+                        ProgressView()
+                            .progressViewStyle(CircularProgressViewStyle(tint: KKTheme.accent))
+                            .scaleEffect(0.8)
+                    }
+                    Text(isRetrying ? "Laden..." : "Opnieuw proberen")
+                }
+            }
+            .buttonStyle(KKSecondaryButton())
+            .disabled(isRetrying)
+            .padding(.horizontal, 48)
+            .padding(.top, 8)
+            
+            // Tip after multiple retries
+            if retryCount >= 2 {
+                HStack(spacing: 6) {
+                    Image(systemName: "lightbulb.fill")
+                        .font(.system(size: 12))
+                    Text("Tip: wacht een paar minuten en probeer het dan opnieuw")
+                        .font(KKFont.body(12))
+                }
+                .foregroundStyle(KKTheme.textSecondary.opacity(0.7))
+                .padding(.top, 4)
+            }
+        }
+        .padding(.vertical, 32)
+        .padding(.horizontal, 24)
+    }
+    
+    private func performRetry() {
+        isRetrying = true
+        retryCount += 1
+        
+        // Call retry and simulate minimum loading time for feedback
+        onRetry()
+        
+        // Reset loading state after a brief delay
+        // The actual refresh will update the UI when data arrives
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) {
+            isRetrying = false
         }
     }
 }
