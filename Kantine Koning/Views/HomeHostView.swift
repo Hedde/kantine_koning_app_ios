@@ -962,6 +962,16 @@ private struct DienstCardContent: View {
             // Header with date and time
             VStack(alignment: .leading, spacing: 8) {
                 HStack {
+                    // Dienst type icon naast datum (grijs vierkantje)
+                    if let dienstType = dienst.dienstType {
+                        Image(systemName: dienstType.sfSymbolName)
+                            .font(.system(size: 18, weight: .medium))
+                            .foregroundStyle(Color.gray.opacity(0.85))
+                            .frame(width: 36, height: 36)
+                            .background(Color.gray.opacity(0.15))
+                            .clipShape(RoundedRectangle(cornerRadius: 8))
+                    }
+                    
                     VStack(alignment: .leading, spacing: 2) {
                         Text(dateText)
                             .font(KKFont.title(18))
@@ -2319,6 +2329,16 @@ private struct OfferDienstForTransferView: View {
                     VStack(alignment: .leading, spacing: 16) {
                         // Date and location header
                         HStack {
+                            // Dienst type icon naast datum (grijs vierkantje)
+                            if let dienstType = dienst.dienstType {
+                                Image(systemName: dienstType.sfSymbolName)
+                                    .font(.system(size: 18, weight: .medium))
+                                    .foregroundStyle(Color.gray.opacity(0.85))
+                                    .frame(width: 36, height: 36)
+                                    .background(Color.gray.opacity(0.15))
+                                    .clipShape(RoundedRectangle(cornerRadius: 8))
+                            }
+                            
                             VStack(alignment: .leading, spacing: 2) {
                                 Text(dateFormatter.string(from: dienst.startTime))
                                     .font(KKFont.title(18))

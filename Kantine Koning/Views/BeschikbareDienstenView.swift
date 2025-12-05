@@ -273,6 +273,16 @@ struct BeschikbareDienstCard: View {
                 VStack(alignment: .leading, spacing: 12) {
                     // Compact header - date and location
                     HStack {
+                        // Dienst type icon naast datum (grijs vierkantje)
+                        if let dienstType = dienst.dienst_type {
+                            Image(systemName: dienstType.sfSymbolName)
+                                .font(.system(size: 16, weight: .medium))
+                                .foregroundStyle(Color.gray.opacity(0.85))
+                                .frame(width: 32, height: 32)
+                                .background(Color.gray.opacity(0.15))
+                                .clipShape(RoundedRectangle(cornerRadius: 7))
+                        }
+                        
                         VStack(alignment: .leading, spacing: 2) {
                             Text(dateFormatter.string(from: dienst.start_tijd))
                                 .font(KKFont.title(16))

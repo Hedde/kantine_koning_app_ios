@@ -345,6 +345,30 @@ struct Dienst: Codable, Identifiable, Equatable {
     struct DienstType: Codable, Equatable {
         let naam: String
         let icon: String
+        
+        /// Maps Lucide icon names from the API to SF Symbols for iOS
+        var sfSymbolName: String {
+            switch icon {
+            case "lucide-utensils":        return "fork.knife"
+            case "lucide-glass-water":     return "cup.and.saucer"
+            case "lucide-chef-hat":        return "frying.pan"        // Keuken - duidelijk anders dan fork.knife
+            case "lucide-warehouse":       return "building.2"
+            case "lucide-badge":           return "person.text.rectangle"
+            case "lucide-flag":            return "flag"
+            case "lucide-wrench":          return "wrench"
+            case "lucide-truck":           return "truck.box"
+            case "lucide-ruler":           return "ruler"
+            case "lucide-spray-can":       return "sprinkler"
+            case "lucide-goal":            return "sportscourt"
+            case "lucide-shirt":           return "tshirt"              // Kleding
+            case "lucide-timer":           return "timer"               // Fluiten (stopwatch)
+            case "lucide-square-parking":  return "p.square"
+            case "lucide-users":           return "person.2"
+            case "lucide-map-pin":         return "mappin"
+            case "lucide-circle-ellipsis": return "ellipsis.circle"
+            default:                       return "fork.knife" // Default: kantine
+            }
+        }
     }
     
     let id: String
