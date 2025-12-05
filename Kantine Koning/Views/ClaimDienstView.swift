@@ -334,9 +334,19 @@ struct ClaimDienstView: View {
     
     private func dateAndLocation(dienst: DienstDTO) -> some View {
         HStack {
+            // Dienst type icon
+            if let dienstType = dienst.dienst_type {
+                Image(systemName: dienstType.sfSymbolName)
+                    .font(.system(size: 16, weight: .medium))
+                    .foregroundStyle(Color.gray.opacity(0.85))
+                    .frame(width: 32, height: 32)
+                    .background(Color.gray.opacity(0.15))
+                    .clipShape(RoundedRectangle(cornerRadius: 7))
+            }
+            
             VStack(alignment: .leading, spacing: 2) {
                 Text(formatDate(dienst.start_tijd))
-                    .font(KKFont.title(18))
+                    .font(KKFont.title(16))
                     .foregroundStyle(KKTheme.textPrimary)
                 Text(formatDay(dienst.start_tijd))
                     .font(.system(size: 11, weight: .medium))
