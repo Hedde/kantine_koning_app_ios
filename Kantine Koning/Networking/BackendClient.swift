@@ -1447,6 +1447,19 @@ struct GlobalLeaderboardResponse: Codable {
 // MARK: - Banner DTOs
 struct BannerResponse: Codable {
     let banners: [BannerDTO]
+    let globalBanners: [BannerDTO]
+    
+    enum CodingKeys: String, CodingKey {
+        case banners
+        case globalBanners = "global_banners"
+    }
+    
+    // Custom decoder for backwards compatibility
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        banners = try container.decode([BannerDTO].self, forKey: .banners)
+        globalBanners = try container.decodeIfPresent([BannerDTO].self, forKey: .globalBanners) ?? []
+    }
 }
 
 struct BannerDTO: Codable, Identifiable {
