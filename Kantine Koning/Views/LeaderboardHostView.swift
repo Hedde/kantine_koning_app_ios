@@ -486,7 +486,7 @@ private struct LeaderboardMenuView: View {
     var body: some View {
         ScrollView {
             VStack(spacing: 24) {
-                Spacer(minLength: 24)
+                // No top spacer - handled by safeAreaInset padding
                 
                 // Header
                 VStack(spacing: 8) {
@@ -574,6 +574,13 @@ private struct LeaderboardMenuView: View {
                 
                 Spacer(minLength: 24)
             }
+        }
+        .safeAreaInset(edge: .top) {
+            // Fixed banner positioned under navigation - EXACT pattern as TenantBannerView
+            GlobalBannerView()
+                .environmentObject(store)
+                .padding(.bottom, 12)
+                .background(KKTheme.surface)
         }
     }
 }
