@@ -1086,7 +1086,7 @@ final class BackendClient {
             do {
                 let decoder = JSONDecoder()
                 let response = try decoder.decode(BannerResponse.self, from: data)
-                Logger.success("Banners fetched: \(response.banners.count) tenant + \(response.globalBanners.count) global items for tenant \(tenant)")
+                Logger.success("Banners fetched: \(response.banners.count) tenant + \(response.globalBanners.count) global items for tenant \(tenant ?? "global")")
                 completion(.success(response))
             } catch {
                 Logger.error("banners decode error: \(error)")
