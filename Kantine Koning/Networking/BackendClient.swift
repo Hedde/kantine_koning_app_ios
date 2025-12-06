@@ -1039,7 +1039,7 @@ final class BackendClient {
     }
     
     // MARK: - Banners
-    func fetchBanners(tenant: TenantID, completion: @escaping (Result<[BannerDTO], Error>) -> Void) {
+    func fetchBanners(tenant: TenantID, completion: @escaping (Result<BannerResponse, Error>) -> Void) {
         Logger.network("Fetching banners for tenant \(tenant)")
         
         var comps = URLComponents(url: baseURL.appendingPathComponent("/api/mobile/v1/banners"), resolvingAgainstBaseURL: false)!
@@ -1083,8 +1083,8 @@ final class BackendClient {
             do {
                 let decoder = JSONDecoder()
                 let response = try decoder.decode(BannerResponse.self, from: data)
-                Logger.success("Banners fetched: \(response.banners.count) items for tenant \(tenant)")
-                completion(.success(response.banners))
+                Logger.success("Banners fetched: \(response.banners.count) tenant + \(response.globalBanners.count) global items for tenant \(tenant)")
+                completion(.success(response))
             } catch {
                 Logger.error("banners decode error: \(error)")
                 let userError = NSError(domain: "Backend", code: -2, userInfo: [

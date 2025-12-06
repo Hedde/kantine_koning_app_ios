@@ -120,6 +120,12 @@ struct LeaderboardHostView: View {
                         }
                         .padding(.horizontal, 24)
                         
+                        // Global banners (system-level)
+                        if !store.globalBanners.isEmpty {
+                            BannerCarousel(banners: store.globalBanners)
+                                .padding(.horizontal, 16)
+                        }
+                        
                         // Content
                         if isLoading {
                             ProgressView()

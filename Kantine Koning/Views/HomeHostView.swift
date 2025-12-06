@@ -1350,6 +1350,13 @@ private struct ClubsViewInternal: View {
                         .foregroundStyle(KKTheme.textSecondary)
                 }
                 .multilineTextAlignment(.center)
+                
+                // Global banners (system-level)
+                if !store.globalBanners.isEmpty {
+                    BannerCarousel(banners: store.globalBanners)
+                        .padding(.horizontal, 16)
+                }
+                
                 VStack(spacing: 8) {
                     // Show all tenants, but mark season ended ones differently
                     ForEach(Array(store.model.tenants.values.sorted { $0.name < $1.name }), id: \.slug) { tenant in
@@ -1492,6 +1499,12 @@ private struct SettingsViewInternal: View {
                         .foregroundStyle(KKTheme.textSecondary)
                 }
                 .multilineTextAlignment(.center)
+                
+                // Global banners (system-level)
+                if !store.globalBanners.isEmpty {
+                    BannerCarousel(banners: store.globalBanners)
+                        .padding(.horizontal, 16)
+                }
                 
                 // Enrollment actions card
                 VStack(alignment: .leading, spacing: 12) {

@@ -42,6 +42,7 @@ final class AppStore: ObservableObject {
     @Published var globalLeaderboard: GlobalLeaderboardData?
     @Published var tenantInfo: [String: TenantInfo] = [:] // tenantSlug -> TenantInfo (club logos etc.)
     @Published var banners: [String: [DomainModel.Banner]] = [:] // tenantSlug -> [Banner] (cached banner data)
+    @Published var globalBanners: [DomainModel.Banner] = [] // Global system-level banners
     @Published var invalidEnrollmentIds: Set<String> = [] // Enrollment IDs with invalid tokens (for immediate UI feedback)
     @Published var dienstenError: String? = nil // Error message when diensten fetch fails (API errors, not offline)
     
@@ -917,11 +918,11 @@ final class AppStore: ObservableObject {
         backend.fetchBanners(tenant: tenantSlug) { [weak self] result in
             DispatchQueue.main.async {
                 switch result {
-                case .success(let bannerDTOs):
-                    Logger.success("Received \(bannerDTOs.count) banners for tenant \(tenantSlug)")
+                case .success(let bannerResponse):
+                    Logger.success("Received \(bannerResponse.banners.count) tenant + \(bannerResponse.globalBanners.count) global banners for tenant \(tenantSlug)")
                     
                     // Convert DTOs to domain models and sort by display order
-                    let banners = bannerDTOs.map { dto in
+                    let banners = bannerResponse.banners.map { dto in
                         DomainModel.Banner(
                             id: dto.id,
                             tenantSlug: dto.tenantSlug,
@@ -936,6 +937,23 @@ final class AppStore: ObservableObject {
                     // Cache the banners for this specific tenant
                     self?.banners[tenantSlug] = banners
                     Logger.success("Cached \(banners.count) banners for tenant \(tenantSlug)")
+                    
+                    // Cache global banners (same for all tenants, only set once if not already set)
+                    if self?.globalBanners.isEmpty == true && !bannerResponse.globalBanners.isEmpty {
+                        let globalBanners = bannerResponse.globalBanners.map { dto in
+                            DomainModel.Banner(
+                                id: dto.id,
+                                tenantSlug: dto.tenantSlug,
+                                name: dto.name,
+                                fileUrl: dto.fileUrl,
+                                linkUrl: dto.linkUrl,
+                                altText: dto.altText,
+                                displayOrder: dto.displayOrder
+                            )
+                        }.sorted { $0.displayOrder < $1.displayOrder }
+                        self?.globalBanners = globalBanners
+                        Logger.success("Cached \(globalBanners.count) global banners")
+                    }
                     
                 case .failure(let error):
                     Logger.warning("Failed to fetch banners for tenant \(tenantSlug): \(error.localizedDescription)")
