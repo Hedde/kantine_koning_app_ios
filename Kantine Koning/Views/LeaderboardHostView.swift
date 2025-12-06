@@ -592,7 +592,7 @@ private struct LeaderboardInfoView: View {
     var body: some View {
         ScrollView {
             VStack(spacing: 24) {
-                Spacer(minLength: 24)
+                // No top spacer - handled by safeAreaInset padding
                 
                 // Header
                 VStack(spacing: 8) {
