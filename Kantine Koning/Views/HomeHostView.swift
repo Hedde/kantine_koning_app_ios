@@ -1429,6 +1429,10 @@ private struct ClubsViewInternal: View {
                 .padding(.bottom, 12)
                 .background(KKTheme.surface)
         }
+        .onAppear {
+            // Ensure global banners are loaded when this view appears
+            store.refreshGlobalBanners()
+        }
     }
     private func teamCountText(for tenant: DomainModel.Tenant) -> String {
         let count = tenant.teams.count
