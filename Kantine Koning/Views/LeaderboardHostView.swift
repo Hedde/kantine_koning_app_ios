@@ -587,6 +587,8 @@ private struct LeaderboardMenuView: View {
 
 // MARK: - Info View
 private struct LeaderboardInfoView: View {
+    @EnvironmentObject var store: AppStore
+    
     var body: some View {
         ScrollView {
             VStack(spacing: 24) {
@@ -635,6 +637,13 @@ private struct LeaderboardInfoView: View {
                 
                 Spacer(minLength: 24)
             }
+        }
+        .safeAreaInset(edge: .top) {
+            // Fixed banner positioned under navigation - EXACT pattern as other views
+            GlobalBannerView()
+                .environmentObject(store)
+                .padding(.bottom, 12)
+                .background(KKTheme.surface)
         }
     }
 }
