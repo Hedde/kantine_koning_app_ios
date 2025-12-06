@@ -147,6 +147,9 @@ final class AppStore: ObservableObject {
         } else {
             Logger.bootstrap("User not enrolled - showing onboarding")
         }
+        
+        // Always fetch global banners on startup (for club selection screen)
+        refreshGlobalBanners()
     }
     
     deinit {
@@ -770,6 +773,9 @@ final class AppStore: ObservableObject {
     func onAppBecameActive() {
         Logger.info("📱 App became active")
         
+        // Always refresh global banners when app becomes active
+        refreshGlobalBanners()
+        
         // Only reconcile if enrolled
         guard model.isEnrolled else {
             Logger.info("⏭️ Skipping reconciliation - not enrolled")
@@ -969,6 +975,44 @@ final class AppStore: ObservableObject {
     func refreshBanners() {
         // This method is called from refreshDiensten() but we'll use lazy loading instead
         Logger.debug("Banner refresh triggered - will use on-demand loading per tenant")
+    }
+    
+    func refreshGlobalBanners() {
+        // Don't refetch if already cached (unless forced, but simple cache check is fine for now)
+        if !globalBanners.isEmpty {
+            Logger.debug("Global banners already cached")
+            return
+        }
+        
+        Logger.debug("Fetching global banners")
+        let backend = BackendClient()
+        
+        // Fetch without tenant param to get global banners
+        backend.fetchBanners(tenant: nil) { [weak self] result in
+            DispatchQueue.main.async {
+                switch result {
+                case .success(let bannerResponse):
+                    Logger.success("Received \(bannerResponse.globalBanners.count) global banners")
+                    
+                    let globalBanners = bannerResponse.globalBanners.map { dto in
+                        DomainModel.Banner(
+                            id: dto.id,
+                            tenantSlug: dto.tenantSlug,
+                            name: dto.name,
+                            fileUrl: dto.fileUrl,
+                            linkUrl: dto.linkUrl,
+                            altText: dto.altText,
+                            displayOrder: dto.displayOrder
+                        )
+                    }.sorted { $0.displayOrder < $1.displayOrder }
+                    
+                    self?.globalBanners = globalBanners
+                    
+                case .failure(let error):
+                    Logger.warning("Failed to fetch global banners: \(error.localizedDescription)")
+                }
+            }
+        }
     }
     
     /// Async version of refreshTenantInfo that calls completion with success status

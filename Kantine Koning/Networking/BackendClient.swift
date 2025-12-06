@@ -1039,14 +1039,17 @@ final class BackendClient {
     }
     
     // MARK: - Banners
-    func fetchBanners(tenant: TenantID, completion: @escaping (Result<BannerResponse, Error>) -> Void) {
-        Logger.network("Fetching banners for tenant \(tenant)")
+    func fetchBanners(tenant: TenantID?, completion: @escaping (Result<BannerResponse, Error>) -> Void) {
+        Logger.network("Fetching banners for \(tenant ?? "global context")")
         
         var comps = URLComponents(url: baseURL.appendingPathComponent("/api/mobile/v1/banners"), resolvingAgainstBaseURL: false)!
         comps.queryItems = [
-            URLQueryItem(name: "tenant", value: tenant),
             URLQueryItem(name: "randomize", value: "true")
         ]
+        
+        if let tenant = tenant {
+            comps.queryItems?.append(URLQueryItem(name: "tenant", value: tenant))
+        }
         
         guard let url = comps.url else { 
             completion(.failure(NSError(domain: "Backend", code: -3, userInfo: [NSLocalizedDescriptionKey: "Invalid URL"])))
