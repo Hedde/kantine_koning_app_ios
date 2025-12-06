@@ -80,7 +80,7 @@ struct LeaderboardHostView: View {
                 // Global leaderboard view
                 ScrollView {
                     VStack(spacing: 24) {
-                        Spacer(minLength: 24)
+                        // No top spacer - handled by safeAreaInset padding
                         
                         // Header for global
                         VStack(spacing: 8) {
@@ -120,12 +120,6 @@ struct LeaderboardHostView: View {
                         }
                         .padding(.horizontal, 24)
                         
-                        // Global banners (system-level)
-                        if !store.globalBanners.isEmpty {
-                            BannerCarousel(banners: store.globalBanners)
-                                .padding(.horizontal, 16)
-                        }
-                        
                         // Content
                         if isLoading {
                             ProgressView()
@@ -159,6 +153,13 @@ struct LeaderboardHostView: View {
                         
                         Spacer(minLength: 24)
                     }
+                }
+                .safeAreaInset(edge: .top) {
+                    // Fixed banner positioned under navigation - EXACT pattern as TenantBannerView
+                    GlobalBannerView()
+                        .environmentObject(store)
+                        .padding(.bottom, 12)
+                        .background(KKTheme.surface)
                 }
                 .refreshable {
                     loadGlobalLeaderboard()

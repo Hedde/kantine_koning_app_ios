@@ -1338,7 +1338,8 @@ private struct ClubsViewInternal: View {
     var body: some View {
         ScrollView {
             VStack(spacing: 24) {
-                Spacer(minLength: 24)
+                // No top spacer - handled by safeAreaInset padding
+                
                 VStack(spacing: 8) {
                     Text("SELECTEER VERENIGING")
                         .font(KKFont.heading(24))
@@ -1350,12 +1351,6 @@ private struct ClubsViewInternal: View {
                         .foregroundStyle(KKTheme.textSecondary)
                 }
                 .multilineTextAlignment(.center)
-                
-                // Global banners (system-level)
-                if !store.globalBanners.isEmpty {
-                    BannerCarousel(banners: store.globalBanners)
-                        .padding(.horizontal, 16)
-                }
                 
                 VStack(spacing: 8) {
                     // Show all tenants, but mark season ended ones differently
@@ -1427,6 +1422,13 @@ private struct ClubsViewInternal: View {
                 Spacer(minLength: 24)
             }
         }
+        .safeAreaInset(edge: .top) {
+            // Fixed banner positioned under navigation - EXACT pattern as TenantBannerView
+            GlobalBannerView()
+                .environmentObject(store)
+                .padding(.bottom, 12)
+                .background(KKTheme.surface)
+        }
     }
     private func teamCountText(for tenant: DomainModel.Tenant) -> String {
         let count = tenant.teams.count
@@ -1487,7 +1489,8 @@ private struct SettingsViewInternal: View {
     var body: some View {
         ScrollView {
             VStack(spacing: 24) {
-                Spacer(minLength: 24)
+                // No top spacer - handled by safeAreaInset padding
+                
                 VStack(spacing: 8) {
                     Text("INSTELLINGEN")
                         .font(KKFont.heading(24))
@@ -1499,12 +1502,6 @@ private struct SettingsViewInternal: View {
                         .foregroundStyle(KKTheme.textSecondary)
                 }
                 .multilineTextAlignment(.center)
-                
-                // Global banners (system-level)
-                if !store.globalBanners.isEmpty {
-                    BannerCarousel(banners: store.globalBanners)
-                        .padding(.horizontal, 16)
-                }
                 
                 // Enrollment actions card
                 VStack(alignment: .leading, spacing: 12) {
@@ -1590,6 +1587,13 @@ private struct SettingsViewInternal: View {
                 
                 Spacer(minLength: 24)
             }
+        }
+        .safeAreaInset(edge: .top) {
+            // Fixed banner positioned under navigation - EXACT pattern as TenantBannerView
+            GlobalBannerView()
+                .environmentObject(store)
+                .padding(.bottom, 12)
+                .background(KKTheme.surface)
         }
         .alert("Limiet bereikt", isPresented: $showCapAlert) {
             Button("OK", role: .cancel) { }
