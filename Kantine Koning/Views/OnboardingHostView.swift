@@ -117,11 +117,24 @@ struct OnboardingHostView: View {
                         }
                         
                         // Instructietekst (dynamisch op basis van huidige stap)
-                        Text(instructionText)
-                            .font(KKFont.body(16))
-                            .multilineTextAlignment(.center)
-                            .foregroundStyle(KKTheme.textSecondary)
-                            .padding(.horizontal, 24)
+                        // Role selection stap: maak "Als speler of ouder..." vet
+                        if let scanned = store.onboardingScan, step == nil {
+                            (Text("Kies je rol bij \(scanned.name). ")
+                                .font(KKFont.body(16))
+                                .foregroundStyle(KKTheme.textSecondary)
+                            + Text("Als speler of ouder kies je 'Verenigingslid'.")
+                                .font(KKFont.body(16))
+                                .fontWeight(.semibold)
+                                .foregroundStyle(KKTheme.textSecondary))
+                                .multilineTextAlignment(.center)
+                                .padding(.horizontal, 24)
+                        } else {
+                            Text(instructionText)
+                                .font(KKFont.body(16))
+                                .multilineTextAlignment(.center)
+                                .foregroundStyle(KKTheme.textSecondary)
+                                .padding(.horizontal, 24)
+                        }
 
                 if let scanned = store.onboardingScan {
                     if step == nil {
